@@ -77,21 +77,39 @@ class TradingViewController {
    * @param {string} username - Username from user query param
    * @returns {Object|null} - User object if valid, null otherwise
    */
-  async verifyChartStorageAuth(clientToken, username) {
-    if (!clientToken || !username) {
+  /**
+   * TV chart storage `user` may be scoped per practice account:
+   * e.g. admin__practice_pa_123 (see TradeseaChart storageUser).
+   */
+  isAllowedChartStorageUser(decodedUsername, storageUser) {
+    if (!decodedUsername || !storageUser) return false
+    if (storageUser === decodedUsername) return true
+    return storageUser.startsWith(`${decodedUsername}__`)
+  }
+
+  resolveChartStorageType(type, storageUser) {
+    const base = type || 'tradingview'
+    if (storageUser && storageUser.includes('__')) {
+      return `${base}::${storageUser}`
+    }
+    return base
+  }
+
+  async verifyChartStorageAuth(clientToken, storageUser) {
+    if (!clientToken || !storageUser) {
       return null
     }
 
     try {
       const TokenService = (await import('../services/TokenService.js')).default
       const decoded = TokenService.verifyAuthToken(clientToken)
-      
-      if (!decoded || decoded.username !== username) {
+
+      if (!decoded?.username || !this.isAllowedChartStorageUser(decoded.username, storageUser)) {
         return null
       }
 
-      const user = await Database.findUserByUsernameOrEmail(username)
-      if (!user || user.username !== username) {
+      const user = await Database.findUserByUsernameOrEmail(decoded.username)
+      if (!user || user.username !== decoded.username) {
         return null
       }
 
@@ -121,8 +139,7 @@ class TradingViewController {
         })
       }
 
-      // Auto-set type to 'tradingview' for tradingview routes if not provided
-      const chartType = type || 'tradingview'
+      const chartType = this.resolveChartStorageType(type, username)
 
       const method = req.method
 
@@ -266,40 +283,35 @@ class TradingViewController {
         })
       }
 
-      const chartType = 'tradingview'
       const method = req.method
 
       if (method === 'GET') {
         if (template) {
-          // Get specific template (not implemented yet)
           return res.status(HTTP_STATUS.NOT_FOUND).json({
             status: 'error',
             message: 'Template not found'
           })
-        } else {
-          // Get all templates (empty for now)
-          return res.status(HTTP_STATUS.OK).json({
-            status: 'ok',
-            data: []
-          })
         }
-      } else if (method === 'POST') {
-        // Save template (not implemented yet)
+        return res.status(HTTP_STATUS.OK).json({
+          status: 'ok',
+          data: []
+        })
+      }
+      if (method === 'POST') {
         return res.status(HTTP_STATUS.OK).json({
           status: 'ok',
           id: Date.now()
         })
-      } else if (method === 'DELETE') {
-        // Delete template (not implemented yet)
+      }
+      if (method === 'DELETE') {
         return res.status(HTTP_STATUS.OK).json({
           status: 'ok'
         })
-      } else {
-        return res.status(HTTP_STATUS.METHOD_NOT_ALLOWED).json({
-          status: 'error',
-          message: 'Method not allowed'
-        })
       }
+      return res.status(HTTP_STATUS.METHOD_NOT_ALLOWED).json({
+        status: 'error',
+        message: 'Method not allowed'
+      })
     } catch (error) {
       return ErrorHandler.handleServerError(res, error)
     }

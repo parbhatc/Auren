@@ -76,6 +76,11 @@ class PracticeRoutes {
       AuthMiddleware.authenticate(),
       PracticeController.deletePosition.bind(PracticeController)
     )
+    this.router.put(
+      '/accounts/:id/positions/:positionId/bracket-snapshot',
+      AuthMiddleware.authenticate(),
+      PracticeController.saveBracketSnapshot.bind(PracticeController)
+    )
 
     this.router.post(
       '/accounts/:id/trades',

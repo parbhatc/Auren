@@ -14,7 +14,6 @@ import ForgotPassword from './components/auth/ForgotPassword'
 import ResetPassword from './components/auth/ResetPassword'
 import Settings from './components/settings/Settings'
 import PropsSettings from './components/settings/PropsSettings'
-import LayoutSettings from './components/settings/LayoutSettings'
 import UtilsSettings from './components/settings/UtilsSettings'
 import KeyboardShortcutsSettings from './components/settings/KeyboardShortcutsSettings'
 import AdminSettings from './components/admin/AdminSettings'
@@ -136,14 +135,6 @@ function App() {
         <Route path="/practice" element={<Navigate to={ROUTES.HOME} replace />} />
         <Route path="/practice/trade/:practiceAccountId/*" element={<LegacyPracticeTradeRedirect />} />
         <Route
-          path={ROUTES.TRADE_EDIT_LAYOUT}
-          element={
-            <ProtectedRoute>
-              <Navigate to={`${ROUTES.LAYOUT_SETTINGS}?layout=trading`} replace />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId/stats`}
           element={
             <ProtectedRoute>
@@ -189,14 +180,6 @@ function App() {
           element={
             <ProtectedRoute>
               <PropsSettings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path={ROUTES.LAYOUT_SETTINGS}
-          element={
-            <ProtectedRoute>
-              <LayoutSettings />
             </ProtectedRoute>
           }
         />

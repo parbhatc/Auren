@@ -9,15 +9,12 @@ export const ROUTES = {
   PERMISSION_MANAGER: '/admin/permissions',
   USER_MANAGER: '/admin/users',
   PROPS_SETTINGS: '/settings/props',
-  LAYOUT_SETTINGS: '/settings/layout',
   UTILS_SETTINGS: '/settings/utils',
   KEYBOARD_SHORTCUTS_SETTINGS: '/settings/keyboard-shortcuts',
   PRACTICE_SETTINGS: '/settings/practice',
   /** Practice hub (same as HOME) */
   PRACTICE: '/',
   PRACTICE_TRADE: '/trade',
-  /** Legacy layout editor path — redirects to layout settings */
-  TRADE_EDIT_LAYOUT: '/trade/edit_layout',
 } as const
 
 export type Route = typeof ROUTES[keyof typeof ROUTES]

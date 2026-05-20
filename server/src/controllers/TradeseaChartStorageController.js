@@ -1,4 +1,4 @@
-import TopstepXController from './TopstepXController.js'
+import TradingViewController from './TradingViewController.js'
 
 const CHART_TYPE = 'tradesea'
 
@@ -9,22 +9,22 @@ function withTradeseaType(req) {
 }
 
 /**
- * Reuse TopstepX TradingView chart storage handlers with type=tradesea.
+ * TradingView chart storage for practice charts (type=tradesea).
  */
 class TradeseaChartStorageController {
   async handleChartStorage(req, res) {
     withTradeseaType(req)
-    return TopstepXController.handleChartStorage(req, res)
+    return TradingViewController.handleChartStorage(req, res)
   }
 
   async handleStudyTemplates(req, res) {
     withTradeseaType(req)
-    return TopstepXController.handleStudyTemplates(req, res)
+    return TradingViewController.handleStudyTemplates(req, res)
   }
 
   async handleDrawingTemplates(req, res) {
     withTradeseaType(req)
-    return TopstepXController.handleDrawingTemplates(req, res)
+    return TradingViewController.handleDrawingTemplates(req, res)
   }
 }
 

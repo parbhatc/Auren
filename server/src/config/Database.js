@@ -352,6 +352,12 @@ class Database {
     await run(`CREATE INDEX IF NOT EXISTS idx_practice_trades_account ON practice_trades(account_id)`)
 
     try {
+      await run(`ALTER TABLE practice_positions ADD COLUMN bracket_snapshot TEXT`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
       await run(`ALTER TABLE practice_trades ADD COLUMN forced_exit INTEGER DEFAULT 0`)
     } catch (err) {
       // Column already exists

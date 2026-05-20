@@ -131,6 +131,27 @@ class PracticeController {
     }
   }
 
+  async saveBracketSnapshot(req, res) {
+    try {
+      const snapshot = req.body?.snapshot ?? req.body
+      const result = await PracticeService.saveBracketSnapshot(
+        req.user.id,
+        req.params.id,
+        req.params.positionId,
+        snapshot
+      )
+      if (!result) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: 'Account not found' })
+      }
+      res.status(HTTP_STATUS.OK).json({ success: true, ...result })
+    } catch (error) {
+      if (error.statusCode === 404) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: error.message })
+      }
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
   async clearPositions(req, res) {
     try {
       await PracticeService.clearPositions(req.user.id, req.params.id)

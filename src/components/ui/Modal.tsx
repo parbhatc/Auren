@@ -2,12 +2,13 @@ import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { panelCardClass } from '../../styles/aurenTheme'
 
-type ModalSize = 'sm' | 'md' | 'lg'
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
 
 const sizeClass: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
+  xl: 'max-w-3xl',
 }
 
 export default function Modal({
@@ -20,6 +21,7 @@ export default function Modal({
   footer,
   size = 'md',
   accent,
+  bodyClassName,
 }: {
   isOpen: boolean
   isDark: boolean
@@ -30,6 +32,7 @@ export default function Modal({
   footer?: ReactNode
   size?: ModalSize
   accent?: ReactNode
+  bodyClassName?: string
 }) {
   if (!isOpen) return null
 
@@ -58,7 +61,9 @@ export default function Modal({
               {title}
             </h2>
             {subtitle ? (
-              <div className={`mt-1.5 ${typeof subtitle === 'string' ? `text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}` : ''}`}>
+              <div
+                className={`mt-1.5 ${typeof subtitle === 'string' ? `text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}` : ''}`}
+              >
                 {typeof subtitle === 'string' ? <p>{subtitle}</p> : subtitle}
               </div>
             ) : null}
@@ -74,7 +79,11 @@ export default function Modal({
           </button>
         </div>
 
-        <div className="px-5 sm:px-6 py-5 max-h-[min(65vh,480px)] overflow-y-auto">{children}</div>
+        <div
+          className={`px-5 sm:px-6 py-5 overflow-y-auto ${bodyClassName ?? 'max-h-[min(65vh,480px)]'}`}
+        >
+          {children}
+        </div>
 
         {footer ? (
           <div

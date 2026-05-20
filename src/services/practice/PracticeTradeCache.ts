@@ -11,9 +11,20 @@ import { PracticeTradeHandler } from './PracticeTradeHandler'
 
 import { resolvePracticeProductSymbol } from './practiceSymbol'
 import {
+  BRACKET_REPLAY_RESOLUTION,
+  clearBracketCheckpoint,
   entryTimeToMs,
   findBracketExitInBars,
+  readBracketCheckpointSec,
+  writeBracketCheckpointSec,
 } from './practiceBracketReplay'
+import {
+  barMatchesSnapshot,
+  formatSnapshotTime,
+  parseBracketSnapshot,
+  replayFromSecForSnapshot,
+  type PracticeBracketSnapshot,
+} from './practiceBracketSnapshot'
 
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
 
@@ -24,6 +35,8 @@ export class PracticeTradeCache extends ChartTradeCache {
   private accountId: string
 
   private positionIds = new Map<string, string>()
+
+  private lastSnapshotPersistMs = new Map<string, number>()
 
 
 
@@ -100,6 +113,14 @@ export class PracticeTradeCache extends ChartTradeCache {
 
 
   /** Map stored NQ/MNQ to active chart symbol for line cache keys. */
+
+  private seedBracketCheckpoint(cacheKey: string, entryTime: number | null | undefined): void {
+    const sec =
+      entryTime != null
+        ? Math.floor(entryTimeToMs(entryTime) / 1000)
+        : Math.floor(Date.now() / 1000)
+    writeBracketCheckpointSec(this.accountId, cacheKey, sec)
+  }
 
   private chartCacheKeyForProduct(productSymbol: string): string {
 
@@ -187,13 +208,17 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       this.handleOpenPosition(data)
 
+      if (stopLoss != null || takeProfit != null) {
+        this.seedBracketCheckpoint(cacheKey, entryTime ?? data.entryTime)
+      }
+
       return data
 
     }
 
 
 
-    return super.onOpenPosition(
+    const opened = super.onOpenPosition(
 
       cacheKey,
 
@@ -215,6 +240,22 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     )
 
+    if (stopLoss != null || takeProfit != null) {
+      this.seedBracketCheckpoint(cacheKey, entryTime ?? opened?.entryTime)
+    }
+
+    return opened
+
+  }
+
+  onClosePosition(
+    symbol: string,
+    contracts: number,
+    price: number | null = null,
+    exitTime: number | null = null
+  ) {
+    clearBracketCheckpoint(this.accountId, symbol)
+    super.onClosePosition(symbol, contracts, price, exitTime)
   }
 
 
@@ -257,6 +298,8 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         id: p.id,
 
+        bracketSnapshot: p.bracketSnapshot ?? null,
+
       }
 
     }
@@ -268,12 +311,97 @@ export class PracticeTradeCache extends ChartTradeCache {
     }
 
     this.reconcilePositionLines()
-    await this.reconcileMissedBracketFills()
+  }
+
+  private chartResolution(): string {
+    try {
+      return String((this.chart as { resolution?: () => string })?.resolution?.() || '1')
+    } catch {
+      return '1'
+    }
+  }
+
+  private buildSnapshotFromBar(
+    bar: { time?: number; open?: number; high?: number; low?: number; close?: number },
+    resolution: string,
+    reason: PracticeBracketSnapshot['reason']
+  ): PracticeBracketSnapshot | null {
+    const barTimeMs = entryTimeToMs(bar.time ?? Date.now())
+    const open = bar.open ?? bar.close
+    const high = bar.high ?? bar.close
+    const low = bar.low ?? bar.close
+    const close = bar.close
+    if (open == null || high == null || low == null || close == null) return null
+
+    return {
+      barTimeSec: Math.floor(barTimeMs / 1000),
+      barTimeMs,
+      barTimeLabel: formatSnapshotTime(barTimeMs),
+      open,
+      high,
+      low,
+      close,
+      resolution,
+      recordedAtSec: Math.floor(Date.now() / 1000),
+      reason,
+    }
+  }
+
+  async persistBracketSnapshot(
+    cacheKey: string,
+    reason: PracticeBracketSnapshot['reason'],
+    barOverride?: { time?: number; open?: number; high?: number; low?: number; close?: number }
+  ): Promise<void> {
+    const position = this.cache.get(cacheKey)
+    if (!position?.contracts) return
+    const stopLoss = position.stopLoss as number | null
+    const takeProfit = position.takeProfit as number | null
+    if (stopLoss == null && takeProfit == null) return
+
+    const positionId = this.positionIds.get(cacheKey)
+    if (!positionId) return
+
+    const datafeed = this.getDatafeed()
+    const resolution = this.chartResolution()
+    const lastBar = barOverride ?? datafeed?.getLastBarForChart?.(this.chart)
+    if (!lastBar) return
+
+    const snapshot = this.buildSnapshotFromBar(lastBar, resolution, reason)
+    if (!snapshot) return
+
+    position.bracketSnapshot = snapshot
+
+    console.info('[PracticeBracket] snapshot', {
+      reason,
+      cacheKey,
+      positionId,
+      candle: snapshot.barTimeLabel,
+      barTimeSec: snapshot.barTimeSec,
+      resolution: snapshot.resolution,
+      ohlc: { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close },
+    })
+
+    try {
+      await practiceAPI.saveBracketSnapshot(this.accountId, positionId, snapshot)
+    } catch (err) {
+      console.warn('[PracticeBracket] failed to save snapshot', err)
+    }
+  }
+
+  async saveBracketSnapshotsForOpenPositions(
+    reason: PracticeBracketSnapshot['reason']
+  ): Promise<void> {
+    const tasks: Promise<void>[] = []
+    for (const [cacheKey, position] of this.cache.entries()) {
+      if (!position?.contracts) continue
+      if (position.stopLoss == null && position.takeProfit == null) continue
+      tasks.push(this.persistBracketSnapshot(cacheKey, reason))
+    }
+    await Promise.all(tasks)
   }
 
   /**
-   * After reload or reconnect, replay 1m bars since entry so TP/SL fill even if price
-   * moved while the tab was closed.
+   * After MDS reconnect: replay 1s bars only after the last saved candle (+3s), not from entry.
    */
   async reconcileMissedBracketFills(): Promise<void> {
     const account = this.tradeHandler.getAccount()
@@ -293,22 +421,78 @@ export class PracticeTradeCache extends ChartTradeCache {
       const takeProfit = position.takeProfit as number | null
       if (stopLoss == null && takeProfit == null) continue
 
-      const entryMs = entryTimeToMs(position.entryTime as number)
-      const fromSec = Math.floor(entryMs / 1000)
-      if (nowSec <= fromSec) continue
+      const entrySec = Math.floor(entryTimeToMs(position.entryTime as number) / 1000)
+      const snapshot = parseBracketSnapshot(position.bracketSnapshot)
+      const checkpointSec = readBracketCheckpointSec(this.accountId, cacheKey)
 
-      let bars = await datafeed.fetchHistoryBars(cacheKey, '1', fromSec, nowSec)
-      const lastBar = datafeed.getLastBarForChart?.(this.chart)
-      if (lastBar) {
-        bars = [...bars, lastBar]
+      let replayFromSec = replayFromSecForSnapshot(snapshot, entrySec, nowSec)
+      if (checkpointSec != null) {
+        replayFromSec = Math.max(replayFromSec, checkpointSec)
       }
 
+      if (snapshot) {
+        const { tickSize } = this.resolveTicks(cacheKey)
+        const anchorBars = await datafeed.fetchHistoryBars(
+          cacheKey,
+          BRACKET_REPLAY_RESOLUTION,
+          snapshot.barTimeSec,
+          snapshot.barTimeSec + 2
+        )
+        const anchor = anchorBars.find(
+          (b) => Math.abs(Math.floor(b.time / 1000) - snapshot.barTimeSec) <= 2
+        )
+        if (anchor && !barMatchesSnapshot(anchor, snapshot, tickSize)) {
+          replayFromSec = Math.max(entrySec, snapshot.barTimeSec)
+          console.info('[PracticeBracket] saved candle changed — replay from snapshot time', {
+            cacheKey,
+            saved: snapshot.barTimeLabel,
+            savedOhlc: { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close },
+            liveOhlc: { o: anchor.open, h: anchor.high, l: anchor.low, c: anchor.close },
+          })
+        }
+      }
+
+      if (nowSec <= replayFromSec + 1) {
+        console.info('[PracticeBracket] reconcile skipped (too soon)', { cacheKey, replayFromSec, nowSec })
+        continue
+      }
+
+      const bars = await datafeed.fetchHistoryBars(
+        cacheKey,
+        BRACKET_REPLAY_RESOLUTION,
+        replayFromSec,
+        nowSec
+      )
+
+      const replayFromMs = replayFromSec * 1000
+      const filtered = bars.filter((b) => b.time >= replayFromMs)
+
+      console.info('[PracticeBracket] reconcile', {
+        cacheKey,
+        replayFromSec,
+        replayFromLabel: formatSnapshotTime(replayFromSec * 1000),
+        barCount: filtered.length,
+        snapshot: snapshot
+          ? {
+              candle: snapshot.barTimeLabel,
+              reason: snapshot.reason,
+              ohlc: { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close },
+            }
+          : null,
+        stopLoss,
+        takeProfit,
+      })
+
       const isLong = contracts > 0
-      const exit = findBracketExitInBars(bars, isLong, stopLoss, takeProfit)
+      const exit = findBracketExitInBars(filtered, isLong, stopLoss, takeProfit)
       if (exit) {
+        console.info('[PracticeBracket] replay exit', { cacheKey, exit })
+        clearBracketCheckpoint(this.accountId, cacheKey)
         this.onClosePosition(cacheKey, Math.abs(contracts), exit.price, exit.time)
         return
       }
+
+      writeBracketCheckpointSec(this.accountId, cacheKey, nowSec)
     }
   }
 
@@ -390,9 +574,9 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         fees,
 
-        entryTime: Math.floor(position.entryTime / 1000) || position.entryTime,
+        entryTime: Math.floor(entryTimeToMs(position.entryTime) / 1000),
 
-        exitTime: Math.floor(exitTime / 1000) || exitTime,
+        exitTime: Math.floor(entryTimeToMs(exitTime) / 1000),
 
         stopLoss: position.stopLoss,
 
@@ -611,7 +795,17 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     }
 
+    if (stopLoss != null || takeProfit != null) {
+      const barSec = bar.time != null ? Math.floor(entryTimeToMs(bar.time) / 1000) : Math.floor(Date.now() / 1000)
+      writeBracketCheckpointSec(this.accountId, symbol, barSec)
 
+      const now = Date.now()
+      const lastPersist = this.lastSnapshotPersistMs.get(symbol) ?? 0
+      if (now - lastPersist >= 15_000) {
+        this.lastSnapshotPersistMs.set(symbol, now)
+        void this.persistBracketSnapshot(symbol, 'live_bar', bar)
+      }
+    }
 
     const pnl = this.calcPnL(entryPrice, bar.close ?? entryPrice, position.contracts as number, size, value)
 

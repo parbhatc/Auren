@@ -40,3 +40,20 @@ export function practiceFillCommission(
 ): number {
   return Math.abs(contracts) * getPracticeCommissionPerContract(rules, symbol)
 }
+
+/** Fees stored on practice trades (exit fill commission). */
+export function resolvePracticeTradeFees(trade: {
+  fees?: number
+  contracts?: number
+  symbol?: string
+  originalTrade?: { fees?: number }
+}): number {
+  if (trade.fees != null && Number.isFinite(Number(trade.fees))) {
+    return Number(trade.fees)
+  }
+  const fromOriginal = trade.originalTrade?.fees
+  if (fromOriginal != null && Number.isFinite(Number(fromOriginal))) {
+    return Number(fromOriginal)
+  }
+  return 0
+}

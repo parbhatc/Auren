@@ -103,6 +103,16 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         this.onMdsReconnect()
       })
     )
+    this.offMarketBook.push(
+      this.mds.on('close', () => {
+        void this.onMdsDisconnected()
+      })
+    )
+  }
+
+  private onMdsDisconnected(): void {
+    const handler = this.tradeHandler as { onMdsDisconnected?: () => void | Promise<void> } | null
+    void handler?.onMdsDisconnected?.()
   }
 
   private logSymbol(
@@ -674,7 +684,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return out
   }
 
-  /** Historical bars for practice TP/SL replay after reconnect (skips cache). */
+  /** Historical bars for practice TP/SL replay after reconnect (skips cache). Paginates when needed. */
   async fetchHistoryBars(
     chartSymbol: string,
     resolution: string,
@@ -688,6 +698,44 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     if (to <= from) return []
 
     const barSec = tradeseaResolutionToSeconds(resolution)
+    const maxBarsPerRequest = 5000
+    const maxChunkSec = Math.max(barSec, (maxBarsPerRequest - 1) * barSec)
+
+    const merged: Bar[] = []
+    let chunkFrom = from
+
+    while (chunkFrom < to) {
+      const chunkTo = Math.min(to, chunkFrom + maxChunkSec)
+      const chunk = await this.fetchHistoryBarsChunk(symbol, resolution, chunkFrom, chunkTo, barSec)
+      if (chunk.length) {
+        merged.push(...chunk)
+        const lastSec = Math.floor(chunk[chunk.length - 1].time / 1000)
+        const nextFrom = lastSec + barSec
+        chunkFrom = nextFrom > chunkFrom ? nextFrom : chunkTo + barSec
+      } else {
+        chunkFrom = chunkTo + barSec
+      }
+    }
+
+    if (!merged.length) return []
+    const byTime = new Map<number, Bar>()
+    for (const bar of merged) {
+      byTime.set(bar.time, bar)
+    }
+    return [...byTime.values()].sort((a, b) => a.time - b.time)
+  }
+
+  private async fetchHistoryBarsChunk(
+    symbol: string,
+    resolution: string,
+    fromSec: number,
+    toSec: number,
+    barSec: number
+  ): Promise<Bar[]> {
+    const from = Math.floor(fromSec)
+    const to = Math.floor(toSec)
+    if (to <= from) return []
+
     const estimatedBars = Math.ceil((to - from) / barSec) + 2
     const countback = Math.min(5000, Math.max(2, estimatedBars))
 
@@ -720,7 +768,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       }
       return bars.sort((a, b) => a.time - b.time)
     } catch (err) {
-      console.warn('[TradeseaDatafeed] fetchHistoryBars failed:', err)
+      console.warn('[TradeseaDatafeed] fetchHistoryBarsChunk failed:', err)
       return []
     }
   }

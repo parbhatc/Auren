@@ -1,347 +1,297 @@
-import { Component } from 'react'
 import { TradingTimelineProps } from '../../../types/common'
+import { resolvePracticeTradeFees } from '../../../services/practice/practiceCommission'
 
-class TradingTimeline extends Component<TradingTimelineProps> {
-  render() {
-    const {
-      isDark,
-      trades,
-      profit,
-      date,
-      symbolData,
-      selectedTimelinePoint,
-      onPointClick,
-      onPointClose,
-      calculateTradePnL,
-      parseTradeTimestamp
-    } = this.props
+type TimelinePoint = {
+  x: number
+  y: number
+  netPnl: number
+  cumulativePnL: number
+  trade: TradingTimelineProps['trades'][0]
+  entryTime: Date
+  label: string
+}
 
-    // Sort trades by entry time
-    const sortedTrades = [...trades].sort((a, b) => {
-      const timeA = parseTradeTimestamp(a.entry_time)?.getTime() || 0
-      const timeB = parseTradeTimestamp(b.entry_time)?.getTime() || 0
-      return timeA - timeB
+function tradeFees(
+  trade: TradingTimelineProps['trades'][0],
+  symbolData: TradingTimelineProps['symbolData']
+): number {
+  const stored = resolvePracticeTradeFees(trade)
+  if (stored > 0) return stored
+  const symbol = trade.symbol || ''
+  const symbolInfo = symbolData?.[symbol]
+  const perContract = symbolInfo?.totalFees || 0
+  return perContract * Math.abs(trade.contracts || 0)
+}
+
+export default function TradingTimeline({
+  isDark,
+  trades,
+  profit,
+  date,
+  symbolData,
+  selectedTimelinePoint,
+  onPointClick,
+  onPointClose,
+  calculateTradePnL,
+  parseTradeTimestamp,
+}: TradingTimelineProps) {
+  const sortedTrades = [...trades].sort((a, b) => {
+    const timeA = parseTradeTimestamp(a.entry_time)?.getTime() || 0
+    const timeB = parseTradeTimestamp(b.entry_time)?.getTime() || 0
+    return timeA - timeB
+  })
+
+  const entryTimes = sortedTrades
+    .map((t) => parseTradeTimestamp(t.entry_time))
+    .filter((d): d is Date => d != null)
+
+  if (entryTimes.length === 0) return null
+
+  const rawMinMs = Math.min(...entryTimes.map((d) => d.getTime()))
+  const rawMaxMs = Math.max(...entryTimes.map((d) => d.getTime()))
+  const useSequenceX = rawMaxMs - rawMinMs < 60_000
+
+  let cumulativePnL = 0
+  const points: TimelinePoint[] = []
+
+  sortedTrades.forEach((trade, index) => {
+    const entryTime = parseTradeTimestamp(trade.entry_time)
+    if (!entryTime) return
+
+    const grossPnl = calculateTradePnL(trade)
+    const fees = tradeFees(trade, symbolData)
+    const netPnl = grossPnl - fees
+    cumulativePnL += netPnl
+
+    const x =
+      useSequenceX && sortedTrades.length > 1
+        ? 8 + (index / (sortedTrades.length - 1)) * 84
+        : useSequenceX
+          ? 50
+          : (() => {
+              const padMin = rawMinMs - 30 * 60_000
+              const padMax = rawMaxMs + 30 * 60_000
+              const span = padMax - padMin || 1
+              return 8 + ((entryTime.getTime() - padMin) / span) * 84
+            })()
+
+    points.push({
+      x,
+      y: cumulativePnL,
+      netPnl,
+      cumulativePnL,
+      trade,
+      entryTime,
+      label: `#${index + 1}`,
     })
+  })
 
-    // Get time range for the day
-    const entryTimes = sortedTrades.map(t => parseTradeTimestamp(t.entry_time)).filter(Boolean) as Date[]
-    if (entryTimes.length === 0) return null
+  if (points.length === 0) return null
 
-    const minTime = new Date(Math.min(...entryTimes.map(d => d.getTime())))
-    const maxTime = new Date(Math.max(...entryTimes.map(d => d.getTime())))
-    
-    // Extend range by 1 hour on each side for better visualization
-    minTime.setHours(minTime.getHours() - 1)
-    maxTime.setHours(maxTime.getHours() + 1)
-    
-    const timeRange = maxTime.getTime() - minTime.getTime()
-    
-    // Calculate cumulative P&L
-    let cumulativePnL = 0
-    const timelinePoints = sortedTrades.map((trade, index) => {
-      const entryTime = parseTradeTimestamp(trade.entry_time)
-      if (!entryTime) return null
-      
-      const grossPnl = calculateTradePnL(trade)
-      // Get fees - use trade.fees when present, else symbol data
-      let fees = 0
-      if (trade.fees !== undefined || trade.originalTrade?.fees !== undefined) {
-        fees = trade.fees || trade.originalTrade?.fees || 0
-      } else {
-      const symbol = trade.symbol || ''
-      const symbolInfo = symbolData?.[symbol]
-      const totalFees = symbolInfo?.totalFees || 0
-        fees = totalFees * Math.abs(trade.contracts || 0)
-      }
-      const netPnl = grossPnl - fees
-      cumulativePnL += netPnl
-      
-      const x = ((entryTime.getTime() - minTime.getTime()) / timeRange) * 100
-      
-      return {
-        x,
-        y: cumulativePnL,
-        trade,
-        netPnl,
-        entryTime,
-        index
-      }
-    }).filter(Boolean) as Array<{
-      x: number
-      y: number
-      trade: any
-      netPnl: number
-      entryTime: Date
-      index: number
-    }>
+  const minPnL = Math.min(0, ...points.map((p) => p.y))
+  const maxPnL = Math.max(0, ...points.map((p) => p.y))
+  const padding = (maxPnL - minPnL || 1) * 0.12
+  const yMin = minPnL - padding
+  const yMax = maxPnL + padding
+  const ySpan = yMax - yMin || 1
 
-    if (timelinePoints.length === 0) return null
+  const chartH = 100
+  const toSvgY = (pnl: number) => chartH - ((pnl - yMin) / ySpan) * chartH
 
-    // Calculate P&L range with padding for better visualization
-    const minPnL = Math.min(0, ...timelinePoints.map(p => p.y))
-    const maxPnL = Math.max(0, ...timelinePoints.map(p => p.y))
-    const pnlRange = maxPnL - minPnL || 1
-    
-    // Add padding to range (10% on each side)
-    const padding = pnlRange * 0.1
-    const adjustedMinPnL = minPnL - padding
-    const adjustedMaxPnL = maxPnL + padding
-    const adjustedPnLRange = adjustedMaxPnL - adjustedMinPnL || 1
-    
-    const height = 100
-    const width = 100
+  const svgPoints = points.map((p) => ({
+    ...p,
+    svgY: toSvgY(p.y),
+  }))
 
-    // Convert points to SVG coordinates
-    const svgPoints = timelinePoints.map(point => {
-      const svgY = height - ((point.y - adjustedMinPnL) / adjustedPnLRange) * height
-      return {
-        x: point.x,
-        y: svgY,
-        trade: point.trade,
-        netPnl: point.netPnl,
-        entryTime: point.entryTime,
-        index: point.index,
-        cumulativePnL: point.y
-      }
-    })
+  const linePath = svgPoints
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.svgY}`)
+    .join(' ')
 
-    // Generate smooth curve path using quadratic curves
-    let pathData = ''
-    let areaPathData = ''
-    
-    if (svgPoints.length === 1) {
-      const point = svgPoints[0]
-      pathData = `M ${point.x},${point.y} L ${point.x},${point.y}`
-      areaPathData = `M ${point.x},${point.y} L ${point.x},${height} L 0,${height} Z`
-    } else if (svgPoints.length > 1) {
-      const firstPoint = svgPoints[0]
-      pathData = `M ${firstPoint.x},${firstPoint.y}`
-      
-      for (let i = 1; i < svgPoints.length; i++) {
-        const prevPoint = svgPoints[i - 1]
-        const currPoint = svgPoints[i]
-        const nextPoint = svgPoints[i + 1]
-        
-        if (nextPoint) {
-          const cpX = (prevPoint.x + currPoint.x) / 2
-          const cpY = (prevPoint.y + currPoint.y) / 2
-          pathData += ` Q ${cpX},${cpY} ${currPoint.x},${currPoint.y}`
-        } else {
-          pathData += ` L ${currPoint.x},${currPoint.y}`
-        }
-      }
-      
-      areaPathData = `${pathData} L ${width},${height} L 0,${height} Z`
-    }
+  const zeroY = toSvgY(0)
+  const areaPath = `${linePath} L ${svgPoints[svgPoints.length - 1].x},${chartH} L ${svgPoints[0].x},${chartH} Z`
 
-    // Format time range
-    const formatTime = (date: Date) => {
-      return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      })
-    }
-    
-    const firstTime = parseTradeTimestamp(sortedTrades[0]?.entry_time)
-    const lastTime = parseTradeTimestamp(sortedTrades[sortedTrades.length - 1]?.entry_time)
-    const timeRangeStr = firstTime && lastTime
-      ? (sortedTrades.length === 1 || formatTime(firstTime) === formatTime(lastTime))
-        ? formatTime(firstTime)
-        : `${formatTime(firstTime)} - ${formatTime(lastTime)}`
-      : '—'
+  const formatTime = (d: Date) =>
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
-    return (
-      <div className={`rounded-lg p-4 border ${
-        isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-      }`}>
-        <div className={`text-sm font-semibold mb-4 ${
-          isDark ? 'text-slate-300' : 'text-slate-700'
-        }`}>
-          Trading Timeline
-        </div>
-        <div className="relative h-32 sm:h-40">
-          <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+  const footerLeft = useSequenceX
+    ? 'By trade order'
+    : `${formatTime(new Date(rawMinMs))} – ${formatTime(new Date(rawMaxMs))}`
+
+  const stroke = profit >= 0 ? (isDark ? '#34d399' : '#059669') : isDark ? '#f87171' : '#dc2626'
+
+  return (
+    <div
+      className={`rounded-xl border overflow-hidden ${
+        isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
+      }`}
+    >
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between gap-2">
+        <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+          Session curve
+        </p>
+        <p className={`text-xs tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          Cumulative net P&L
+        </p>
+      </div>
+
+      <div className="px-4 pb-1">
+        <div className="relative h-36 sm:h-44">
+          <svg
+            viewBox="0 0 100 100"
+            className="w-full h-full"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label="Cumulative profit and loss by trade"
+          >
             <defs>
-              <linearGradient id={`timelineGradient-${date}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor={profit >= 0 
-                  ? (isDark ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.2)')
-                  : (isDark ? 'rgba(239, 68, 68, 0.3)' : 'rgba(220, 38, 38, 0.2)')
-                } />
-                <stop offset="100%" stopColor={isDark ? 'rgba(0, 0, 0, 0)' : 'rgba(255, 255, 255, 0)'} />
+              <linearGradient id={`timelineGradient-${date}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={profit >= 0 ? 'rgba(52, 211, 153, 0.25)' : 'rgba(248, 113, 113, 0.25)'} />
+                <stop offset="100%" stopColor="rgba(0,0,0,0)" />
               </linearGradient>
             </defs>
-            
-            {/* Zero line */}
+
             <line
               x1="0"
-              y1={height - ((0 - adjustedMinPnL) / adjustedPnLRange) * height}
+              y1={zeroY}
               x2="100"
-              y2={height - ((0 - adjustedMinPnL) / adjustedPnLRange) * height}
-              stroke={isDark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(148, 163, 184, 0.4)'}
-              strokeWidth="0.5"
-              strokeDasharray="2,2"
+              y2={zeroY}
+              stroke={isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.5)'}
+              strokeWidth="0.4"
+              strokeDasharray="1.5,1.5"
             />
-            
-            {/* Area fill */}
-            {areaPathData && (
-              <path
-                d={areaPathData}
-                fill={`url(#timelineGradient-${date})`}
-              />
-            )}
-            
-            {/* Main curve line */}
-            {pathData && (
-              <path
-                d={pathData}
-                fill="none"
-                stroke={profit >= 0 
-                  ? (isDark ? '#10b981' : '#059669')
-                  : (isDark ? '#ef4444' : '#dc2626')
-                }
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.2))' }}
-              />
-            )}
-            
-            {/* Trade points */}
+
+            <path d={areaPath} fill={`url(#timelineGradient-${date})`} />
+            <path
+              d={linePath}
+              fill="none"
+              stroke={stroke}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+
             {svgPoints.map((point) => {
-              const isSelected = selectedTimelinePoint?.trade === point.trade
+              const selected = selectedTimelinePoint?.trade === point.trade
+              const win = point.netPnl >= 0
+              const fill = win ? (isDark ? '#34d399' : '#059669') : isDark ? '#f87171' : '#dc2626'
               return (
-                <g key={point.index}>
-                  {isSelected && (
+                <g key={point.label}>
+                  {selected && (
                     <circle
                       cx={point.x}
-                      cy={point.y}
-                      r="8"
+                      cy={point.svgY}
+                      r="6"
                       fill="none"
-                      stroke={point.netPnl >= 0 
-                        ? (isDark ? '#10b981' : '#059669')
-                        : (isDark ? '#ef4444' : '#dc2626')
-                      }
-                      strokeWidth="2"
-                      opacity="0.4"
-                      className="animate-pulse"
+                      stroke={fill}
+                      strokeWidth="1.2"
+                      opacity="0.5"
                     />
                   )}
                   <circle
                     cx={point.x}
-                    cy={point.y}
-                    r={isSelected ? "5" : "4"}
-                    fill={point.netPnl >= 0 
-                      ? (isDark ? '#10b981' : '#059669')
-                      : (isDark ? '#ef4444' : '#dc2626')
-                    }
-                    stroke={isDark ? '#0f172a' : '#ffffff'}
-                    strokeWidth={isSelected ? "2.5" : "2"}
-                    className="cursor-pointer transition-all duration-200"
-                    onClick={() => {
+                    cy={point.svgY}
+                    r={selected ? 3.2 : 2.6}
+                    fill={fill}
+                    stroke={isDark ? '#0f172a' : '#fff'}
+                    strokeWidth="1.2"
+                    className="cursor-pointer"
+                    onClick={() =>
                       onPointClick({
                         trade: point.trade,
                         netPnl: point.netPnl,
                         entryTime: point.entryTime,
-                        cumulativePnL: point.cumulativePnL
+                        cumulativePnL: point.cumulativePnL,
                       })
-                    }}
-                    style={{ filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.6))' }}
+                    }
                   />
                 </g>
               )
             })}
           </svg>
         </div>
-        <div className="flex justify-between items-center mt-2 text-xs">
-          <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>
-            {timeRangeStr}
-          </span>
-          <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>
-            Cumulative P&L
-          </span>
-        </div>
-        
-        {/* Timeline Point Tooltip */}
-        {selectedTimelinePoint && (
-          <div className={`mt-4 p-4 rounded-lg border ${
-            isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className={`text-sm font-semibold ${
-                isDark ? 'text-slate-200' : 'text-slate-800'
-              }`}>
-                Trade Details
-              </h4>
-              <button
-                onClick={onPointClose}
-                className={`text-slate-400 hover:text-slate-600 transition-colors`}
+
+        <div className="flex justify-between gap-2 mt-2 mb-3">
+          {svgPoints.map((point) => (
+            <button
+              key={point.label}
+              type="button"
+              onClick={() =>
+                onPointClick({
+                  trade: point.trade,
+                  netPnl: point.netPnl,
+                  entryTime: point.entryTime,
+                  cumulativePnL: point.cumulativePnL,
+                })
+              }
+              className={`flex-1 min-w-0 text-center rounded-lg py-1.5 px-1 transition-colors ${
+                selectedTimelinePoint?.trade === point.trade
+                  ? isDark
+                    ? 'bg-slate-800 ring-1 ring-violet-500/50'
+                    : 'bg-violet-50 ring-1 ring-violet-300'
+                  : isDark
+                    ? 'hover:bg-slate-800/80'
+                    : 'hover:bg-slate-100'
+              }`}
+            >
+              <span className={`block text-[10px] font-medium ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                {point.label}
+              </span>
+              <span
+                className={`block text-xs font-semibold tabular-nums ${
+                  point.netPnl >= 0
+                    ? isDark
+                      ? 'text-emerald-400'
+                      : 'text-emerald-600'
+                    : isDark
+                      ? 'text-red-400'
+                      : 'text-red-600'
+                }`}
               >
-                ×
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Symbol:</span>
-                <span className={`ml-2 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {selectedTimelinePoint.trade.symbol || '—'}
-                </span>
-              </div>
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Direction:</span>
-                <span className={`ml-2 font-medium ${
-                  selectedTimelinePoint.trade.direction?.toLowerCase() === 'long'
-                    ? isDark ? 'text-green-400' : 'text-green-600'
-                    : isDark ? 'text-red-400' : 'text-red-600'
-                }`}>
-                  {selectedTimelinePoint.trade.direction?.toUpperCase() || '—'}
-                </span>
-              </div>
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Size:</span>
-                <span className={`ml-2 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {Math.abs(selectedTimelinePoint.trade.contracts || 0)}
-                </span>
-              </div>
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Entry:</span>
-                <span className={`ml-2 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {selectedTimelinePoint.trade.entry_price?.toFixed(2) || '—'}
-                </span>
-              </div>
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Exit:</span>
-                <span className={`ml-2 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {selectedTimelinePoint.trade.exit_price?.toFixed(2) || '—'}
-                </span>
-              </div>
-              <div>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Time:</span>
-                <span className={`ml-2 font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {selectedTimelinePoint.entryTime.toLocaleTimeString('en-US', { 
-                    hour: 'numeric', 
-                    minute: '2-digit',
-                    hour12: true 
-                  })}
-                </span>
-              </div>
-              <div className="col-span-2">
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Result:</span>
-                <span className={`ml-2 text-base font-bold ${
-                  selectedTimelinePoint.netPnl >= 0
-                    ? isDark ? 'text-green-400' : 'text-green-600'
-                    : isDark ? 'text-red-400' : 'text-red-600'
-                }`}>
-                  {selectedTimelinePoint.netPnl >= 0 ? 'WIN' : 'LOSS'} - ${Math.abs(selectedTimelinePoint.netPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+                {point.netPnl >= 0 ? '+' : ''}$
+                {Math.abs(point.netPnl).toLocaleString('en-US', {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <p className={`text-[10px] pb-3 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>{footerLeft}</p>
       </div>
-    )
-  }
+
+      {selectedTimelinePoint && (
+        <div
+          className={`mx-4 mb-4 p-3 rounded-lg border text-xs ${
+            isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+              {selectedTimelinePoint.trade.symbol}{' '}
+              {selectedTimelinePoint.trade.direction?.toUpperCase()}
+            </span>
+            <button
+              type="button"
+              onClick={onPointClose}
+              className={isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}
+            >
+              ×
+            </button>
+          </div>
+          <div className={`grid grid-cols-2 gap-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <span>
+              Entry {selectedTimelinePoint.trade.entry_price?.toFixed(2)} → Exit{' '}
+              {selectedTimelinePoint.trade.exit_price?.toFixed(2)}
+            </span>
+            <span className="text-right tabular-nums">
+              {selectedTimelinePoint.netPnl >= 0 ? '+' : ''}$
+              {selectedTimelinePoint.netPnl.toFixed(2)} net
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
-
-export default TradingTimeline
-

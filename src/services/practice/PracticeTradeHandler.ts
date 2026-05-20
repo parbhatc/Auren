@@ -87,6 +87,12 @@ export class PracticeTradeHandler {
     }
 
     void this.loadState()
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => {
+        void this.tradeCache?.saveBracketSnapshotsForOpenPositions('page_hide')
+      })
+    }
   }
 
   hasAnyOpenPosition(): boolean {
@@ -237,6 +243,10 @@ export class PracticeTradeHandler {
   attachToDatafeed(chartDatafeed?: TradeseaDatafeed | null): void {
     const df = chartDatafeed ?? this.propFirm.chartServices?.datafeed ?? null
     df?.setTradeHandler(this as never)
+  }
+
+  async onMdsDisconnected(): Promise<void> {
+    await this.tradeCache?.saveBracketSnapshotsForOpenPositions('ws_disconnect')
   }
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number; low?: number; high?: number; time?: number }): void {

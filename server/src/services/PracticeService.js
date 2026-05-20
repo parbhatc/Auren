@@ -371,7 +371,50 @@ class PracticeService {
       takeProfit: r.take_profit,
       entryTime: r.entry_time,
       type: r.type,
+      bracketSnapshot: (() => {
+        if (!r.bracket_snapshot) return null
+        try {
+          return JSON.parse(r.bracket_snapshot)
+        } catch {
+          return null
+        }
+      })(),
     }))
+  }
+
+  async saveBracketSnapshot(userId, accountId, positionId, snapshot) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account) return null
+
+    await Database.initialize()
+    const row = await Database.get(
+      'SELECT id FROM practice_positions WHERE id = ? AND account_id = ?',
+      [positionId, accountId]
+    )
+    if (!row) {
+      const err = new Error('Position not found')
+      err.statusCode = 404
+      throw err
+    }
+
+    const payload = JSON.stringify(snapshot)
+    await Database.run(
+      `UPDATE practice_positions SET bracket_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND account_id = ?`,
+      [payload, positionId, accountId]
+    )
+
+    console.info('[Practice] bracket snapshot saved', {
+      accountId,
+      positionId,
+      barTimeSec: snapshot?.barTimeSec,
+      time: snapshot?.barTimeLabel,
+      reason: snapshot?.reason,
+      ohlc: snapshot
+        ? { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close }
+        : null,
+    })
+
+    return { positionId, snapshot }
   }
 
   async chargeFillCommission(userId, accountId, fillContracts, symbol) {
@@ -551,6 +594,7 @@ class PracticeService {
         exitPrice: t.exit_price,
         contracts: t.contracts,
         pnl: t.pnl,
+        fees: t.fees ?? 0,
         entryTime: t.entry_time,
         exitTime: t.exit_time,
       })),

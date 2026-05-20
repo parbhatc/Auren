@@ -579,6 +579,32 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
     dayData: NonNullable<StatsRendererState['selectedDayData']>,
     calculateTradePnL: (trade: any) => number
   ) => {
+    const day = dayData.day ?? (Number(dayData.date.split('-')[2]) || 1)
+
+    if (this.props.practiceMode) {
+      const sourceTrades = (
+        this.state.calendarPropFirmStats?.trades ||
+        this.state.trades ||
+        []
+      ).filter((t) => !isSyntheticTradeseaTrade(t))
+
+      const dayTrades = sourceTrades.filter((trade) => {
+        const exit = this.parseTradeTimestamp(trade.exit_time)
+        const entry = this.parseTradeTimestamp(trade.entry_time)
+        const ts = exit || entry
+        if (!ts) return false
+        return this.formatDateLocal(ts) === dayData.date
+      })
+
+      this.setState({
+        showDayDialog: true,
+        selectedDayData: buildDayStatsPayload(dayData.date, day, dayTrades, calculateTradePnL),
+        dayTradesLoading: false,
+        selectedTimelinePoint: null,
+      })
+      return
+    }
+
     if (this.getActivePropFirmId() === 'tradesea') {
       const firm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
       this.setState({
@@ -589,7 +615,6 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
       })
       const dayTrades = firm ? await firm.fetchTradelensDayTrades(dayData.date) : []
       if (dayTrades.length > 0) {
-        const day = dayData.day ?? (Number(dayData.date.split('-')[2]) || 1)
         this.setState({
           selectedDayData: buildDayStatsPayload(dayData.date, day, dayTrades, calculateTradePnL),
           dayTradesLoading: false,

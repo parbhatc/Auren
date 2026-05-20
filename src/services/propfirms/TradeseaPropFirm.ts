@@ -15,7 +15,7 @@ import { tradeseaAPI, TradeseaAccount } from '../../api/tradesea.api'
 import { getPracticeSettings } from '../../constants/practice'
 import { getTradeTradeseaAccount, saveTradeTradeseaAccount } from '../../constants/trade'
 
-import { FormattedAccount } from '../../utils/topstepxAccounts'
+import { FormattedAccount } from '../../utils/marketAccountDisplay'
 
 import TradeseaChart, {
 

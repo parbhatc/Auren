@@ -121,16 +121,16 @@ const TradesTable = ({
                   // Calculate P&L (gross)
                   const grossPnl = calculateTradePnL(trade)
                   
-                  // Get fees - use trade.fees when present, else symbol data
                   let fees = 0
-                  if (trade.fees !== undefined || trade.originalTrade?.fees !== undefined) {
-                    // Fees may be included on the trade record
-                    fees = trade.fees || trade.originalTrade?.fees || 0
+                  const fromPractice = trade.fees ?? trade.originalTrade?.fees
+                  if (fromPractice != null && Number(fromPractice) > 0) {
+                    fees = Number(fromPractice)
+                  } else if (trade.fees !== undefined || trade.originalTrade?.fees !== undefined) {
+                    fees = Number(trade.fees ?? trade.originalTrade?.fees ?? 0)
                   } else {
-                    // Backtester: calculate fees from symbolData
-                  const symbol = trade.symbol || ''
-                  const symbolInfo = symbolData?.[symbol]
-                  const totalFees = symbolInfo?.totalFees || 0
+                    const symbol = trade.symbol || ''
+                    const symbolInfo = symbolData?.[symbol]
+                    const totalFees = symbolInfo?.totalFees || 0
                     fees = totalFees * Math.abs(trade.contracts || 0)
                   }
                   

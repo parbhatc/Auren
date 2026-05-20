@@ -1,6 +1,41 @@
-import { X } from 'lucide-react'
+import Modal from '../../ui/Modal'
 import TradingTimeline from './TradingTimeline'
 import { DayStatsDialogProps } from '../../../types/common'
+import { resolvePracticeTradeFees } from '../../../services/practice/practiceCommission'
+
+function formatDayTitle(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds < 0) return '—'
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (mins === 0) return `${secs}s`
+  if (secs === 0) return `${mins}m`
+  return `${mins}m ${secs}s`
+}
+
+function tradeNetPnl(
+  trade: DayStatsDialogProps['selectedDayData']['trades'][0],
+  calculateTradePnL: DayStatsDialogProps['calculateTradePnL'],
+  symbolData: DayStatsDialogProps['symbolData']
+): number {
+  const grossPnl = calculateTradePnL(trade)
+  let fees = resolvePracticeTradeFees(trade)
+  if (fees <= 0) {
+    const symbolInfo = symbolData?.[trade.symbol || '']
+    fees = (symbolInfo?.totalFees || 0) * Math.abs(trade.contracts || 0)
+  }
+  return grossPnl - fees
+}
 
 const DayStatsDialog = ({
   isDark,
@@ -13,407 +48,242 @@ const DayStatsDialog = ({
   onTimelinePointClose,
   calculateTradePnL,
   parseTradeTimestamp,
-  formatCurrency
+  formatCurrency,
 }: DayStatsDialogProps) => {
+  const winRate =
+    selectedDayData.totalTrades > 0
+      ? ((selectedDayData.wins / selectedDayData.totalTrades) * 100).toFixed(1)
+      : '0'
+  const profitPositive = selectedDayData.profit >= 0
+  const sortedTrades = [...(selectedDayData.trades || [])].sort((a, b) => {
+    const timeA = parseTradeTimestamp(a.entry_time)?.getTime() || 0
+    const timeB = parseTradeTimestamp(b.entry_time)?.getTime() || 0
+    return timeA - timeB
+  })
+
+  const shell = isDark
+    ? 'rounded-xl border border-slate-800/80 bg-slate-950/40'
+    : 'rounded-xl border border-slate-200 bg-slate-50/80'
+
+  const label = isDark ? 'text-slate-500' : 'text-slate-500'
+  const value = isDark ? 'text-slate-100' : 'text-slate-900'
+
+  const metrics = [
+    { label: 'Trades', value: String(selectedDayData.totalTrades) },
+    { label: 'Contracts', value: String(selectedDayData.totalContracts) },
+    { label: 'Win rate', value: `${winRate}%` },
+    {
+      label: 'W / L',
+      value: `${selectedDayData.wins} / ${selectedDayData.losses}`,
+      accent: true,
+    },
+    {
+      label: 'Long',
+      value: `${selectedDayData.longTrades}`,
+      sub: `${selectedDayData.longContracts} ct`,
+    },
+    {
+      label: 'Short',
+      value: `${selectedDayData.shortTrades}`,
+      sub: `${selectedDayData.shortContracts} ct`,
+    },
+    {
+      label: 'Fees',
+      value: `$${selectedDayData.totalFees.toFixed(2)}`,
+      danger: true,
+    },
+  ]
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div 
-        className={`rounded-xl border shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto ${
-          isDark 
-            ? 'bg-slate-900 border-slate-700' 
-            : 'bg-white border-slate-200'
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Dialog Header */}
-        <div className={`flex items-center justify-between p-4 sm:p-6 border-b ${
-          isDark ? 'border-slate-700' : 'border-slate-200'
-        }`}>
-          <div>
-            <h2 className={`text-xl sm:text-2xl font-bold ${
-              isDark ? 'text-white' : 'text-slate-900'
-            }`}>
-              {(() => {
-                const [year, month, day] = selectedDayData.date.split('-').map(Number)
-                const date = new Date(year, month - 1, day)
-                return date.toLocaleDateString('en-US', { 
-                  weekday: 'long',
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })
-              })()}
-            </h2>
-            <p className={`text-sm mt-1 ${
-              isDark ? 'text-slate-400' : 'text-slate-600'
-            }`}>
-              Trading Statistics
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className={`p-2 rounded-lg transition-colors ${
-              isDark
-                ? 'hover:bg-slate-800 text-slate-400 hover:text-white'
-                : 'hover:bg-slate-100 text-slate-600 hover:text-slate-900'
+    <Modal
+      isOpen
+      isDark={isDark}
+      onClose={onClose}
+      size="xl"
+      bodyClassName="max-h-[min(82vh,720px)]"
+      title={formatDayTitle(selectedDayData.date)}
+      subtitle={`${selectedDayData.totalTrades} trade${selectedDayData.totalTrades === 1 ? '' : 's'} · ${selectedDayData.totalContracts} contracts`}
+    >
+      <div className="space-y-5 relative">
+        {tradesLoading && (
+          <div
+            className={`absolute inset-0 z-10 flex items-center justify-center rounded-xl ${
+              isDark ? 'bg-slate-950/85' : 'bg-white/85'
             }`}
           >
-            <X className="w-5 h-5" />
-          </button>
+            <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>Loading trades…</span>
+          </div>
+        )}
+
+        <div
+          className={`rounded-2xl px-5 py-6 text-center border ${
+            profitPositive
+              ? isDark
+                ? 'border-emerald-500/30 bg-gradient-to-b from-emerald-500/10 to-transparent'
+                : 'border-emerald-200 bg-gradient-to-b from-emerald-50 to-white'
+              : isDark
+                ? 'border-red-500/30 bg-gradient-to-b from-red-500/10 to-transparent'
+                : 'border-red-200 bg-gradient-to-b from-red-50 to-white'
+          }`}
+        >
+          <p className={`text-xs font-medium uppercase tracking-wider ${label}`}>Net P&L</p>
+          <p
+            className={`mt-1 text-3xl sm:text-4xl font-bold tabular-nums ${
+              profitPositive
+                ? isDark
+                  ? 'text-emerald-400'
+                  : 'text-emerald-600'
+                : isDark
+                  ? 'text-red-400'
+                  : 'text-red-600'
+            }`}
+          >
+            {formatCurrency(selectedDayData.profit, false)}
+          </p>
         </div>
 
-        {/* Dialog Content */}
-        <div className="p-4 sm:p-6 space-y-6 relative">
-          {tradesLoading && (
-            <div
-              className={`absolute inset-0 z-10 flex items-center justify-center rounded-lg ${
-                isDark ? 'bg-slate-900/80' : 'bg-white/80'
-              }`}
-            >
-              <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>Loading trades…</span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {metrics.map((m) => (
+            <div key={m.label} className={`${shell} px-3 py-2.5`}>
+              <p className={`text-[10px] font-medium uppercase tracking-wide ${label}`}>{m.label}</p>
+              <p
+                className={`mt-0.5 text-base font-semibold tabular-nums ${
+                  m.danger
+                    ? isDark
+                      ? 'text-red-400'
+                      : 'text-red-600'
+                    : m.accent
+                      ? isDark
+                        ? 'text-violet-300'
+                        : 'text-violet-700'
+                      : value
+                }`}
+              >
+                {m.value}
+              </p>
+              {m.sub ? <p className={`text-[10px] mt-0.5 ${label}`}>{m.sub}</p> : null}
             </div>
-          )}
-          {/* Profit/Loss Card */}
-          <div className={`rounded-lg p-4 border ${
-            selectedDayData.profit >= 0
-              ? isDark ? 'bg-emerald-900/20 border-emerald-700/50' : 'bg-emerald-50 border-emerald-200'
-              : isDark ? 'bg-red-900/20 border-red-700/50' : 'bg-red-50 border-red-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className={`text-sm font-medium ${
-                isDark ? 'text-slate-300' : 'text-slate-700'
-              }`}>
-                Net P&L
-              </span>
-              <span className={`text-2xl sm:text-3xl font-bold ${
-                selectedDayData.profit >= 0
-                  ? isDark ? 'text-emerald-400' : 'text-emerald-600'
-                  : isDark ? 'text-red-400' : 'text-red-600'
-              }`}>
-                {formatCurrency(selectedDayData.profit, false)}
-              </span>
-            </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {/* Total Trades */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Total Trades
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {selectedDayData.totalTrades}
-              </div>
-            </div>
-
-            {/* Total Contracts */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Total Contracts
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {selectedDayData.totalContracts}
-              </div>
-            </div>
-
-            {/* Win Rate */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Win Rate
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {selectedDayData.totalTrades > 0 
-                  ? ((selectedDayData.wins / selectedDayData.totalTrades) * 100).toFixed(1)
-                  : '0'
-                }%
-              </div>
-            </div>
-
-            {/* Long Trades */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Long Trades
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {selectedDayData.longTrades}
-              </div>
-              <div className={`text-xs mt-1 ${
-                isDark ? 'text-slate-500' : 'text-slate-600'
-              }`}>
-                {selectedDayData.longContracts} contracts
-              </div>
-            </div>
-
-            {/* Short Trades */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Short Trades
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                {selectedDayData.shortTrades}
-              </div>
-              <div className={`text-xs mt-1 ${
-                isDark ? 'text-slate-500' : 'text-slate-600'
-              }`}>
-                {selectedDayData.shortContracts} contracts
-              </div>
-            </div>
-
-            {/* Total Fees */}
-            <div className={`rounded-lg p-4 border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`text-xs font-medium mb-1 ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}>
-                Total Fees
-              </div>
-              <div className={`text-xl font-bold ${
-                isDark ? 'text-red-400' : 'text-red-600'
-              }`}>
-                ${selectedDayData.totalFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </div>
-          </div>
-
-          {/* Wins/Losses Breakdown */}
-          <div className={`rounded-lg p-4 border ${
-            isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-          }`}>
-            <div className={`text-sm font-semibold mb-3 ${
-              isDark ? 'text-slate-300' : 'text-slate-700'
-            }`}>
-              Trade Results
-            </div>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <div className={`text-xs font-medium mb-1 ${
-                  isDark ? 'text-slate-400' : 'text-slate-600'
-                }`}>
-                  Wins
-                </div>
-                <div className={`text-lg font-bold ${
-                  isDark ? 'text-emerald-400' : 'text-emerald-600'
-                }`}>
-                  {selectedDayData.wins}
-                </div>
-              </div>
-              <div className="flex-1">
-                <div className={`text-xs font-medium mb-1 ${
-                  isDark ? 'text-slate-400' : 'text-slate-600'
-                }`}>
-                  Losses
-                </div>
-                <div className={`text-lg font-bold ${
-                  isDark ? 'text-red-400' : 'text-red-600'
-                }`}>
-                  {selectedDayData.losses}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Trading Timeline */}
-          {selectedDayData.trades && selectedDayData.trades.length > 0 && (
-            <TradingTimeline
-              isDark={isDark}
-              trades={selectedDayData.trades}
-              profit={selectedDayData.profit}
-              date={selectedDayData.date}
-              symbolData={symbolData}
-              selectedTimelinePoint={selectedTimelinePoint}
-              onPointClick={onTimelinePointClick}
-              onPointClose={onTimelinePointClose}
-              calculateTradePnL={calculateTradePnL}
-              parseTradeTimestamp={parseTradeTimestamp}
-            />
-          )}
-
-          {/* All Trades List */}
-          {selectedDayData.trades && selectedDayData.trades.length > 0 && (
-            <div className={`rounded-lg border ${
-              isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className={`p-4 border-b ${
-                isDark ? 'border-slate-700' : 'border-slate-200'
-              }`}>
-                <div className={`text-sm font-semibold ${
-                  isDark ? 'text-slate-300' : 'text-slate-700'
-                }`}>
-                  All Trades ({selectedDayData.trades.length})
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className={`border-b ${
-                      isDark ? 'border-slate-700' : 'border-slate-200'
-                    }`}>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Time
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Symbol
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Direction
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Size
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Entry
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Exit
-                      </th>
-                      <th className={`text-left py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        Duration
-                      </th>
-                      <th className={`text-right py-2 px-3 text-xs font-semibold ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        P&L
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedDayData.trades
-                      .sort((a, b) => {
-                        const timeA = parseTradeTimestamp(a.entry_time)?.getTime() || 0
-                        const timeB = parseTradeTimestamp(b.entry_time)?.getTime() || 0
-                        return timeB - timeA
-                      })
-                      .map((trade, index) => {
-                        const grossPnl = calculateTradePnL(trade)
-                        // Get fees - use trade.fees when present, else symbol data
-                        let fees = 0
-                        if (trade.fees !== undefined || trade.originalTrade?.fees !== undefined) {
-                          fees = trade.fees || trade.originalTrade?.fees || 0
-                        } else {
-                        const symbol = trade.symbol || ''
-                        const symbolInfo = symbolData?.[symbol]
-                        const totalFees = symbolInfo?.totalFees || 0
-                          fees = totalFees * Math.abs(trade.contracts || 0)
-                        }
-                        const netPnl = grossPnl - fees
-                        const isProfit = netPnl > 0
-                        const entryTime = parseTradeTimestamp(trade.entry_time)
-                        const exitTime = parseTradeTimestamp(trade.exit_time)
-                        const duration = entryTime && exitTime 
-                          ? Math.floor((exitTime.getTime() - entryTime.getTime()) / 1000)
-                          : null
-                        
-                        const formatDuration = (seconds: number): string => {
-                          if (!seconds || seconds < 0) return '0 min 0 sec'
-                          const mins = Math.floor(seconds / 60)
-                          const secs = seconds % 60
-                          if (mins === 0) return `${secs} sec`
-                          if (secs === 0) return `${mins} min`
-                          return `${mins} min ${secs} sec`
-                        }
-                        
-                        return (
-                          <tr
-                            key={index}
-                            className={`border-b ${isDark ? 'border-slate-700/50' : 'border-slate-200'} hover:${
-                              isDark ? 'bg-slate-700/50' : 'bg-slate-50'
-                            } transition-colors`}
-                          >
-                            <td className={`py-2 px-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entryTime ? entryTime.toLocaleTimeString('en-US', { 
-                                hour: 'numeric', 
-                                minute: '2-digit',
-                                hour12: true 
-                              }) : '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                              {trade.symbol || '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs font-medium ${
-                              trade.direction?.toLowerCase() === 'long'
-                                ? isDark ? 'text-green-400' : 'text-green-600'
-                                : isDark ? 'text-red-400' : 'text-red-600'
-                            }`}>
-                              {trade.direction?.toUpperCase() || '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {Math.abs(trade.contracts || 0)}
-                            </td>
-                            <td className={`py-2 px-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {trade.entry_price?.toFixed(2) || '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {trade.exit_price?.toFixed(2) || '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {duration !== null ? formatDuration(duration) : '—'}
-                            </td>
-                            <td className={`py-2 px-3 text-xs font-semibold text-right ${
-                              isProfit
-                                ? isDark ? 'text-emerald-400' : 'text-emerald-600'
-                                : isDark ? 'text-red-400' : 'text-red-600'
-                            }`}>
-                              {netPnl >= 0 ? '+' : ''}${netPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          ))}
         </div>
+
+        {sortedTrades.length > 0 && (
+          <TradingTimeline
+            isDark={isDark}
+            trades={sortedTrades}
+            profit={selectedDayData.profit}
+            date={selectedDayData.date}
+            symbolData={symbolData}
+            selectedTimelinePoint={selectedTimelinePoint}
+            onPointClick={onTimelinePointClick}
+            onPointClose={onTimelinePointClose}
+            calculateTradePnL={calculateTradePnL}
+            parseTradeTimestamp={parseTradeTimestamp}
+          />
+        )}
+
+        {sortedTrades.length > 0 && (
+          <div className="space-y-2">
+            <p className={`text-sm font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              Trades ({sortedTrades.length})
+            </p>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {[...sortedTrades].reverse().map((trade, index) => {
+                const netPnl = tradeNetPnl(trade, calculateTradePnL, symbolData)
+                const isProfit = netPnl > 0
+                const entryTime = parseTradeTimestamp(trade.entry_time)
+                const exitTime = parseTradeTimestamp(trade.exit_time)
+                const duration =
+                  entryTime && exitTime
+                    ? Math.floor((exitTime.getTime() - entryTime.getTime()) / 1000)
+                    : null
+                const isLong = trade.direction?.toLowerCase() === 'long'
+
+                return (
+                  <div
+                    key={`${trade.symbol}-${index}-${trade.entry_time}`}
+                    className={`${shell} px-3 py-3 flex flex-wrap items-center gap-x-3 gap-y-2`}
+                  >
+                    <div className="min-w-[4.5rem]">
+                      <p className={`text-[10px] ${label}`}>Time</p>
+                      <p className={`text-xs font-medium ${value}`}>
+                        {entryTime
+                          ? entryTime.toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true,
+                            })
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-[10px] ${label}`}>Symbol</p>
+                      <p className={`text-xs font-semibold ${value}`}>{trade.symbol || '—'}</p>
+                    </div>
+                    <div>
+                      <p className={`text-[10px] ${label}`}>Side</p>
+                      <p
+                        className={`text-xs font-semibold ${
+                          isLong
+                            ? isDark
+                              ? 'text-emerald-400'
+                              : 'text-emerald-600'
+                            : isDark
+                              ? 'text-red-400'
+                              : 'text-red-600'
+                        }`}
+                      >
+                        {trade.direction?.toUpperCase() || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-[10px] ${label}`}>Size</p>
+                      <p className={`text-xs tabular-nums ${value}`}>{Math.abs(trade.contracts || 0)}</p>
+                    </div>
+                    <div className="hidden sm:block">
+                      <p className={`text-[10px] ${label}`}>Entry → Exit</p>
+                      <p className={`text-xs tabular-nums ${value}`}>
+                        {trade.entry_price?.toFixed(2) ?? '—'} → {trade.exit_price?.toFixed(2) ?? '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-[10px] ${label}`}>Hold</p>
+                      <p className={`text-xs ${value}`}>
+                        {duration !== null ? formatDuration(duration) : '—'}
+                      </p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className={`text-[10px] ${label}`}>P&L</p>
+                      <p
+                        className={`text-sm font-bold tabular-nums ${
+                          isProfit
+                            ? isDark
+                              ? 'text-emerald-400'
+                              : 'text-emerald-600'
+                            : isDark
+                              ? 'text-red-400'
+                              : 'text-red-600'
+                        }`}
+                      >
+                        {netPnl >= 0 ? '+' : ''}$
+                        {netPnl.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {sortedTrades.length === 0 && !tradesLoading && (
+          <p className={`text-sm text-center py-6 ${label}`}>No trades recorded for this day.</p>
+        )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
 export default DayStatsDialog
-

@@ -2,6 +2,19 @@ import api, { getAuthHeaders } from './api'
 import type { PracticeAccount, PracticeMarketDataSettings } from '../constants/practice'
 import type { PracticeAccountRules } from '../services/practice/practicePlans'
 
+export interface PracticeBracketSnapshot {
+  barTimeSec: number
+  barTimeMs: number
+  barTimeLabel?: string
+  open: number
+  high: number
+  low: number
+  close: number
+  resolution: string
+  recordedAtSec: number
+  reason: 'ws_disconnect' | 'live_bar' | 'page_hide'
+}
+
 export interface PracticePosition {
   id: string
   accountId: string
@@ -13,6 +26,7 @@ export interface PracticePosition {
   takeProfit: number | null
   entryTime: number
   type: 'long' | 'short'
+  bracketSnapshot?: PracticeBracketSnapshot | null
 }
 
 export interface PracticeTradeRecord {
@@ -107,6 +121,19 @@ export const practiceAPI = {
     const res = await api.delete(`/practice/accounts/${accountId}/positions/${positionId}`, {
       headers: getAuthHeaders(),
     })
+    return res.data
+  },
+
+  saveBracketSnapshot: async (
+    accountId: string,
+    positionId: string,
+    snapshot: PracticeBracketSnapshot
+  ): Promise<{ success: boolean }> => {
+    const res = await api.put(
+      `/practice/accounts/${accountId}/positions/${positionId}/bracket-snapshot`,
+      { snapshot },
+      { headers: getAuthHeaders() }
+    )
     return res.data
   },
 

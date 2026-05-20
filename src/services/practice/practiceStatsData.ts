@@ -6,6 +6,11 @@ import type { TradeData } from '../../types/stats'
 
 import { TradeseaStats } from '../stats/TradeseaStats'
 
+import {
+  practiceFillCommission,
+  resolvePracticeTradeFees,
+} from './practiceCommission'
+
 
 
 function parseTradeTimestamp(ts: number | string | null | undefined): Date | null {
@@ -65,6 +70,8 @@ function practiceTradeToTradeData(t: PracticeTradeRecord & { id?: string }): Tra
     exit_time: new Date(exitMs).toISOString(),
 
     pnl: t.pnl,
+
+    fees: t.fees != null ? Number(t.fees) : undefined,
 
     originalTrade: t,
 
@@ -226,7 +233,14 @@ export async function getPracticeStatsData(
 
   const startingBalance = account?.rules?.startingBalance ?? account?.size ?? 0
 
-  const allTrades = (tradeRows || []).map(practiceTradeToTradeData)
+  const rules = account?.rules
+  const allTrades = (tradeRows || []).map(practiceTradeToTradeData).map((trade) => {
+    let fees = resolvePracticeTradeFees(trade)
+    if (fees <= 0 && rules) {
+      fees = practiceFillCommission(rules, trade.contracts ?? 0, trade.symbol)
+    }
+    return { ...trade, fees }
+  })
 
   const trades = filterTradesByDateRange(allTrades, dateRange)
 

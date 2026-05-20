@@ -70,7 +70,6 @@ There is **no live prop-firm order routing** in this repo. When you are ready fo
 | `/trade/:id/stats` | Session statistics |
 | `/trade/:id/news` | Economic news |
 | `/settings/props` | Connect market data for charts |
-| `/settings/layout` | Customize practice layout |
 
 ## Prerequisites
 
@@ -152,7 +151,33 @@ JWT_SECRET=replace-with-a-long-random-secret
 
 Never commit `.env` files or `server/data/`.
 
-### 5. Run locally
+### 5. Email (optional, for signup / password reset)
+
+Verification and reset codes are sent by the API when SMTP is configured. Without it, the server logs email payloads to the console instead of sending mail.
+
+1. Create or edit `server/data/config.json` (this file is gitignored; the server creates defaults if missing).
+2. Add your Gmail address and an [app password](https://myaccount.google.com/apppasswords) (2-Step Verification must be on):
+
+```json
+{
+  "email": {
+    "from": "Auren <noreply@yourdomain.com>",
+    "appName": "Auren",
+    "appUrl": "http://localhost:3000",
+    "supportEmail": "support@yourdomain.com",
+    "smtp": {
+      "user": "your-email@gmail.com",
+      "password": "your-16-char-app-password"
+    }
+  }
+}
+```
+
+3. Restart the API after changing `config.json`.
+
+More detail: [server/README.md](server/README.md#setup).
+
+### 6. Run locally
 
 Open **two terminals**.
 
@@ -173,7 +198,7 @@ npm run dev
 
 App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 
-### 6. First-time use
+### 7. First-time use
 
 1. Register or log in at `http://localhost:3000`.
 2. Go to **Settings → Market data** and connect your chart data account (practice orders remain simulated).
