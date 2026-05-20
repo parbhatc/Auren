@@ -59,7 +59,14 @@ Thumbs.db
 
 # Scratch / local scripts
 patch_dom_rows.py
+patch_dom_rows_fragment.txt
 *.patch.bak
+check_trade_dates.mjs
+check_users.mjs
+
+# Lockfiles (generate locally with npm install)
+package-lock.json
+server/package-lock.json
 
 # Local dev / scratch tests (not for publish)
 test_*.mjs

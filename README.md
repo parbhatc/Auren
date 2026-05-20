@@ -1,10 +1,65 @@
 # Auren
 
-**Repository:** [github.com/parbhatc/Auren](https://github.com/parbhatc/Auren)
+**Practice-only** futures trading simulator — a safe layer between you and your real prop firm or eval account.
 
-**Practice-only** trading platform. A safe layer between you and your real prop firm or eval account.
+Create simulated **eval** and **funded** accounts, trade on live charts with real market data, and let rules, drawdowns, and lockouts play out on Auren. If you overtrade, revenge trade, or blow the account, your real prop firm balance stays untouched.
 
-Create simulated **eval** and **funded** accounts. Trade with live charts and real market data. If you overtrade, revenge trade, or blow the account, your real prop firm account stays untouched.
+---
+
+## Features
+
+### Practice hub
+
+- Simulated **25K / 50K / 100K** eval and funded accounts — create, reset, delete
+- **Custom rules** when opening an account: profit target, max loss, drawdown type, consistency, commissions, contract caps
+- **Prop firm presets** (Tradesea live; more firms listed as they are wired up)
+- Account states: **active**, **passed**, **blown** with hub-level stats
+- Embedded **settings** tab: profile, market data, keyboard shortcuts, timezone
+
+### Trading terminal
+
+- **TradingView** charts with Tradesea market data (you supply the Charting Library license)
+- **Simulated execution** — orders and P/L stay on Auren; nothing routes to a live eval
+- **DOM ladder** and order ticket: market, limit, join bid/ask, close, reverse, flatten, cancel-all
+- **Draggable SL/TP** on the chart; bracket tracking when offline (where supported)
+- **Detachable** trade panel and **resizable** layout regions
+- **Eval progress** on-chart: balance, trailing max loss, profit target, consistency
+
+### Session discipline
+
+- **Daily loss lockout** (session resets 6pm ET)
+- **Max trades per session** (optional)
+- **Self-lock** presets or custom duration; manual unlock when ready
+- **Lockout card** and header controls on the trade screen
+
+### Stats & news
+
+- **Evaluation dashboard**: drawdown cushion, consistency, profitable days, trade history
+- **Economic calendar** with currency and impact filters while you practice
+
+### Market data
+
+- Connect **Tradesea** via email OTP or manual session cookies
+- **MDS WebSocket** stream: candles, last price, depth, quotes
+- Connection status, reconnect prefs, and **connect-on-limit** when slots are exclusive
+- **Offline mode** option to hold an MDS slot and track brackets while away from the chart
+
+### Mobile
+
+- Bottom nav: chart, stats, news, order entry
+- **Quick trade** card with minimize / expand and optional **floating** scalp pad
+- Mobile order sheet and touch-friendly qty chips
+
+### Platform
+
+- Dark / light theme
+- Auth: register, login, email verification, password reset
+- Admin: users, roles, server config (self-hosted)
+- English UI copy via `en.json`
+
+> There is **no live prop-firm order routing** in this project. When you are ready for a real eval, trade on your firm directly.
+
+---
 
 ## Screenshots
 
@@ -50,92 +105,72 @@ Session calendar and headlines while you practice.
 
 ![Economic news](images/news.png)
 
-## What Auren does
-
-| Feature | Description |
-|---------|-------------|
-| Simulated eval / funded accounts | Profit targets, trailing max loss (EOD), consistency rules, min profitable days |
-| Live charts | TradingView Charting Library with market data from your connected feed |
-| Simulated execution | Orders and P/L stay on Auren. Nothing is sent to a live prop firm |
-| Stats & news | Session stats, calendar, and economic news on the practice trade layout |
-
-There is **no live prop-firm order routing** in this repo. When you are ready for a real eval, trade on your firm directly.
+---
 
 ## Routes
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Practice hub: create and manage accounts |
+| `/` | Practice hub — accounts, market data, settings |
 | `/trade/:id` | Trading terminal (chart + trade panel) |
-| `/trade/:id/stats` | Session statistics |
-| `/trade/:id/news` | Economic news |
-| `/settings/props` | Connect market data for charts |
+| `/trade/:id/stats` | Session statistics and eval progress |
+| `/trade/:id/news` | Economic news calendar |
+| `/settings` | Profile and account settings |
+| `/settings/props` | Market data / prop firm connection |
+| `/settings/keyboard-shortcuts` | Practice terminal hotkeys |
+| `/settings/utils` | Timezone and utilities |
+| `/login`, `/register` | Authentication |
+
+---
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+ (20 LTS recommended)
 - npm 9+
 - A **TradingView Charting Library** license ([request access](https://www.tradingview.com/charting-library/))
-- (Optional) Market data account for live/delayed futures charts
+- (Optional) Tradesea account for live/delayed futures chart data
 
-## Local installation
+---
 
-### 1. Clone the repository
+## Quick start
+
+### 1. Clone and install
 
 ```bash
-git clone https://github.com/parbhatc/Auren.git
+git clone <repository-url>
 cd Auren
-```
-
-### 2. Install dependencies
-
-**Frontend** (repo root):
-
-```bash
 npm install
+cd server && npm install && cd ..
 ```
 
-**Backend**:
+`package-lock.json` is not committed — run `npm install` in the repo root and in `server/` to generate lockfiles locally.
 
-```bash
-cd server
-npm install
-cd ..
-```
+### 2. TradingView Charting Library (required for charts)
 
-### 3. TradingView Charting Library (required for charts)
+The charting library is **not included** (TradingView license). After clone:
 
-The charting library is **not included** in this repository (TradingView license). You must add your own copy after clone.
-
-1. Sign in at [TradingView Charting Library](https://www.tradingview.com/charting-library/) and download the library for your license type.
-2. Extract the archive. You should get a folder named `charting_library` containing `charting_library.js` (or `charting_library.standalone.js`) and a `bundles/` directory.
-3. Copy that entire folder into the project:
+1. Download from [TradingView Charting Library](https://www.tradingview.com/charting-library/) for your license.
+2. Copy the extracted `charting_library` folder (with `charting_library.js` and `bundles/`) to:
 
    ```text
-   Auren/
-   └── public/
-       └── charting_library/
-           ├── charting_library.js
-           ├── charting_library.standalone.js
-           ├── bundles/
-           └── …
+   public/charting_library/
    ```
 
-4. Confirm the app can load it: start the dev server (below) and open a practice trade page. If the folder is missing, you will see a placeholder instead of a chart.
+3. Start the dev server and open a practice trade page. A placeholder appears if the folder is missing.
 
-`public/charting_library/` is listed in `.gitignore` so your licensed copy is never committed.
+`public/charting_library/` is gitignored so your licensed copy is never committed.
 
-### 4. Environment variables
+### 3. Environment
 
-**Frontend** (optional). Copy the example file:
+**Frontend** (optional):
 
 ```bash
 cp .env.example .env
 ```
 
-Default dev setup uses the Vite proxy; you usually do not need to set `VITE_API_URL`.
+Default dev setup uses the Vite proxy; you usually do not need `VITE_API_URL`.
 
-**Backend** (required for auth and API):
+**Backend** (required):
 
 ```bash
 cp server/.env.example server/.env
@@ -151,37 +186,13 @@ JWT_SECRET=replace-with-a-long-random-secret
 
 Never commit `.env` files or `server/data/`.
 
-### 5. Email (optional, for signup / password reset)
+### 4. Email (optional)
 
-Verification and reset codes are sent by the API when SMTP is configured. Without it, the server logs email payloads to the console instead of sending mail.
+For signup and password reset, configure SMTP in `server/data/config.json` (gitignored). Without SMTP, the API logs email payloads to the console. See [server/README.md](server/README.md#setup).
 
-1. Create or edit `server/data/config.json` (this file is gitignored; the server creates defaults if missing).
-2. Add your Gmail address and an [app password](https://myaccount.google.com/apppasswords) (2-Step Verification must be on):
+### 5. Run locally
 
-```json
-{
-  "email": {
-    "from": "Auren <noreply@yourdomain.com>",
-    "appName": "Auren",
-    "appUrl": "http://localhost:3000",
-    "supportEmail": "support@yourdomain.com",
-    "smtp": {
-      "user": "your-email@gmail.com",
-      "password": "your-16-char-app-password"
-    }
-  }
-}
-```
-
-3. Restart the API after changing `config.json`.
-
-More detail: [server/README.md](server/README.md#setup).
-
-### 6. Run locally
-
-Open **two terminals**.
-
-**Terminal 1 – API**
+**Terminal 1 — API**
 
 ```bash
 cd server
@@ -190,7 +201,7 @@ npm start
 
 API: `http://localhost:3001`
 
-**Terminal 2 – Web app**
+**Terminal 2 — Web app**
 
 ```bash
 npm run dev
@@ -198,12 +209,14 @@ npm run dev
 
 App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 
-### 7. First-time use
+### 6. First-time use
 
-1. Register or log in at `http://localhost:3000`.
-2. Go to **Settings → Market data** and connect your chart data account (practice orders remain simulated).
-3. On the **Practice hub**, create a **25K Eval** (or other size) account.
-4. Open **Trade** on that account and practice on `/trade/:id`.
+1. Register or log in.
+2. Open **Settings → Market data** and connect Tradesea for charts (orders remain simulated).
+3. On the **Practice hub**, create a **25K Eval** (or other size).
+4. Open **Trade** on that account.
+
+---
 
 ## Production build
 
@@ -211,26 +224,32 @@ App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 npm run build
 ```
 
-Static output is in `dist/`. Serve it behind your API (same origin or configure `CORS_ORIGIN` on the server). The charting library must still be present under `public/charting_library/` at build time so it is copied into the build output.
+Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN` on the server). The charting library must exist under `public/charting_library/` at build time so it is copied into the build.
+
+---
 
 ## Project structure
 
 ```text
 Auren/
-├── src/                 # React + TypeScript frontend
-├── server/              # Express API, SQLite, auth
+├── src/                    # React + TypeScript frontend
+├── server/                 # Express API, SQLite, auth, practice engine
 ├── public/
-│   └── charting_library/  # You add this (gitignored)
-├── images/              # README screenshots
+│   └── charting_library/   # You add this (gitignored)
+├── images/                 # README screenshots
 └── package.json
 ```
+
+---
 
 ## License & third-party notices
 
 - **Auren** application code: see repository license (if provided).
-- **TradingView Charting Library**: separate license from TradingView. Do not redistribute the library without permission.
-- **Market data**: subject to your provider’s terms; used only as a chart feed in this project.
+- **TradingView Charting Library**: separate license from TradingView. Do not redistribute without permission.
+- **Market data**: subject to your provider’s terms; used as a chart feed in this project.
+
+---
 
 ## Contributing
 
-Issues and pull requests are welcome. Do not commit secrets, `server/data/`, or `public/charting_library/`.
+Issues and pull requests are welcome. Do not commit secrets, `server/data/`, `public/charting_library/`, local check scripts, or lockfiles listed in `.gitignore`.
