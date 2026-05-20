@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw, Wifi, WifiOff, Loader2 } from 'lucide-react'
 import type { TradeseaMdsClient, MdsConnectionState } from '../../services/tradesea/TradeseaMdsClient'
+import {
+  readMdsAutoReconnect,
+  readMdsReconnectOnLimit,
+  writeMdsAutoReconnect,
+  writeMdsReconnectOnLimit,
+} from '../../services/tradesea/mdsReconnectPrefs'
 
 type MdsNetworkStatusButtonProps = {
   mds: TradeseaMdsClient | null | undefined
@@ -49,6 +55,14 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
       return
     }
     setState(mds.getConnectionState())
+    const storedAuto = readMdsAutoReconnect()
+    const storedLimit = readMdsReconnectOnLimit()
+    if (mds.isAutoReconnectEnabled() !== storedAuto) {
+      mds.setAutoReconnectEnabled(storedAuto)
+    }
+    if (mds.isReconnectOnLimitEnabled() !== storedLimit) {
+      mds.setReconnectOnLimitEnabled(storedLimit)
+    }
     setAutoReconnect(mds.isAutoReconnectEnabled())
     setReconnectOnLimit(mds.isReconnectOnLimitEnabled())
     const offConnection = mds.on('connection', (s) => setState(s))
@@ -100,12 +114,14 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
 
   const toggleAutoReconnect = useCallback(() => {
     const next = !autoReconnect
+    writeMdsAutoReconnect(next)
     mds?.setAutoReconnectEnabled(next)
     setAutoReconnect(next)
   }, [autoReconnect, mds])
 
   const toggleReconnectOnLimit = useCallback(() => {
     const next = !reconnectOnLimit
+    writeMdsReconnectOnLimit(next)
     mds?.setReconnectOnLimitEnabled(next)
     setReconnectOnLimit(next)
   }, [mds, reconnectOnLimit])
@@ -220,15 +236,13 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
 
             <div
               role="menuitem"
-              className={`flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 hover:bg-[#1e293b] ${
-                !autoReconnect ? 'opacity-50' : ''
-              }`}
+              className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 hover:bg-[#1e293b]"
             >
               <div className="min-w-0 pr-1">
                 <p className="text-sm font-medium text-[#e6edf3]">Connect on limit</p>
                 <p className="text-[10px] text-[#7d8590] leading-snug">
-                  {reconnectOnLimit && autoReconnect
-                    ? 'Retries when connection cap is hit'
+                  {reconnectOnLimit
+                    ? 'Retries until a connection slot is free'
                     : 'Off — limit closes stay offline'}
                 </p>
               </div>
@@ -236,17 +250,16 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 type="button"
                 role="switch"
                 aria-checked={reconnectOnLimit}
-                disabled={!autoReconnect}
                 onClick={toggleReconnectOnLimit}
-                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50 disabled:cursor-not-allowed ${
-                  reconnectOnLimit && autoReconnect
+                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50 ${
+                  reconnectOnLimit
                     ? 'border-[#8b5cf6]/60 bg-[#8b5cf6]'
                     : 'border-[#475569] bg-[#334155]'
                 }`}
               >
                 <span
                   className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${
-                    reconnectOnLimit && autoReconnect ? 'left-[1.35rem]' : 'left-0.5'
+                    reconnectOnLimit ? 'left-[1.35rem]' : 'left-0.5'
                   }`}
                 />
               </button>
