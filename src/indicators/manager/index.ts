@@ -1,0 +1,2 @@
+export { IndicatorManager } from './IndicatorManager'
+

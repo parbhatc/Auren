@@ -1,0 +1,4 @@
+import KeyboardShortcutsSettingsWrapper from './KeyboardShortcutsSettingsWrapper'
+
+export default KeyboardShortcutsSettingsWrapper
+

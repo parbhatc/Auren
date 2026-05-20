@@ -1,0 +1,142 @@
+{
+  "auth": {
+    "register": {
+      "success": "Registration successful! Please check your email to verify your account.",
+      "usernameExists": "Username or email already exists",
+      "passwordTooShort": "Password must be at least {minLength} characters",
+      "passwordTooLong": "Password must be no more than {maxLength} characters"
+    },
+    "login": {
+      "success": "Login successful",
+      "invalidCredentials": "Invalid credentials",
+      "emailNotVerified": "Please verify your email address before logging in"
+    },
+    "verifyEmail": {
+      "success": "Email verified successfully",
+      "invalidCode": "Invalid or expired verification code",
+      "userNotFound": "User not found"
+    },
+    "forgotPassword": {
+      "success": "If the email exists, a reset code has been sent",
+      "emailNotFound": "If the email exists, a reset code has been sent"
+    },
+    "verifyResetCode": {
+      "success": "Reset code verified",
+      "invalidCode": "Invalid or expired reset code"
+    },
+    "resetPassword": {
+      "success": "Password reset successfully",
+      "invalidCode": "Invalid or expired reset code",
+      "userNotFound": "User not found",
+      "passwordTooShort": "Password must be at least {minLength} characters",
+      "passwordTooLong": "Password must be no more than {maxLength} characters"
+    },
+    "signupDisabled": "Signup is currently disabled",
+    "updatePassword": {
+      "userNotFound": "User not found",
+      "currentPasswordIncorrect": "Current password is incorrect",
+      "passwordTooShort": "Password must be at least {minLength} characters",
+      "passwordTooLong": "Password must be no more than {maxLength} characters",
+      "samePassword": "New password must be different from your current password",
+      "success": "Password updated successfully"
+    },
+    "updateName": {
+      "userNotFound": "User not found",
+      "nameTooShort": "Name must be at least 2 characters",
+      "sameName": "New name must be different from your current name",
+      "success": "Name updated successfully"
+    },
+    "updateEmail": {
+      "userNotFound": "User not found",
+      "invalidFormat": "Invalid email format",
+      "sameEmail": "New email must be different from your current email",
+      "emailInUse": "Email is already in use",
+      "success": "Email updated successfully. Please verify your new email address."
+    },
+    "validateToken": {
+      "invalidToken": "Invalid or expired token",
+      "userNotFound": "User not found"
+    }
+  },
+  "validation": {
+    "required": "All fields are required",
+    "invalidEmail": "Invalid email format",
+    "invalidCode": "Verification code must be numeric",
+    "emailRequired": "Email is required",
+    "codeRequired": "Verification code is required",
+    "nameRequired": "Name is required",
+    "passwordRequired": "Current password and new password are required"
+  },
+  "server": {
+    "running": "Server is running",
+    "healthCheck": "Server is running"
+  },
+  "roles": {
+    "notFound": "No roles found in roles.json. At least one role is required.",
+    "invalidStructure": "Invalid roles.json structure. Expected { \"roles\": [...] }",
+    "missingFields": "Invalid role structure. Each role must have \"id\" and \"name\" fields.",
+    "missingPermissions": "Invalid role structure. Each role must have a \"permissions\" array.",
+    "invalidPermissionType": "Invalid permission type. All permissions must be strings.",
+    "fileNotFound": "Roles file not found. Please create data/roles.json with at least one role.",
+    "cannotDeleteLast": "Cannot delete the last role"
+  },
+  "admin": {
+    "invalidConfiguration": "Invalid configuration object"
+  },
+  "user": {
+    "notFound": "User not found",
+    "emailExists": "Email is already in use",
+    "sameName": "New name must be different from your current name",
+    "updateSuccess": "User updated successfully",
+    "deleteSuccess": "User deleted successfully",
+    "cannotDeleteSelf": "You cannot delete your own account",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "passwordResetSuccess": "Password reset successfully",
+    "createSuccess": "User created successfully"
+  },
+  "props": {
+    "firmNotFound": "Prop firm not found",
+    "invalidData": "Invalid prop firm data",
+    "invalidType": "Invalid prop firm type",
+    "createdSuccessfully": "Prop firm credentials saved successfully",
+    "updatedSuccessfully": "Prop firm credentials updated successfully",
+    "deletedSuccessfully": "Prop firm credentials deleted successfully",
+    "connectionSuccessful": "Connection test successful",
+    "connectionFailed": "Connection test failed",
+    "testNotImplemented": "Connection testing not implemented for this prop firm type"
+  },
+  "backtester": {
+    "dataManagement": {
+      "initialData": {
+        "failedToLoad": "Failed to load initial data"
+      },
+      "search": {
+        "tradingViewNotImplemented": "TradingView search not yet implemented",
+        "tokenRequired": "Token is required for search. Please save a token in the Token Selection section.",
+        "queryRequired": "Search query is required",
+        "failed": "Search failed",
+        "invalidToken": "Invalid token or token expired. Please login again to get a new token."
+      },
+      "saveToken": {
+        "sourceRequired": "Source is required",
+        "savedSuccessfully": "Token saved successfully for {source}",
+        "clearedSuccessfully": "Token cleared for {source}",
+        "failed": "Failed to save token"
+      },
+      "userLogin": {
+        "credentialsRequired": "Username, password, and source are required",
+        "wrongUsername": "Wrong username",
+        "invalidPassword": "Invalid password",
+        "loginFailed": "Login failed",
+        "invalidCredentials": "Invalid username or password",
+        "connectionError": "Failed to connect to TradingView API",
+        "invalidSource": "Invalid source. Supported sources: topstep, tradingview"
+      }
+    }
+  },
+  "economicNews": {
+    "cannotFetchFutureMonths": "Cannot fetch data for future months. Only current and previous months are available.",
+    "cannotRefreshFutureMonths": "Cannot refresh data for future months. Only current and previous months are available."
+  }
+}
+

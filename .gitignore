@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & secrets (never commit)
+.env
+.env.*
+!.env.example
+!server/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+**/prop_firms.json
+
+# Local databases & server runtime data
+server/data/
+*.sqlite
+*.sqlite3
+*.db
+database.sqlite
+
+# TradingView Charting Library (proprietary — add your own licensed copy locally)
+public/charting_library/
+charting_library/
+src/charting_library/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Cursor / local tooling
+.cursor/
+*.cursor/
+
+# Scratch / local scripts
+patch_dom_rows.py
+*.patch.bak
+
+# Local dev / scratch tests (not for publish)
+test_*.mjs
+test_*.js
+test_*.cjs
+test_drawing_templates.*
+server/test-*.js
+server/test_*.json
+docs/TEST_SIGNALR_SERVER.md
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Misc caches
+.cache/
+.turbo/
+*.tsbuildinfo

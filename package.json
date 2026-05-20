@@ -1,0 +1,37 @@
+{
+  "name": "auren",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "tsc && vite build",
+    "preview": "vite preview --port 3000"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^10.0.0",
+    "axios": "^1.13.2",
+    "dayjs": "^1.11.19",
+    "html2canvas": "^1.4.1",
+    "lucide-react": "^0.559.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-grid-layout": "^1.4.4",
+    "react-hook-form": "^7.68.0",
+    "react-router-dom": "^7.10.1",
+    "react-toastify": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/html2canvas": "^0.5.35",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@types/react-grid-layout": "^1.3.4",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "terser": "^5.44.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}

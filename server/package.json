@@ -1,0 +1,36 @@
+{
+  "name": "nexus-sync-pro-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test-topstepx": "node test-topstepx.js",
+    "test-account": "cross-env TEST_ACCOUNT_SERVICE=true node test-topstepx.js",
+    "test-account-local": "cross-env TEST_ACCOUNT_SERVICE=true USE_TEST_SERVER=true node test-topstepx.js",
+    "test-signalr-server": "node test-signalr-server.js",
+    "test-signalr": "cross-env USE_TEST_SERVER=true node test-topstepx.js",
+    "test-ws": "node test-ws.js",
+    "test-tv": "node test-tv.js"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^8.0.17",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.7",
+    "puppeteer": "^24.33.0",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/nodemailer": "^6.4.14",
+    "cross-env": "^10.1.0"
+  }
+}

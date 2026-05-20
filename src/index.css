@@ -1,0 +1,401 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  /* Firefox - hide scrollbars */
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  /* Chrome, Safari, Edge - hide scrollbars */
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Custom animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.6s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s ease-out;
+}
+
+.animate-gradient {
+  animation: gradient 3s ease infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* TradingView Chart iframe styles - ensure 100% height */
+#tv_chart_container,
+[id^="tv_chart_container"] {
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+  position: relative;
+}
+
+#tv_chart_container iframe,
+[id^="tv_chart_container"] iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 600px !important;
+  display: block;
+  border: none;
+}
+
+/* Trade page: chart fills flex area so time scale stays visible */
+.trading-chart-host #tv_chart_container,
+.trading-chart-host [id^="tv_chart_container"] {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.trading-chart-host #tv_chart_container iframe,
+.trading-chart-host [id^="tv_chart_container"] iframe {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* Custom scrollbar for search results */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+
+/* Dark mode scrollbar */
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Hide native number input spinners (order pad qty fields) */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Practice trade DOM ladder */
+.text-dom-header {
+  color: #7d8590;
+}
+.text-dom-price {
+  color: #adbac7;
+}
+.text-text-ltp {
+  color: #d29922;
+}
+.bg-ltp {
+  background-color: rgba(210, 153, 34, 0.18);
+}
+
+.ltp-row {
+  background: linear-gradient(
+    90deg,
+    rgba(210, 153, 34, 0.08) 0%,
+    rgba(210, 153, 34, 0.22) 50%,
+    rgba(210, 153, 34, 0.08) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 200, 80, 0.12),
+    inset 0 -1px 0 rgba(180, 120, 20, 0.2);
+}
+
+.dom-ltp-price-cell {
+  position: relative;
+  z-index: 1;
+}
+
+.dom-ltp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  margin-right: 4px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  color: #1a1408;
+  background: linear-gradient(180deg, #f0c040 0%, #d29922 100%);
+  box-shadow: 0 0 8px rgba(210, 153, 34, 0.45);
+}
+.bg-volume {
+  background-color: rgba(139, 92, 246, 0.22);
+}
+.border-dom-buy {
+  border-color: rgba(63, 185, 80, 0.45);
+}
+.border-dom-sell,
+.border-r-dom-sell {
+  border-color: rgba(248, 81, 73, 0.4);
+}
+.text-dom-buy {
+  color: #3fb950;
+}
+.text-dom-sell {
+  color: #f85149;
+}
+.bg-dom-entry {
+  background-color: rgba(139, 92, 246, 0.12);
+}
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide empty TradingView right widget strip / toolbar (practice + live trade) */
+.trading-chart-host .layout__area--right,
+.trading-chart-host .layout__area--widgetbar,
+.trading-chart-host .widgetbar-tabs,
+.trading-chart-host .widgetbar,
+.trading-chart-host [data-name='right-toolbar'],
+#tv_chart_container .layout__area--right,
+#tv_chart_container .layout__area--widgetbar,
+#tv_chart_container .widgetbar-tabs,
+#tv_chart_container .widgetbar,
+[id*='chart_container'] .layout__area--right,
+[id*='chart_container'] .widgetbar-tabs {
+  display: none !important;
+}
+
+/* MDS connection toasts (react-toastify custom body) */
+.mds-connection-toastify.Toastify__toast {
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.mds-connection-toastify .Toastify__toast-body {
+  padding: 0;
+  margin: 0;
+}
+
+.mds-connection-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 280px;
+  max-width: 340px;
+  padding: 12px 14px 12px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 27, 75, 0.92) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  backdrop-filter: blur(12px);
+}
+
+.mds-connection-toast__accent {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--mds-accent, #8b5cf6);
+  box-shadow: 0 0 12px var(--mds-accent, #8b5cf6);
+}
+
+.mds-connection-toast__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: 4px;
+  border-radius: 10px;
+  color: var(--mds-accent, #8b5cf6);
+  background: color-mix(in srgb, var(--mds-accent, #8b5cf6) 18%, transparent);
+}
+
+.mds-connection-toast__icon--spin svg {
+  animation: mds-toast-spin 0.85s linear infinite;
+}
+
+@keyframes mds-toast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mds-connection-toast__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.mds-connection-toast__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #f1f5f9;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.mds-connection-toast__subtitle {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.Toastify__toast-theme--light .mds-connection-toast {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-color: rgba(139, 92, 246, 0.25);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.Toastify__toast-theme--light .mds-connection-toast__title {
+  color: #0f172a;
+}
+
+.Toastify__toast-theme--light .mds-connection-toast__subtitle {
+  color: #64748b;
+}
+
+[id*='chart_container'] .layout__area--right,
+[id*='chart_container'] .widgetbar-tabs {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
