@@ -48,17 +48,17 @@ export function MdsConnectionToastContent({ kind }: { kind: MdsConnectionToastKi
   const spin = kind === 'connecting' || kind === 'reconnecting'
 
   return (
-    <div className="mds-connection-toast" style={{ ['--mds-accent' as string]: accent }}>
-      <span className="mds-connection-toast__accent" aria-hidden />
+    <div className="auren-toast" style={{ ['--auren-toast-accent' as string]: accent }}>
+      <span className="auren-toast__accent" aria-hidden />
       <span
-        className={`mds-connection-toast__icon${spin ? ' mds-connection-toast__icon--spin' : ''}`}
+        className={`auren-toast__icon${spin ? ' auren-toast__icon--spin' : ''}`}
         aria-hidden
       >
         <Icon size={18} strokeWidth={2.25} />
       </span>
-      <span className="mds-connection-toast__text">
-        <span className="mds-connection-toast__title">{title}</span>
-        <span className="mds-connection-toast__subtitle">{subtitle}</span>
+      <span className="auren-toast__text">
+        <span className="auren-toast__title">{title}</span>
+        <span className="auren-toast__subtitle">{subtitle}</span>
       </span>
     </div>
   )

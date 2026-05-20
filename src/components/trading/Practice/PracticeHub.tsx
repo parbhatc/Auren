@@ -8,6 +8,8 @@ import {
   getPracticeAccountDisplayTitle,
   getPracticeAccounts,
   getPracticeMarketDataSettings,
+  getPracticePropFirmConfig,
+  resolveOfflineModePositions,
   refreshPracticeFromApi,
   resetAllPracticeAccounts,
   resetPracticeAccount,
@@ -17,6 +19,7 @@ import {
   type PracticeAccountRules,
 } from '../../../constants/practice'
 import { getDefaultPracticeRules, type PracticeAccountSize } from '../../../services/practice/practicePlans'
+import { practiceAPI } from '../../../api/practice.api'
 import { tradeseaAPI, TradeseaAccount } from '../../../api/tradesea.api'
 import { t } from '../../../utils/translator'
 import ErrorMessage from '../../common/ErrorMessage'
@@ -49,6 +52,7 @@ export default function PracticeHub() {
   const [accounts, setAccounts] = useState<PracticeAccount[]>([])
   const [propFirmId, setPropFirmId] = useState('tradesea')
   const [marketAccountId, setMarketAccountId] = useState('')
+  const [offlineModePositions, setOfflineModePositions] = useState(true)
   const [tradeseaAccounts, setTradeseaAccounts] = useState<TradeseaAccount[]>([])
   const [tradeseaSessionExpired, setTradeseaSessionExpired] = useState(false)
   const [loadingMd, setLoadingMd] = useState(false)
@@ -85,6 +89,7 @@ export default function PracticeHub() {
     setAccounts(getPracticeAccounts())
     setPropFirmId(md.propFirmId || 'tradesea')
     setMarketAccountId(md.accountId)
+    setOfflineModePositions(resolveOfflineModePositions(md))
   }, [])
 
   const reload = useCallback(async () => {
@@ -124,7 +129,13 @@ export default function PracticeHub() {
     setLoadingMd(true)
     setError('')
     try {
-      const result = await tradeseaAPI.getAccounts()
+      let result = await tradeseaAPI.getAccounts()
+      if (!result.connected && result.sessionExpired) {
+        const refreshed = await tradeseaAPI.refreshSession()
+        if (refreshed.connected) {
+          result = await tradeseaAPI.getAccounts()
+        }
+      }
       if (!result.connected) {
         setTradeseaAccounts([])
         setTradeseaSessionExpired(Boolean(result.sessionExpired))
@@ -170,14 +181,43 @@ export default function PracticeHub() {
 
   const marketConnected = Boolean(marketAccountId) && !tradeseaSessionExpired && tradeseaAccounts.length > 0
 
-  const saveMarketData = async (accountId: string) => {
+  const persistMarketData = async (opts: {
+    propFirmId?: string
+    accountId?: string
+    offlineModePositions?: boolean
+  }) => {
+    const nextFirmId = opts.propFirmId ?? propFirmId
+    const accountId = opts.accountId ?? marketAccountId
     const account = tradeseaAccounts.find((a) => a.id === accountId)
-    await savePracticeMarketDataSettings({
-      propFirmId,
+    const md = getPracticeMarketDataSettings()
+    const firm = getPracticePropFirmConfig(nextFirmId)
+    const savedOffline =
+      opts.offlineModePositions ??
+      (opts.propFirmId != null ? firm.defaultOfflineModePositions : offlineModePositions)
+    const offline = resolveOfflineModePositions({
+      propFirmId: nextFirmId,
       accountId,
-      accountLabel: account?.label,
+      accountLabel: account?.label ?? md.accountLabel,
+      offlineModePositions: savedOffline,
     })
-    setMarketAccountId(accountId)
+    if (offlineModePositions && !offline) {
+      try {
+        await practiceAPI.stopOfflineBracketWatcher('setting_disabled')
+      } catch {
+        /* ignore */
+      }
+    }
+    if (opts.propFirmId != null && opts.propFirmId !== propFirmId) {
+      setPropFirmId(nextFirmId)
+    }
+    await savePracticeMarketDataSettings({
+      propFirmId: nextFirmId,
+      accountId,
+      accountLabel: account?.label ?? md.accountLabel,
+      offlineModePositions: firm.supportsOfflineBracketWatcher ? savedOffline : false,
+    })
+    if (opts.accountId !== undefined) setMarketAccountId(accountId)
+    setOfflineModePositions(offline)
     setSuccess(t('practice.hub.marketDataSaved'))
     syncFromCache()
   }
@@ -345,11 +385,19 @@ export default function PracticeHub() {
                   isDark={isDark}
                   propFirmId={propFirmId}
                   marketAccountId={marketAccountId}
+                  offlineModePositions={offlineModePositions}
                   tradeseaAccounts={tradeseaAccounts}
                   tradeseaSessionExpired={tradeseaSessionExpired}
                   loadingMd={loadingMd}
-                  onPropFirmChange={setPropFirmId}
-                  onMarketAccountChange={(id) => void saveMarketData(id)}
+                  onPropFirmChange={(id) => {
+                    void persistMarketData({
+                      propFirmId: id,
+                      accountId: '',
+                      offlineModePositions: getPracticePropFirmConfig(id).defaultOfflineModePositions,
+                    })
+                  }}
+                  onMarketAccountChange={(id) => void persistMarketData({ accountId: id })}
+                  onOfflineModeChange={(enabled) => void persistMarketData({ offlineModePositions: enabled })}
                   onRefreshAccounts={() => void loadTradesea()}
                   onRefreshSession={() => void refreshTradeseaSession()}
                 />

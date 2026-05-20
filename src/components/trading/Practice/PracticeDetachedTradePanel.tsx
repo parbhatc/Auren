@@ -12,6 +12,8 @@ export function PracticeDetachedTradePanel({
   padProps,
   chartSymbol,
   maxQty,
+  dockTitle = 'Dock to chart',
+  dockMode = 'detach-pad',
 }: {
   accountId: string
   isDark: boolean
@@ -19,6 +21,9 @@ export function PracticeDetachedTradePanel({
   padProps: PracticeTradePanelProps
   chartSymbol: string
   maxQty: number
+  dockTitle?: string
+  /** `mobile-float` only runs parent onDock (restores bottom quick trade). */
+  dockMode?: 'detach-pad' | 'mobile-float'
 }) {
   const [pos, setPos] = useState(() => getPracticePadFloatPosition(FLOAT_WIDTH, FLOAT_HEIGHT))
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
@@ -71,8 +76,9 @@ export function PracticeDetachedTradePanel({
         props={padProps}
         maxQty={maxQty}
         onDragStart={onDragStart}
+        dockTitle={dockTitle}
         onDock={() => {
-          dockPracticeTradePanel(accountId)
+          if (dockMode === 'detach-pad') dockPracticeTradePanel(accountId)
           onDock()
         }}
       />

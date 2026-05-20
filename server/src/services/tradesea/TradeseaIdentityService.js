@@ -137,9 +137,12 @@ class TradeseaIdentityService {
       throw new Error('No refresh token stored. Reconnect in Prop Firm settings.')
     }
 
+    const cookieRefreshed = await this.refreshAccessTokenWithCookie(token)
+    if (cookieRefreshed) return cookieRefreshed
+
     const endpoints = [
-      '/v1/login/refresh-token',
       '/v1/login/refresh',
+      '/v1/login/refresh-token',
       '/v1/auth/refresh',
       '/v1/token/refresh',
     ]
@@ -159,10 +162,23 @@ class TradeseaIdentityService {
       }
     }
 
-    const cookieRefreshed = await this.refreshAccessTokenWithCookie(token)
-    if (cookieRefreshed) return cookieRefreshed
-
     throw new Error('Could not refresh Tradesea session. Reconnect in Prop Firm settings.')
+  }
+
+  parseTokensFromSetCookie(headers) {
+    const raw = headers?.['set-cookie']
+    if (!raw) return null
+    const parts = Array.isArray(raw) ? raw : [raw]
+    let accessToken = ''
+    let refreshToken = ''
+    for (const line of parts) {
+      const mAccess = String(line).match(/access_token=([^;]+)/)
+      const mRefresh = String(line).match(/refresh_token=([^;]+)/)
+      if (mAccess) accessToken = decodeURIComponent(mAccess[1])
+      if (mRefresh) refreshToken = decodeURIComponent(mRefresh[1])
+    }
+    if (!accessToken) return null
+    return { accessToken, refreshToken: refreshToken || '' }
   }
 
   refreshAccessTokenWithCookie(refreshToken) {
@@ -170,15 +186,18 @@ class TradeseaIdentityService {
       const req = https.request(
         {
           hostname: IDENTITY_HOST,
-          path: `${UM_PREFIX}/v1/login/refresh-token`,
+          path: `${UM_PREFIX}/v1/login/refresh`,
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json, text/plain, */*',
+            'Content-Length': '0',
             cookie: `refresh_token=${refreshToken}`,
             Origin: 'https://app.tradesea.ai',
             Referer: 'https://app.tradesea.ai/',
             'X-Request-ID': crypto.randomUUID(),
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           },
           timeout: 15_000,
         },
@@ -191,10 +210,13 @@ class TradeseaIdentityService {
             }
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-              resolve(this.extractTokensFromAuthBody(body))
+              const fromBody = this.extractTokensFromAuthBody(body)
+              if (fromBody) return resolve(fromBody)
             } catch {
-              resolve(null)
+              /* body may be empty */
             }
+            const fromCookies = this.parseTokensFromSetCookie(res.headers)
+            resolve(fromCookies)
           })
         }
       )

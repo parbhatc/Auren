@@ -5,6 +5,9 @@ import TokenService from '../services/TokenService.js'
 import Database from '../config/Database.js'
 import PropsController from '../controllers/PropsController.js'
 import TradeseaIdentityService from '../services/tradesea/TradeseaIdentityService.js'
+import PracticeOfflineBracketWatcher from '../services/practice/PracticeOfflineBracketWatcher.js'
+import PracticeService from '../services/PracticeService.js'
+import { practiceFirmHasExclusiveMdsSlot } from '../utils/practicePropFirms.js'
 import { getStreamEndpoints } from '../services/tradesea/TradeseaAccountPolicy.js'
 
 const TRADESEA_ORIGIN = 'https://app.tradesea.ai'
@@ -91,6 +94,11 @@ class TradeseaMdsWebSocket extends WebSocketBase {
     if (!account?.userId) {
       clientWs.close(1008, 'Account not found')
       return
+    }
+
+    const md = await PracticeService.getMarketData(decoded.userId)
+    if (practiceFirmHasExclusiveMdsSlot(md?.propFirmId)) {
+      await PracticeOfflineBracketWatcher.stop(decoded.userId, 'client_connected')
     }
 
     const { mdsStreamBase } = getStreamEndpoints(account)

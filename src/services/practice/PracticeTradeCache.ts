@@ -1,30 +1,22 @@
-import { toast } from 'react-toastify'
+import { aurenToast } from '../../utils/aurenToast'
 import { practiceExitSide, practiceOrderLine } from './practiceOrderToasts'
 import { showPracticeOrderToast } from './showPracticeOrderToast'
 import ChartTradeCache from '../../components/common/ChartTradeCache'
 import { practiceAPI, type PracticePosition } from '../../api/practice.api'
 import { practiceFillCommission } from './practiceCommission'
 
-import { refreshPracticeFromApi } from '../../constants/practice'
+import { getPracticeMarketDataSettings, refreshPracticeFromApi } from '../../constants/practice'
+import { t } from '../../utils/translator'
 
 import { PracticeTradeHandler } from './PracticeTradeHandler'
 
 import { resolvePracticeProductSymbol } from './practiceSymbol'
 import {
-  BRACKET_REPLAY_RESOLUTION,
   clearBracketCheckpoint,
   entryTimeToMs,
-  findBracketExitInBars,
-  readBracketCheckpointSec,
   writeBracketCheckpointSec,
 } from './practiceBracketReplay'
-import {
-  barMatchesSnapshot,
-  formatSnapshotTime,
-  parseBracketSnapshot,
-  replayFromSecForSnapshot,
-  type PracticeBracketSnapshot,
-} from './practiceBracketSnapshot'
+import { formatSnapshotTime, type PracticeBracketSnapshot } from './practiceBracketSnapshot'
 
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
 
@@ -347,11 +339,17 @@ export class PracticeTradeCache extends ChartTradeCache {
     }
   }
 
+  private offlineBracketEnabled(): boolean {
+    return getPracticeMarketDataSettings().offlineModePositions === true
+  }
+
   async persistBracketSnapshot(
     cacheKey: string,
     reason: PracticeBracketSnapshot['reason'],
     barOverride?: { time?: number; open?: number; high?: number; low?: number; close?: number }
   ): Promise<void> {
+    if (!this.offlineBracketEnabled()) return
+
     const position = this.cache.get(cacheKey)
     if (!position?.contracts) return
     const stopLoss = position.stopLoss as number | null
@@ -391,6 +389,8 @@ export class PracticeTradeCache extends ChartTradeCache {
   async saveBracketSnapshotsForOpenPositions(
     reason: PracticeBracketSnapshot['reason']
   ): Promise<void> {
+    if (!this.offlineBracketEnabled()) return
+
     const tasks: Promise<void>[] = []
     for (const [cacheKey, position] of this.cache.entries()) {
       if (!position?.contracts) continue
@@ -400,101 +400,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     await Promise.all(tasks)
   }
 
-  /**
-   * After MDS reconnect: replay 1s bars only after the last saved candle (+3s), not from entry.
-   */
-  async reconcileMissedBracketFills(): Promise<void> {
-    const account = this.tradeHandler.getAccount()
-    if (!account || account.status !== 'active') return
-
-    const datafeed = this.getDatafeed()
-    if (!datafeed) return
-
-    const nowSec = Math.floor(Date.now() / 1000)
-
-    for (const [cacheKey, position] of [...this.cache.entries()]) {
-      if (!position?.contracts) continue
-      const contracts = Number(position.contracts)
-      if (!Number.isFinite(contracts) || Math.abs(contracts) === 0) continue
-
-      const stopLoss = position.stopLoss as number | null
-      const takeProfit = position.takeProfit as number | null
-      if (stopLoss == null && takeProfit == null) continue
-
-      const entrySec = Math.floor(entryTimeToMs(position.entryTime as number) / 1000)
-      const snapshot = parseBracketSnapshot(position.bracketSnapshot)
-      const checkpointSec = readBracketCheckpointSec(this.accountId, cacheKey)
-
-      let replayFromSec = replayFromSecForSnapshot(snapshot, entrySec, nowSec)
-      if (checkpointSec != null) {
-        replayFromSec = Math.max(replayFromSec, checkpointSec)
-      }
-
-      if (snapshot) {
-        const { tickSize } = this.resolveTicks(cacheKey)
-        const anchorBars = await datafeed.fetchHistoryBars(
-          cacheKey,
-          BRACKET_REPLAY_RESOLUTION,
-          snapshot.barTimeSec,
-          snapshot.barTimeSec + 2
-        )
-        const anchor = anchorBars.find(
-          (b) => Math.abs(Math.floor(b.time / 1000) - snapshot.barTimeSec) <= 2
-        )
-        if (anchor && !barMatchesSnapshot(anchor, snapshot, tickSize)) {
-          replayFromSec = Math.max(entrySec, snapshot.barTimeSec)
-          console.info('[PracticeBracket] saved candle changed — replay from snapshot time', {
-            cacheKey,
-            saved: snapshot.barTimeLabel,
-            savedOhlc: { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close },
-            liveOhlc: { o: anchor.open, h: anchor.high, l: anchor.low, c: anchor.close },
-          })
-        }
-      }
-
-      if (nowSec <= replayFromSec + 1) {
-        console.info('[PracticeBracket] reconcile skipped (too soon)', { cacheKey, replayFromSec, nowSec })
-        continue
-      }
-
-      const bars = await datafeed.fetchHistoryBars(
-        cacheKey,
-        BRACKET_REPLAY_RESOLUTION,
-        replayFromSec,
-        nowSec
-      )
-
-      const replayFromMs = replayFromSec * 1000
-      const filtered = bars.filter((b) => b.time >= replayFromMs)
-
-      console.info('[PracticeBracket] reconcile', {
-        cacheKey,
-        replayFromSec,
-        replayFromLabel: formatSnapshotTime(replayFromSec * 1000),
-        barCount: filtered.length,
-        snapshot: snapshot
-          ? {
-              candle: snapshot.barTimeLabel,
-              reason: snapshot.reason,
-              ohlc: { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close },
-            }
-          : null,
-        stopLoss,
-        takeProfit,
-      })
-
-      const isLong = contracts > 0
-      const exit = findBracketExitInBars(filtered, isLong, stopLoss, takeProfit)
-      if (exit) {
-        console.info('[PracticeBracket] replay exit', { cacheKey, exit })
-        clearBracketCheckpoint(this.accountId, cacheKey)
-        this.onClosePosition(cacheKey, Math.abs(contracts), exit.price, exit.time)
-        return
-      }
-
-      writeBracketCheckpointSec(this.accountId, cacheKey, nowSec)
-    }
-  }
+  /** No-op: server watcher when offline mode is on; live bars only when off. */
+  async reconcileMissedBracketFills(): Promise<void> {}
 
   /** Create chart lines for open positions that match the active chart product (e.g. NQ vs MNQ). */
   reconcilePositionLines(): void {
@@ -595,7 +502,10 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       .catch((err: { response?: { data?: { message?: string } } }) => {
 
-        toast.error(err?.response?.data?.message || 'Failed to record trade')
+        aurenToast.error(
+          err?.response?.data?.message || t('toast.order.recordFailedTitle'),
+          t('toast.order.recordFailedSubtitle')
+        )
 
       })
 
@@ -739,7 +649,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         'Order rejected'
 
-      toast.error(msg)
+      aurenToast.error(msg)
 
     }
 

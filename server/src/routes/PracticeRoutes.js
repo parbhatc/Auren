@@ -92,6 +92,32 @@ class PracticeRoutes {
       AuthMiddleware.authenticate(),
       PracticeController.getStats.bind(PracticeController)
     )
+    this.router.get(
+      '/accounts/:id/lockout',
+      AuthMiddleware.authenticate(),
+      PracticeController.getLockout.bind(PracticeController)
+    )
+    this.router.post(
+      '/accounts/:id/lockout',
+      AuthMiddleware.authenticate(),
+      PracticeController.setLockout.bind(PracticeController)
+    )
+    this.router.delete(
+      '/accounts/:id/lockout',
+      AuthMiddleware.authenticate(),
+      PracticeController.clearLockout.bind(PracticeController)
+    )
+
+    this.router.post(
+      '/offline-bracket/start',
+      AuthMiddleware.authenticate(),
+      PracticeController.startOfflineBracketWatcher.bind(PracticeController)
+    )
+    this.router.post(
+      '/offline-bracket/stop',
+      AuthMiddleware.authenticate(),
+      PracticeController.stopOfflineBracketWatcher.bind(PracticeController)
+    )
   }
 
   getRouter() {

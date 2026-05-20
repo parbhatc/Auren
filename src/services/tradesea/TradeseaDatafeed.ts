@@ -461,10 +461,15 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         )
       }
       await Promise.all(tasks)
-      const practiceCache = (
-        this.tradeHandler as { tradeCache?: { reconcileMissedBracketFills?: () => Promise<void> } } | null
-      )?.tradeCache
-      await practiceCache?.reconcileMissedBracketFills?.()
+      const handler = this.tradeHandler as {
+        onMdsReconnected?: () => void | Promise<void>
+        tradeCache?: { reconcileMissedBracketFills?: () => Promise<void> }
+      } | null
+      if (handler?.onMdsReconnected) {
+        await handler.onMdsReconnected()
+      } else {
+        await handler?.tradeCache?.reconcileMissedBracketFills?.()
+      }
     })().finally(() => {
       this.refetchInFlight = null
     })

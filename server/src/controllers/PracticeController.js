@@ -1,4 +1,5 @@
 import PracticeService from '../services/PracticeService.js'
+import PracticeOfflineBracketWatcher from '../services/practice/PracticeOfflineBracketWatcher.js'
 import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
 
@@ -161,6 +162,45 @@ class PracticeController {
     }
   }
 
+  async getLockout(req, res) {
+    try {
+      const status = await PracticeService.getLockoutStatus(req.user.id, req.params.id)
+      if (!status) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: 'Account not found' })
+      }
+      res.status(HTTP_STATUS.OK).json({ success: true, lockout: status })
+    } catch (error) {
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  async setLockout(req, res) {
+    try {
+      const minutes = Number(req.body?.minutes) || 15
+      const account = await PracticeService.setManualLockout(req.user.id, req.params.id, { minutes })
+      if (!account) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: 'Account not found' })
+      }
+      const lockout = await PracticeService.getLockoutStatus(req.user.id, req.params.id)
+      res.status(HTTP_STATUS.OK).json({ success: true, account, lockout })
+    } catch (error) {
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  async clearLockout(req, res) {
+    try {
+      const account = await PracticeService.clearLockout(req.user.id, req.params.id)
+      if (!account) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: 'Account not found' })
+      }
+      const lockout = await PracticeService.getLockoutStatus(req.user.id, req.params.id)
+      res.status(HTTP_STATUS.OK).json({ success: true, account, lockout })
+    } catch (error) {
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
   async recordTrade(req, res) {
     try {
       const result = await PracticeService.recordTrade(req.user.id, req.params.id, req.body)
@@ -170,6 +210,27 @@ class PracticeController {
       if (error.statusCode === 400) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: error.message })
       }
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  async startOfflineBracketWatcher(req, res) {
+    try {
+      const result = await PracticeOfflineBracketWatcher.start(req.user.id, req.body)
+      res.status(HTTP_STATUS.OK).json({ success: true, ...result })
+    } catch (error) {
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  async stopOfflineBracketWatcher(req, res) {
+    try {
+      const result = await PracticeOfflineBracketWatcher.stop(
+        req.user.id,
+        req.body?.reason || 'client_connected'
+      )
+      res.status(HTTP_STATUS.OK).json({ success: true, ...result })
+    } catch (error) {
       ErrorHandler.handleServerError(res, error)
     }
   }

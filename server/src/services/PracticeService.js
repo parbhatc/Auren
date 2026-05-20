@@ -1,11 +1,20 @@
 import { randomUUID } from 'crypto'
 import Database from '../config/Database.js'
 import {
+  offlineModeToDbValue,
+  resolveOfflineModePositionsFromDb,
+} from '../utils/practicePropFirms.js'
+import {
   getDefaultRules,
   evaluatePracticeRules,
   getMaxContractsForSymbol,
   getCommissionPerContract,
 } from '../utils/practiceRules.js'
+import {
+  evaluatePracticeLockout,
+  getPracticeSessionDayKey,
+  countTradesInSession,
+} from '../utils/practiceLockout.js'
 
 function normalizeTradeSymbol(symbol) {
   let s = String(symbol || '').trim()
@@ -50,6 +59,8 @@ function rowToAccount(row) {
     updatedAt: row.updated_at,
     passedAt: row.passed_at,
     blownAt: row.blown_at,
+    lockoutUntil: row.lockout_until || null,
+    lockoutReason: row.lockout_reason || null,
   }
 }
 
@@ -60,31 +71,30 @@ class PracticeService {
       'SELECT * FROM practice_market_data WHERE user_id = ?',
       [userId]
     )
-    if (!row) {
-      return { propFirmId: 'tradesea', accountId: '', accountLabel: '' }
-    }
-    return {
-      propFirmId: row.prop_firm_id || 'tradesea',
-      accountId: row.account_id || '',
-      accountLabel: row.account_label || '',
-    }
+    return resolveOfflineModePositionsFromDb(row)
   }
 
   async saveMarketData(userId, settings) {
     await Database.initialize()
+    const offlineMode = offlineModeToDbValue(
+      settings.propFirmId,
+      settings.offlineModePositions
+    )
     await Database.run(
-      `INSERT INTO practice_market_data (user_id, prop_firm_id, account_id, account_label, updated_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO practice_market_data (user_id, prop_firm_id, account_id, account_label, offline_mode_positions, updated_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          prop_firm_id = excluded.prop_firm_id,
          account_id = excluded.account_id,
          account_label = excluded.account_label,
+         offline_mode_positions = excluded.offline_mode_positions,
          updated_at = CURRENT_TIMESTAMP`,
       [
         userId,
         settings.propFirmId || 'tradesea',
         settings.accountId || '',
         settings.accountLabel || '',
+        offlineMode,
       ]
     )
     await Database.run(
@@ -252,16 +262,16 @@ class PracticeService {
     let highWaterMark = account.highWaterMark
     if (nextBalance > highWaterMark) highWaterMark = nextBalance
 
-    const today = new Date().toISOString().slice(0, 10)
+    const sessionDay = getPracticeSessionDayKey()
     let dayPnL = [...account.dayPnL]
     if (recordDay && delta !== 0) {
-      const existing = dayPnL.find((d) => d.date === today)
+      const existing = dayPnL.find((d) => d.date === sessionDay)
       if (existing) {
         dayPnL = dayPnL.map((d) =>
-          d.date === today ? { ...d, pnl: d.pnl + delta } : d
+          d.date === sessionDay ? { ...d, pnl: d.pnl + delta } : d
         )
       } else {
-        dayPnL.push({ date: today, pnl: delta })
+        dayPnL.push({ date: sessionDay, pnl: delta })
       }
     }
 
@@ -323,6 +333,7 @@ class PracticeService {
       `UPDATE practice_accounts SET
         status = 'active', balance = ?, high_water_mark = ?, day_pnl_json = '[]',
         passed_at = NULL, blown_at = NULL, drawdown_floor_locked = ?,
+        lockout_until = NULL, lockout_reason = NULL,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND user_id = ?`,
       [start, start, account.mode === 'funded' ? 1 : 0, accountId, userId]
@@ -543,8 +554,70 @@ class PracticeService {
         forcedExit,
       ]
     )
-    await this.applyBalanceChange(userId, accountId, pnl - exitCommission, true)
+    const updated = await this.applyBalanceChange(userId, accountId, pnl - exitCommission, true)
+    if (updated) {
+      await this.syncLockoutAfterTrade(userId, accountId, updated)
+    }
     return { id, pnl, fees: exitCommission }
+  }
+
+  async syncLockoutAfterTrade(userId, accountId, account) {
+    const trades = await Database.query(
+      'SELECT exit_time FROM practice_trades WHERE account_id = ?',
+      [accountId]
+    )
+    const lock = evaluatePracticeLockout(account, { trades })
+    if (!lock.shouldPersist || !lock.until) {
+      if (account.lockoutUntil && Date.parse(account.lockoutUntil) <= Date.now()) {
+        await Database.run(
+          `UPDATE practice_accounts SET lockout_until = NULL, lockout_reason = NULL, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?`,
+          [accountId, userId]
+        )
+      }
+      return
+    }
+    await Database.run(
+      `UPDATE practice_accounts SET lockout_until = ?, lockout_reason = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [lock.until, lock.reason, accountId, userId]
+    )
+  }
+
+  async setManualLockout(userId, accountId, { minutes } = {}) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account) return null
+    const mins = Math.max(1, Math.min(24 * 60, Number(minutes) || 15))
+    const until = new Date(Date.now() + mins * 60_000).toISOString()
+    await Database.initialize()
+    await Database.run(
+      `UPDATE practice_accounts SET lockout_until = ?, lockout_reason = 'manual', updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [until, accountId, userId]
+    )
+    return this.getAccount(userId, accountId)
+  }
+
+  async clearLockout(userId, accountId) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account) return null
+    await Database.initialize()
+    await Database.run(
+      `UPDATE practice_accounts SET lockout_until = NULL, lockout_reason = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [accountId, userId]
+    )
+    return this.getAccount(userId, accountId)
+  }
+
+  async getLockoutStatus(userId, accountId) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account) return null
+    const trades = await Database.query(
+      'SELECT exit_time FROM practice_trades WHERE account_id = ?',
+      [accountId]
+    )
+    return evaluatePracticeLockout(account, { trades })
   }
 
   async getStats(userId, accountId) {

@@ -30,7 +30,7 @@ import {
   isPracticePadDetached,
   togglePracticePadDetached,
 } from '../../../utils/practiceTradePanelPopout'
-import { toast } from 'react-toastify'
+import { aurenToast } from '../../../utils/aurenToast'
 import { dismissMdsConnectionToast } from '../../../services/tradesea/mdsConnectionToast'
 import { chartSymbolToProductRoot } from '../../../services/tradesea/tradeseaSymbolInfo'
 import { debugPracticeChartSymbol } from '../../../services/tradesea/practiceChartSymbolDebug'
@@ -40,6 +40,11 @@ import {
 } from '../../../utils/practiceTradePreferences'
 import { PracticeMobileScalpBar } from '../Practice/PracticeMobileScalpBar'
 import { PracticeMobileOrderSheet } from '../Practice/PracticeMobileOrderSheet'
+import {
+  getPracticeMobileTradePrefs,
+  PRACTICE_MOBILE_TRADE_PREFS_EVENT,
+  setPracticeMobileFloatingPad,
+} from '../../../utils/practiceMobileTradePrefs'
 
 /**
  * Trading renderer component
@@ -62,6 +67,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private lastBalance: number = 0
   private lastRpl: number = 0
   private lastUpl: number = 0
+
+  private handleMobileTradePrefsChange = () => {
+    if (this.props.practiceMode) this.forceUpdate()
+  }
 
   /**
    * Find the prop firm that has the given account
@@ -294,6 +303,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     // Listen for storage changes to update layout
     window.addEventListener('storage', this.handleStorageChange)
+    window.addEventListener(PRACTICE_MOBILE_TRADE_PREFS_EVENT, this.handleMobileTradePrefsChange)
     
     // Check for layout updates periodically (for same-tab changes)
     this.layoutCheckInterval = setInterval(() => {
@@ -325,6 +335,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     dismissMdsConnectionToast()
     document.removeEventListener('mousedown', this.handleClickOutside)
     window.removeEventListener('storage', this.handleStorageChange)
+    window.removeEventListener(PRACTICE_MOBILE_TRADE_PREFS_EVENT, this.handleMobileTradePrefsChange)
     const activeFirm = this.getActivePropFirm()
     if (activeFirm?.id === 'tradesea' && typeof activeFirm.setOnChartSymbolChange === 'function') {
       activeFirm.setOnChartSymbolChange(null)
@@ -733,8 +744,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
         {/* Main Content */}
         <main
-          className={`flex-1 flex flex-col min-h-0 overflow-hidden pb-20 lg:pb-4 ${
-            practiceMode ? 'px-2 py-2' : 'px-4 sm:px-6 lg:px-8 py-3 sm:py-4'
+          className={`flex-1 flex flex-col min-h-0 overflow-hidden lg:pb-4 ${
+            practiceMode
+              ? `px-2 py-1.5 ${this.state.showNav ? 'pb-[4.25rem]' : 'pb-1.5'}`
+              : 'px-4 sm:px-6 lg:px-8 py-3 sm:py-4 pb-20'
           }`}
         >
           {!practiceMode && (
@@ -847,7 +860,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   const { bid, ask } = resolveTradePanelBidAsk(book)
                   const price = side === 'buy' ? bid : ask
                   if (price == null || !Number.isFinite(price)) {
-                    toast.error(side === 'buy' ? 'Waiting for bid…' : 'Waiting for ask…')
+                    aurenToast.warning(
+                      side === 'buy' ? 'Waiting for bid' : 'Waiting for ask',
+                      'Market book not ready yet'
+                    )
                     return
                   }
                   if (tradeHandler instanceof PracticeTradeHandler) {
@@ -877,10 +893,16 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   onQuantityUpdate: this.handleQuantityUpdate,
                   onQuantityInputChange: this.handleQuantityInputChange,
                   onQuantityBlur: this.handleQuantityBlur,
-                  markPrice:
-                    tradeHandler && 'getActiveMarkPrice' in tradeHandler
-                      ? (tradeHandler as { getActiveMarkPrice: () => number | null }).getActiveMarkPrice()
-                      : null,
+                  markPrice: (() => {
+                    if (!tradeHandler || !('getActiveMarkPrice' in tradeHandler)) return null
+                    try {
+                      return (
+                        tradeHandler as { getActiveMarkPrice: () => number | null }
+                      ).getActiveMarkPrice()
+                    } catch {
+                      return null
+                    }
+                  })(),
                   getMarketBook: () => {
                     if (tradeHandler && 'getActiveMarketBook' in tradeHandler) {
                       const fromHandler = (
@@ -945,6 +967,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 }
 
                 const mobileOrderOpen = Boolean(this.state.practiceMobileOrderOpen)
+                const mobileTradePrefs = getPracticeMobileTradePrefs(practiceAccountId)
 
                 return (
                   <div className="relative flex flex-1 min-h-0 min-w-0 h-full w-full">
@@ -954,6 +977,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                       {
                         mobileScalpBar: (
                           <PracticeMobileScalpBar
+                            accountId={practiceAccountId}
                             props={padProps}
                             maxQty={practiceMaxQty}
                             isDark={isDark}
@@ -976,6 +1000,23 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           chartSymbol={chartSymbolLabel}
                           maxQty={practiceMaxQty}
                           onDock={() => this.forceUpdate()}
+                        />
+                      </div>
+                    )}
+                    {mobileTradePrefs.floatingPad && (
+                      <div className="lg:hidden">
+                        <PracticeDetachedTradePanel
+                          accountId={practiceAccountId}
+                          isDark={isDark}
+                          padProps={padProps}
+                          chartSymbol={chartSymbolLabel}
+                          maxQty={practiceMaxQty}
+                          dockMode="mobile-float"
+                          dockTitle="Pin quick trade"
+                          onDock={() => {
+                            setPracticeMobileFloatingPad(practiceAccountId, false)
+                            this.forceUpdate()
+                          }}
                         />
                       </div>
                     )}

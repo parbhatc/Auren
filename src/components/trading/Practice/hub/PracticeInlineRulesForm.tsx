@@ -13,6 +13,7 @@ import {
 import { resolvePracticePlanLimits, type PracticeAccountSize } from '../../../../services/practice/practicePlans'
 import { settingsInsetClass } from '../../../../styles/aurenTheme'
 import { t } from '../../../../utils/translator'
+import PracticeSwitch from '../PracticeSwitch'
 
 const CONTROL_W = 'w-[8.5rem]'
 
@@ -95,6 +96,12 @@ const PracticeInlineRulesForm = forwardRef<
   const [consistencyText, setConsistencyText] = useState(() => numText(rules.consistencyPct))
   const [maxMinisText, setMaxMinisText] = useState(() => String(limits.maxMinis))
   const [maxMicrosText, setMaxMicrosText] = useState(() => String(limits.maxMicros))
+  const [dailyLossLimitText, setDailyLossLimitText] = useState(() =>
+    rules.dailyLossLimit != null ? String(rules.dailyLossLimit) : ''
+  )
+  const [maxTradesText, setMaxTradesText] = useState(() =>
+    rules.maxTradesPerDay != null ? String(rules.maxTradesPerDay) : ''
+  )
 
   useEffect(() => {
     setProfitTargetText(numText(rules.profitTarget))
@@ -103,7 +110,9 @@ const PracticeInlineRulesForm = forwardRef<
     const lim = resolvePracticePlanLimits(size, rules)
     setMaxMinisText(String(lim.maxMinis))
     setMaxMicrosText(String(lim.maxMicros))
-  }, [rules, size, mode])
+    setDailyLossLimitText(rules.dailyLossLimit != null ? String(rules.dailyLossLimit) : '')
+    setMaxTradesText(rules.maxTradesPerDay != null ? String(rules.maxTradesPerDay) : '')
+  }, [rules, size, mode, defaults])
 
   const formTexts = () => ({
     profitTarget: profitTargetText,
@@ -111,6 +120,8 @@ const PracticeInlineRulesForm = forwardRef<
     consistencyPct: consistencyText,
     maxMinis: maxMinisText,
     maxMicros: maxMicrosText,
+    dailyLossLimit: dailyLossLimitText,
+    maxTradesPerDay: maxTradesText,
   })
 
   const commitPending = (): PracticeAccountRules =>
@@ -234,6 +245,45 @@ const PracticeInlineRulesForm = forwardRef<
           <option value="eod">End of Day</option>
           <option value="intraday">Intraday</option>
         </select>
+      </RuleRow>
+
+      <RuleRow
+        label={t('practice.lockout.dailyLossLimitLabel')}
+        hint={t('practice.lockout.dailyLossLimitHint')}
+        isDark={isDark}
+      >
+        <div className={`flex flex-col items-end gap-2 ${CONTROL_W}`}>
+          <PracticeSwitch
+            checked={rules.lockoutEnabled === true}
+            onChange={(on) => onChange({ ...rules, lockoutEnabled: on })}
+            isDark={isDark}
+            label={t('practice.lockout.enableLockouts')}
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            disabled={rules.lockoutEnabled !== true}
+            value={dailyLossLimitText}
+            onChange={(e) => setDailyLossLimitText(e.target.value.replace(/[^\d.]/g, ''))}
+            className={`${fieldClass(isDark)} w-full text-right disabled:opacity-40`}
+            placeholder="—"
+          />
+        </div>
+      </RuleRow>
+
+      <RuleRow
+        label={t('practice.lockout.maxTradesLabel')}
+        hint={t('practice.lockout.maxTradesHint')}
+        isDark={isDark}
+      >
+        <input
+          type="text"
+          inputMode="numeric"
+          value={maxTradesText}
+          onChange={(e) => setMaxTradesText(e.target.value.replace(/\D/g, ''))}
+          className={inputClass()}
+          placeholder={t('practice.lockout.maxTradesPlaceholder')}
+        />
       </RuleRow>
 
       {onReset && (

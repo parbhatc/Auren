@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { PRACTICE_CONTRACT_QTY_PRESETS } from '../../../constants/practice'
 import {
@@ -14,11 +14,14 @@ export function PracticeQuickTradeCard({
   maxQty,
   isDark,
   className = '',
+  headerActions,
 }: {
   props: PracticeTradePanelProps
   maxQty: number
   isDark: boolean
   className?: string
+  /** Shown in the quick-trade header (e.g. mobile float / minimize). */
+  headerActions?: ReactNode
 }) {
   const [ui, setUi] = useState<PracticeTradePanelSettings>(() => getPracticeTradePanelSettings())
   const qty = Number(props.quantity) || 1
@@ -43,13 +46,16 @@ export function PracticeQuickTradeCard({
         className={`overflow-hidden rounded-2xl border border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)] ${className}`}
         aria-label="Quick trade"
       >
-        <header className="flex items-center justify-between gap-3 border-b border-[#334155] bg-[#020617]/60 px-3 py-2.5">
-          <div className="min-w-0">
+        <header className="flex items-center justify-between gap-2 border-b border-[#334155] bg-[#020617]/60 px-3 py-2.5">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
               Quick trade
             </p>
             <p className="text-[10px] text-[#7d8590]">Tap size, then side</p>
           </div>
+          {headerActions ? (
+            <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
+          ) : null}
           <QtyStepper {...props} variant="dark" />
         </header>
 
@@ -125,13 +131,16 @@ export function PracticeQuickTradeCard({
       className={`overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40 ${className}`}
       aria-label="Quick trade"
     >
-      <header className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/90 px-3 py-2.5">
-        <div className="min-w-0">
+      <header className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90 px-3 py-2.5">
+        <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             Quick trade
           </p>
           <p className="text-[10px] text-slate-400">Tap size, then side</p>
         </div>
+        {headerActions ? (
+          <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
+        ) : null}
         <QtyStepper {...props} variant="light" />
       </header>
 

@@ -11,7 +11,7 @@ function toastOptions(kind: MdsConnectionToastKind): ToastOptions {
   const pending = kind === 'connecting' || kind === 'reconnecting'
   return {
     toastId: TOAST_ID,
-    className: 'mds-connection-toastify',
+    className: 'auren-toastify',
     icon: false,
     closeButton: kind !== 'connecting' && kind !== 'reconnecting',
     autoClose: pending ? false : kind === 'connected' ? 2800 : 4500,

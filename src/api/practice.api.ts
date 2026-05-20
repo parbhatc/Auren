@@ -124,6 +124,28 @@ export const practiceAPI = {
     return res.data
   },
 
+  startOfflineBracketWatcher: async (body: {
+    practiceAccountId: string
+    connectionGroupId: string
+    marketAccountId: string
+  }): Promise<{ success: boolean; started?: boolean; watching?: number; reason?: string }> => {
+    const res = await api.post('/practice/offline-bracket/start', body, {
+      headers: getAuthHeaders(),
+    })
+    return res.data
+  },
+
+  stopOfflineBracketWatcher: async (
+    reason = 'client_connected'
+  ): Promise<{ success: boolean }> => {
+    const res = await api.post(
+      '/practice/offline-bracket/stop',
+      { reason },
+      { headers: getAuthHeaders() }
+    )
+    return res.data
+  },
+
   saveBracketSnapshot: async (
     accountId: string,
     positionId: string,
@@ -139,6 +161,36 @@ export const practiceAPI = {
 
   clearPositions: async (accountId: string): Promise<{ success: boolean }> => {
     const res = await api.delete(`/practice/accounts/${accountId}/positions`, {
+      headers: getAuthHeaders(),
+    })
+    return res.data
+  },
+
+  getLockout: async (
+    accountId: string
+  ): Promise<{ success: boolean; lockout: Record<string, unknown> }> => {
+    const res = await api.get(`/practice/accounts/${accountId}/lockout`, {
+      headers: getAuthHeaders(),
+    })
+    return res.data
+  },
+
+  setLockout: async (
+    accountId: string,
+    minutes: number
+  ): Promise<{ success: boolean; account: PracticeAccount; lockout: Record<string, unknown> }> => {
+    const res = await api.post(
+      `/practice/accounts/${accountId}/lockout`,
+      { minutes },
+      { headers: getAuthHeaders() }
+    )
+    return res.data
+  },
+
+  clearLockout: async (
+    accountId: string
+  ): Promise<{ success: boolean; account: PracticeAccount; lockout: Record<string, unknown> }> => {
+    const res = await api.delete(`/practice/accounts/${accountId}/lockout`, {
       headers: getAuthHeaders(),
     })
     return res.data

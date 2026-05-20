@@ -36,25 +36,32 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
   const [state, setState] = useState<MdsConnectionState>(() => mds?.getConnectionState() ?? 'disconnected')
   const [menuOpen, setMenuOpen] = useState(false)
   const [autoReconnect, setAutoReconnect] = useState(() => mds?.isAutoReconnectEnabled() ?? true)
+  const [reconnectOnLimit, setReconnectOnLimit] = useState(
+    () => mds?.isReconnectOnLimitEnabled() ?? false
+  )
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!mds) {
       setState('disconnected')
       setAutoReconnect(true)
+      setReconnectOnLimit(false)
       return
     }
     setState(mds.getConnectionState())
     setAutoReconnect(mds.isAutoReconnectEnabled())
+    setReconnectOnLimit(mds.isReconnectOnLimitEnabled())
     const offConnection = mds.on('connection', (s) => setState(s))
     const offOpen = mds.on('open', () => setState('connected'))
     const offClose = mds.on('close', () => setState('disconnected'))
     const offAuto = mds.on('autoReconnect', (enabled) => setAutoReconnect(enabled))
+    const offLimit = mds.on('reconnectOnLimit', (enabled) => setReconnectOnLimit(enabled))
     return () => {
       offConnection()
       offOpen()
       offClose()
       offAuto()
+      offLimit()
     }
   }, [mds])
 
@@ -96,6 +103,12 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
     mds?.setAutoReconnectEnabled(next)
     setAutoReconnect(next)
   }, [autoReconnect, mds])
+
+  const toggleReconnectOnLimit = useCallback(() => {
+    const next = !reconnectOnLimit
+    mds?.setReconnectOnLimitEnabled(next)
+    setReconnectOnLimit(next)
+  }, [mds, reconnectOnLimit])
 
   const title = connected
     ? 'Market data connected. Stream options.'
@@ -182,7 +195,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 <p className="text-sm font-medium text-[#e6edf3]">Auto-reconnect</p>
                 <p className="text-[10px] text-[#7d8590] leading-snug">
                   {autoReconnect
-                    ? 'Retries after drops & limits'
+                    ? 'Retries after unexpected drops'
                     : 'Manual refresh only'}
                 </p>
               </div>
@@ -200,6 +213,40 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 <span
                   className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${
                     autoReconnect ? 'left-[1.35rem]' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div
+              role="menuitem"
+              className={`flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 hover:bg-[#1e293b] ${
+                !autoReconnect ? 'opacity-50' : ''
+              }`}
+            >
+              <div className="min-w-0 pr-1">
+                <p className="text-sm font-medium text-[#e6edf3]">Connect on limit</p>
+                <p className="text-[10px] text-[#7d8590] leading-snug">
+                  {reconnectOnLimit && autoReconnect
+                    ? 'Retries when connection cap is hit'
+                    : 'Off — limit closes stay offline'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={reconnectOnLimit}
+                disabled={!autoReconnect}
+                onClick={toggleReconnectOnLimit}
+                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50 disabled:cursor-not-allowed ${
+                  reconnectOnLimit && autoReconnect
+                    ? 'border-[#8b5cf6]/60 bg-[#8b5cf6]'
+                    : 'border-[#475569] bg-[#334155]'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${
+                    reconnectOnLimit && autoReconnect ? 'left-[1.35rem]' : 'left-0.5'
                   }`}
                 />
               </button>

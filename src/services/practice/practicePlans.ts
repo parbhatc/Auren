@@ -16,6 +16,12 @@ export interface PracticeAccountRules {
   maxMicros?: number
   /** Per contract, per fill (open and close). Stored on account rules server-side. */
   commissionPerContract?: number
+  /** Daily loss lockout ($). Null = 50% of max loss when lockouts enabled. */
+  dailyLossLimit?: number | null
+  /** Max round-trip trades per session day (6pm ET reset). Null = no limit. */
+  maxTradesPerDay?: number | null
+  /** When false, daily loss / max-trade lockouts are disabled. */
+  lockoutEnabled?: boolean
 }
 
 export interface PracticePlanRules extends PracticeAccountRules {
@@ -52,6 +58,9 @@ export function getDefaultPracticeRules(
     drawdownType: 'eod',
     consistencyPct: mode === 'eval' ? 50 : null,
     minProfitableDays: 2,
+    lockoutEnabled: false,
+    dailyLossLimit: null,
+    maxTradesPerDay: null,
   }
 }
 

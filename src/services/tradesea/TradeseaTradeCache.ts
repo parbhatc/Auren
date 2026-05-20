@@ -1,4 +1,4 @@
-import { toast } from 'react-toastify'
+import { aurenToast } from '../../utils/aurenToast'
 import ChartTradeCache from '../../components/common/ChartTradeCache'
 import { tradeseaAPI } from '../../api/tradesea.api'
 import { bracketOrdersForPosition } from './tradeseaBracketOrders'
@@ -241,17 +241,17 @@ export class TradeseaTradeCache extends ChartTradeCache {
           apiResponse: res,
         })
         if (res.success && res.s === 'ok') {
-          toast.success('Stop loss removed')
+          aurenToast.success('Stop loss removed')
           clearLocalStopLoss()
           setTimeout(() => this.handler.syncBracketsFromOrders(), 400)
         } else {
-          toast.error(res.error || res.errmsg || 'Failed to cancel stop loss')
+          aurenToast.error(res.error || res.errmsg || 'Failed to cancel stop loss')
         }
       } catch (err) {
         debugTradeseaSl('api:cancel-error', {
           message: err instanceof Error ? err.message : String(err),
         })
-        toast.error(err instanceof Error ? err.message : 'Failed to cancel stop loss')
+        aurenToast.error(err instanceof Error ? err.message : 'Failed to cancel stop loss')
       } finally {
         this.stopLossCancelInFlight = false
       }
@@ -276,7 +276,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
         position.stopLoss = price
         const cached = position as TradeseaCachedPosition
         cached.bracketPendingUntil = Date.now() + BRACKET_PENDING_MS
-        toast.success(`Stop loss updated to ${price}`)
+        aurenToast.success(`Stop loss updated to ${price}`)
         const cacheKey = String(position.symbol || this.activeChartSymbol())
         this.ensurePositionLines(
           cacheKey,
@@ -288,13 +288,13 @@ export class TradeseaTradeCache extends ChartTradeCache {
         debugTradeseaSl('handler:modify-ok-optimistic-line', { price, cacheKey })
         setTimeout(() => this.handler.syncBracketsFromOrders(), 600)
       } else {
-        toast.error(res.error || res.errmsg || 'Failed to update stop loss')
+        aurenToast.error(res.error || res.errmsg || 'Failed to update stop loss')
       }
     } catch (err) {
       debugTradeseaSl('api:modify-error', {
         message: err instanceof Error ? err.message : String(err),
       })
-      toast.error(err instanceof Error ? err.message : 'Failed to update stop loss')
+      aurenToast.error(err instanceof Error ? err.message : 'Failed to update stop loss')
     }
   }
 
@@ -319,14 +319,14 @@ export class TradeseaTradeCache extends ChartTradeCache {
           orderId: String(orderId),
         })
         if (res.success && res.s === 'ok') {
-          toast.success('Take profit removed')
+          aurenToast.success('Take profit removed')
           position.takeProfitOrderId = null
           position.takeProfit = null
         } else {
-          toast.error(res.error || res.errmsg || 'Failed to cancel take profit')
+          aurenToast.error(res.error || res.errmsg || 'Failed to cancel take profit')
         }
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to cancel take profit')
+        aurenToast.error(err instanceof Error ? err.message : 'Failed to cancel take profit')
       }
       return
     }
@@ -341,7 +341,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
         position.takeProfit = price
         const cached = position as TradeseaCachedPosition
         cached.bracketPendingUntil = Date.now() + BRACKET_PENDING_MS
-        toast.success(`Take profit updated to ${price}`)
+        aurenToast.success(`Take profit updated to ${price}`)
         const cacheKey = String(position.symbol || this.activeChartSymbol())
         this.ensurePositionLines(
           cacheKey,
@@ -352,10 +352,10 @@ export class TradeseaTradeCache extends ChartTradeCache {
         )
         setTimeout(() => this.handler.syncBracketsFromOrders(), 600)
       } else {
-        toast.error(res.error || res.errmsg || 'Failed to update take profit')
+        aurenToast.error(res.error || res.errmsg || 'Failed to update take profit')
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update take profit')
+      aurenToast.error(err instanceof Error ? err.message : 'Failed to update take profit')
     }
   }
 
@@ -633,14 +633,14 @@ export class TradeseaTradeCache extends ChartTradeCache {
     try {
       const result = await tradeseaAPI.closePosition({ accountId, positionId })
       if (result.success && result.s === 'ok') {
-        toast.success('Position closed')
+        aurenToast.success('Position closed')
         super.handleClosePosition(position, _price, _exitTime, context)
         setTimeout(() => this.handler.syncFromStream(), 600)
       } else {
-        toast.error(result.error || result.errmsg || 'Failed to close position')
+        aurenToast.error(result.error || result.errmsg || 'Failed to close position')
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to close position')
+      aurenToast.error(err instanceof Error ? err.message : 'Failed to close position')
     }
   }
 }

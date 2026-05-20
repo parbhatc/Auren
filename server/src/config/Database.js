@@ -358,6 +358,26 @@ class Database {
     }
 
     try {
+      await run(
+        `ALTER TABLE practice_market_data ADD COLUMN offline_mode_positions INTEGER NOT NULL DEFAULT 0`
+      )
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
+      await run(`ALTER TABLE practice_accounts ADD COLUMN lockout_until TEXT`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
+      await run(`ALTER TABLE practice_accounts ADD COLUMN lockout_reason TEXT`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
       await run(`ALTER TABLE practice_trades ADD COLUMN forced_exit INTEGER DEFAULT 0`)
     } catch (err) {
       // Column already exists

@@ -18,12 +18,14 @@ export function PracticeScalpFloat({
   maxQty,
   onDock,
   onDragStart,
+  dockTitle = 'Dock to chart',
 }: {
   chartSymbol: string
   props: PracticeTradePanelProps
   maxQty: number
   onDock: () => void
   onDragStart?: (clientX: number, clientY: number) => void
+  dockTitle?: string
 }) {
   const [bookTick, setBookTick] = useState(0)
   const [panelUi, setPanelUi] = useState(() => getPracticeTradePanelSettings())
@@ -75,11 +77,12 @@ export function PracticeScalpFloat({
           <button
             type="button"
             onClick={onDock}
-            title="Dock to chart"
+            title={dockTitle}
+            aria-label={dockTitle}
             className="p-1 hover:opacity-80"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <svg viewBox="0 0 13 13" fill="none" width="16" height="16">
+            <svg viewBox="0 0 13 13" fill="none" width="16" height="16" aria-hidden>
               <path
                 d="M12.5 12.5H9M12.5 12.5L13.5 9M12.5 12.5L8.5 8.5M9 0.5H12.5M12.5 0.5V4M12.5 0.5L8.5 4.5M4 0.5H0.5M0.5 0.5V4M0.5 0.5L4.5 4.5M0.5 9V12.5M0.5 12.5H4M0.5 12.5L4.5 8.5"
                 stroke="#A4A8B2"

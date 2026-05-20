@@ -18,6 +18,9 @@ export function getDefaultRules(size, mode) {
     drawdownType: 'eod',
     consistencyPct: mode === 'eval' ? 50 : null,
     minProfitableDays: 2,
+    lockoutEnabled: false,
+    dailyLossLimit: null,
+    maxTradesPerDay: null,
   }
 }
 

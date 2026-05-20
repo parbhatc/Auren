@@ -1,4 +1,4 @@
-import { toast } from 'react-toastify'
+import { aurenToast } from '../../utils/aurenToast'
 import { tradeseaAPI } from '../../api/tradesea.api'
 import { TradeseaPropFirm } from '../propfirms/TradeseaPropFirm'
 import {
@@ -403,7 +403,7 @@ export class TradeseaTradeHandler {
   async logButtonPress(buttonName: string, data?: { quantity?: number; symbol?: string }): Promise<void> {
     const accountId = this.propFirm.selectedAccountId
     if (!accountId) {
-      toast.error('Select a Tradesea account first')
+      aurenToast.error('Select a Tradesea account first')
       return
     }
 
@@ -415,7 +415,7 @@ export class TradeseaTradeHandler {
       case 'Sell': {
         const qty = Number(data?.quantity)
         if (!Number.isFinite(qty) || qty <= 0) {
-          toast.error('Enter a valid quantity')
+          aurenToast.error('Enter a valid quantity')
           return
         }
         const side = buttonName === 'Buy' ? 'buy' : 'sell'
@@ -430,15 +430,15 @@ export class TradeseaTradeHandler {
           })
 
           if (result.success && result.s === 'ok') {
-            toast.success(`${buttonName} order placed (${qty} @ ${instrument})`)
+            aurenToast.success(`${buttonName} order placed (${qty} @ ${instrument})`)
             this.scheduleRefresh(chartSymbol)
           } else {
-            toast.error(result.error || result.errmsg || `Failed to place ${side} order`)
+            aurenToast.error(result.error || result.errmsg || `Failed to place ${side} order`)
           }
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : `Failed to place ${side} order`
           console.error('[TradeseaTradeHandler] placeOrder failed:', err)
-          toast.error(msg)
+          aurenToast.error(msg)
         }
         break
       }
@@ -447,7 +447,7 @@ export class TradeseaTradeHandler {
         const qty = Number(data?.quantity)
         const position = this.findPositionForChart(instrument)
         if (!position) {
-          toast.error(`No open position for ${instrument}`)
+          aurenToast.error(`No open position for ${instrument}`)
           return
         }
 
@@ -462,13 +462,13 @@ export class TradeseaTradeHandler {
             amount,
           })
           if (result.success && result.s === 'ok') {
-            toast.success(amount ? `Closed ${amount} contract(s)` : 'Position closed')
+            aurenToast.success(amount ? `Closed ${amount} contract(s)` : 'Position closed')
             this.scheduleRefresh(chartSymbol)
           } else {
-            toast.error(result.error || result.errmsg || 'Failed to close position')
+            aurenToast.error(result.error || result.errmsg || 'Failed to close position')
           }
         } catch (err: unknown) {
-          toast.error(err instanceof Error ? err.message : 'Failed to close position')
+          aurenToast.error(err instanceof Error ? err.message : 'Failed to close position')
         }
         break
       }
@@ -476,7 +476,7 @@ export class TradeseaTradeHandler {
       case 'Reverse Position': {
         const position = this.findPositionForChart(instrument)
         if (!position) {
-          toast.error(`No open position for ${instrument}`)
+          aurenToast.error(`No open position for ${instrument}`)
           return
         }
         try {
@@ -485,13 +485,13 @@ export class TradeseaTradeHandler {
             positionId: position.id,
           })
           if (result.success && result.s === 'ok') {
-            toast.success('Position reversed')
+            aurenToast.success('Position reversed')
             this.scheduleRefresh(chartSymbol)
           } else {
-            toast.error(result.error || result.errmsg || 'Failed to reverse position')
+            aurenToast.error(result.error || result.errmsg || 'Failed to reverse position')
           }
         } catch (err: unknown) {
-          toast.error(err instanceof Error ? err.message : 'Failed to reverse position')
+          aurenToast.error(err instanceof Error ? err.message : 'Failed to reverse position')
         }
         break
       }
@@ -500,13 +500,13 @@ export class TradeseaTradeHandler {
         try {
           const result = await tradeseaAPI.flattenAll(accountId)
           if (result.success && result.s === 'ok') {
-            toast.success('Flattened all positions')
+            aurenToast.success('Flattened all positions')
             this.scheduleRefresh(chartSymbol)
           } else {
-            toast.error(result.error || result.errmsg || 'Failed to flatten')
+            aurenToast.error(result.error || result.errmsg || 'Failed to flatten')
           }
         } catch (err: unknown) {
-          toast.error(err instanceof Error ? err.message : 'Failed to flatten')
+          aurenToast.error(err instanceof Error ? err.message : 'Failed to flatten')
         }
         break
       }
@@ -519,18 +519,18 @@ export class TradeseaTradeHandler {
   async cancelAllWorkingOrders(): Promise<void> {
     const accountId = this.propFirm.selectedAccountId
     if (!accountId) {
-      toast.error('Select a Tradesea account first')
+      aurenToast.error('Select a Tradesea account first')
       return
     }
     try {
       const result = await tradeseaAPI.cancelAllOrders(accountId)
       if (result.success && result.s === 'ok') {
-        toast.success('Cancelled all working orders')
+        aurenToast.success('Cancelled all working orders')
       } else {
-        toast.error(result.error || result.errmsg || 'Failed to cancel orders')
+        aurenToast.error(result.error || result.errmsg || 'Failed to cancel orders')
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel orders')
+      aurenToast.error(err instanceof Error ? err.message : 'Failed to cancel orders')
     }
   }
 }

@@ -175,8 +175,10 @@ export const renderPracticeTradeLayout = (
   const mobileScalpBar = options?.mobileScalpBar ?? null
   return (
     <div className="flex flex-1 min-h-0 min-w-0 h-full w-full gap-4 pr-0 lg:pr-2">
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col min-w-0 gap-3">
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col min-h-0">{chartElement}</div>
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col min-w-0 gap-2 lg:gap-3">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+          {chartElement}
+        </div>
         {mobileScalpBar}
       </div>
       {panelElement != null && (

@@ -27,6 +27,8 @@ export function commitPracticeRulesFromForm(
     consistencyPct: string
     maxMinis: string
     maxMicros: string
+    dailyLossLimit: string
+    maxTradesPerDay: string
   },
   mode: PracticeAccountMode,
   size: PracticeAccountSize,
@@ -48,6 +50,10 @@ export function commitPracticeRulesFromForm(
         : parsePercent(texts.consistencyPct),
     maxMinis,
     maxMicros,
+    lockoutEnabled: rules.lockoutEnabled === true,
+    dailyLossLimit:
+      rules.lockoutEnabled === true ? parsePositive(texts.dailyLossLimit) : null,
+    maxTradesPerDay: parsePositive(texts.maxTradesPerDay) ?? null,
   }
 }
 
@@ -57,6 +63,8 @@ export type PracticeRulesFormTexts = {
   consistencyPct: string
   maxMinis: string
   maxMicros: string
+  dailyLossLimit: string
+  maxTradesPerDay: string
 }
 
 /** Validate raw form text before create (empty fields are errors, not defaults). */

@@ -1,4 +1,4 @@
-import { toast } from 'react-toastify'
+import { aurenToast } from '../../utils/aurenToast'
 import { practiceAPI, type PracticePosition } from '../../api/practice.api'
 import {
   getPracticeAccountById,
@@ -26,6 +26,10 @@ import {
   type PracticePendingOrder,
 } from './practicePendingOrders'
 import { evaluatePracticeRules } from './practiceRules'
+import { evaluatePracticeLockout } from './practiceLockout'
+import { t } from '../../utils/translator'
+import { getPracticeMarketDataSettings } from '../../constants/practice'
+import { getTradeseaConnectionGroupId } from '../tradesea/tradeseaDeviceFingerprint'
 
 export class PracticeTradeHandler {
   tradeCache: PracticeTradeCache | null = null
@@ -49,6 +53,27 @@ export class PracticeTradeHandler {
 
   getAccount(): PracticeAccount | undefined {
     return getPracticeAccountById(this.practiceAccountId)
+  }
+
+  /** Lockout message when trading is blocked, or null if allowed. */
+  getTradingLockMessage(): string | null {
+    const account = this.getAccount()
+    if (!account) return 'Practice account not found'
+    if (account.status !== 'active') {
+      return account.status === 'blown'
+        ? 'Practice account has blown. Max drawdown reached.'
+        : account.status === 'passed'
+          ? 'Practice evaluation already passed'
+          : 'Practice account is not active'
+    }
+    if (this.isAccountBlown() || this.blownModalShown) {
+      return 'Practice account has blown. Max drawdown reached.'
+    }
+    if (this.passedModalShown || this.hasEvalPassed()) {
+      return 'Practice evaluation already passed'
+    }
+    const lock = evaluatePracticeLockout(account)
+    return lock.locked ? lock.message : null
   }
 
   setUnrealizedPl(value: number): void {
@@ -90,6 +115,7 @@ export class PracticeTradeHandler {
 
     if (typeof window !== 'undefined') {
       window.addEventListener('pagehide', () => {
+        if (!getPracticeMarketDataSettings().offlineModePositions) return
         void this.tradeCache?.saveBracketSnapshotsForOpenPositions('page_hide')
       })
     }
@@ -247,6 +273,39 @@ export class PracticeTradeHandler {
 
   async onMdsDisconnected(): Promise<void> {
     await this.tradeCache?.saveBracketSnapshotsForOpenPositions('ws_disconnect')
+
+    const md = getPracticeMarketDataSettings()
+    if (!md.offlineModePositions || !this.tradeCache?.hasAnyOpenPosition()) return
+
+    const streamConfig = this.propFirm.chartServices?.streamConfig as
+      | { userId?: string; accountId?: string }
+      | undefined
+    const mdsUserId = streamConfig?.userId
+    const marketAccountId = md.accountId || streamConfig?.accountId || ''
+    if (!mdsUserId || !marketAccountId) {
+      console.warn('[Practice] offline bracket: missing market account or stream user id')
+      return
+    }
+
+    try {
+      const connectionGroupId = await getTradeseaConnectionGroupId(mdsUserId)
+      const res = await practiceAPI.startOfflineBracketWatcher({
+        practiceAccountId: this.practiceAccountId,
+        connectionGroupId,
+        marketAccountId,
+      })
+      console.info('[Practice] offline bracket watcher', res)
+    } catch (err) {
+      console.warn('[Practice] offline bracket start failed', err)
+    }
+  }
+
+  async onMdsReconnected(): Promise<void> {
+    try {
+      await practiceAPI.stopOfflineBracketWatcher('client_connected')
+    } catch {
+      /* ignore */
+    }
   }
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number; low?: number; high?: number; time?: number }): void {
@@ -270,34 +329,29 @@ export class PracticeTradeHandler {
     limitPrice: number,
     brackets?: { stopLoss?: number | null; takeProfit?: number | null }
   ): Promise<void> {
+    const lockMsg = this.getTradingLockMessage()
+    if (lockMsg) {
+      aurenToast.error(lockMsg)
+      return
+    }
+
     const account = this.getAccount()
-    if (!account || account.status !== 'active') {
-      toast.error('Practice account is not active')
-      return
-    }
-    if (this.isAccountBlown() || this.blownModalShown) {
-      toast.error('Practice account has blown. Max drawdown reached.')
-      return
-    }
-    if (this.passedModalShown || this.hasEvalPassed()) {
-      toast.error('Practice evaluation already passed')
-      return
-    }
+    if (!account) return
 
     const chartSymbol = this.getChartSymbol()
     const qty = Number(quantity)
     if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error('Enter a valid quantity')
+      aurenToast.error('Enter a valid quantity')
       return
     }
     if (!Number.isFinite(limitPrice) || limitPrice <= 0) {
-      toast.error('Enter a valid limit price')
+      aurenToast.error('Enter a valid limit price')
       return
     }
 
     const mark = this.getMarkPrice(chartSymbol)
     if (mark == null) {
-      toast.error('Waiting for market data…')
+      aurenToast.error('Waiting for market data…')
       return
     }
 
@@ -316,7 +370,7 @@ export class PracticeTradeHandler {
       datafeed
     )
     if (sizeErr) {
-      toast.error(sizeErr)
+      aurenToast.error(sizeErr)
       return
     }
 
@@ -358,7 +412,7 @@ export class PracticeTradeHandler {
     if (idx < 0) return
     const [order] = this.pendingOrders.splice(idx, 1)
     if (order) this.removePendingOrderLine(order)
-    toast.info('Order canceled')
+    aurenToast.info(t('toast.order.canceledTitle'), t('toast.order.canceledSubtitle'))
   }
 
   private async attachPendingOrderLine(order: PracticePendingOrder): Promise<void> {
@@ -505,10 +559,17 @@ export class PracticeTradeHandler {
     if (!stream) return null
 
     const chartSym = this.getChartSymbol()
-    const chart = (this.widget as { chart?: () => unknown })?.chart?.()
-    const lastBar = datafeed?.getLastBarForChart?.(chart)
-    const barClose =
-      lastBar?.close != null && Number.isFinite(lastBar.close) ? lastBar.close : null
+    let barClose: number | null = null
+    try {
+      const chart = (this.widget as { chart?: () => unknown } | null | undefined)?.chart?.()
+      if (chart) {
+        const lastBar = datafeed?.getLastBarForChart?.(chart)
+        barClose =
+          lastBar?.close != null && Number.isFinite(lastBar.close) ? lastBar.close : null
+      }
+    } catch {
+      // Widget may be torn down during theme change or chart remount.
+    }
 
     const sameAsActiveChart =
       this.normalizeSymbolKey(stream) === this.normalizeSymbolKey(chartSym) ||
@@ -607,19 +668,14 @@ export class PracticeTradeHandler {
       takeProfit?: number | null
     }
   ): Promise<void> {
+    const lockMsg = this.getTradingLockMessage()
+    if (lockMsg) {
+      aurenToast.error(lockMsg)
+      return
+    }
+
     const account = this.getAccount()
-    if (!account || account.status !== 'active') {
-      toast.error('Practice account is not active')
-      return
-    }
-    if (this.isAccountBlown() || this.blownModalShown) {
-      toast.error('Practice account has blown. Max drawdown reached.')
-      return
-    }
-    if (this.passedModalShown || this.hasEvalPassed()) {
-      toast.error('Practice evaluation already passed')
-      return
-    }
+    if (!account) return
 
     const chartSymbol = this.getChartSymbol()
     const isEntry = buttonName === 'Buy' || buttonName === 'Sell'
@@ -628,14 +684,14 @@ export class PracticeTradeHandler {
 
     if (isEntry || isReverse) {
       if (!Number.isFinite(qty) || qty <= 0) {
-        toast.error('Enter a valid quantity')
+        aurenToast.error('Enter a valid quantity')
         return
       }
     }
 
     const mark = this.getMarkPrice(chartSymbol)
     if (mark == null) {
-      toast.error('Waiting for market data…')
+      aurenToast.error('Waiting for market data…')
       return
     }
 
@@ -670,7 +726,7 @@ export class PracticeTradeHandler {
         }
         const sizeErr = validatePracticePositionSize(account, chartSymbol, projectedAbs('buy'), datafeed)
         if (sizeErr) {
-          toast.error(sizeErr)
+          aurenToast.error(sizeErr)
           return
         }
         cache.onOpenPosition(chartSymbol, mark, qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
@@ -697,7 +753,7 @@ export class PracticeTradeHandler {
         }
         const sizeErr = validatePracticePositionSize(account, chartSymbol, projectedAbs('sell'), datafeed)
         if (sizeErr) {
-          toast.error(sizeErr)
+          aurenToast.error(sizeErr)
           return
         }
         cache.onOpenPosition(chartSymbol, mark, -qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
@@ -717,7 +773,7 @@ export class PracticeTradeHandler {
       case 'Close Position': {
         const resolved = cache.getPosition(chartSymbol)
         if (!resolved?.contracts) {
-          toast.error('No open position')
+          aurenToast.error('No open position')
           return
         }
         cache.onClosePosition(chartSymbol, Math.abs(resolved.contracts as number), mark)
@@ -726,7 +782,7 @@ export class PracticeTradeHandler {
       case 'Reverse Position': {
         const resolved = cache.getPosition(chartSymbol)
         if (!resolved?.contracts) {
-          toast.error('No open position')
+          aurenToast.error('No open position')
           return
         }
         const c = resolved.contracts as number
@@ -760,7 +816,11 @@ export class PracticeTradeHandler {
       this.removePendingOrderLine(order)
     }
     this.pendingOrders = []
-    toast.success(n > 0 ? `Canceled ${n} working order(s)` : 'No working orders')
+    if (n > 0) {
+      aurenToast.success(t('toast.order.workingCanceledTitle'), t('toast.order.workingCanceledSubtitle'))
+    } else {
+      aurenToast.info(t('toast.order.workingCanceledTitle'), t('toast.order.workingNoneSubtitle'))
+    }
   }
 
   getPendingOrderCount(): number {

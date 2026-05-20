@@ -6,6 +6,8 @@ import { PracticeAccountStatsBar } from '../Practice/PracticeAccountStatsBar'
 import { MdsNetworkStatusButton } from '../MdsNetworkStatusButton'
 import { PracticeHeaderThemeButton } from '../Practice/PracticeHeaderThemeButton'
 import PracticeAccountStatusBar from '../Practice/PracticeAccountStatusBar'
+import PracticeLockoutCard from '../Practice/PracticeLockoutCard'
+import PracticeHeaderTradingSettings from '../Practice/PracticeHeaderTradingSettings'
 import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
 
 export function PracticeTradeHeader({
@@ -91,6 +93,9 @@ export function PracticeTradeHeader({
         <div className="flex-1 min-w-0" aria-hidden />
 
         <div className="flex items-center gap-0.5 shrink-0">
+          {practiceAccountId && !practiceAccountStatus ? (
+            <PracticeHeaderTradingSettings practiceAccountId={practiceAccountId} isDark={isDark} />
+          ) : null}
           {(mdsClient || onReconnectMds) && (
             <MdsNetworkStatusButton mds={mdsClient} onReconnect={onReconnectMds} />
           )}
@@ -131,6 +136,10 @@ export function PracticeTradeHeader({
           hasOpenPosition={hasOpenPosition}
         />
       )}
+
+      {practiceAccountId && !practiceAccountStatus ? (
+        <PracticeLockoutCard practiceAccountId={practiceAccountId} isDark={isDark} />
+      ) : null}
     </div>
   )
 }

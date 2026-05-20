@@ -200,17 +200,21 @@ export default function PracticeTradePanel(props: PracticeTradePanelProps) {
     return () => window.removeEventListener('practiceAccountsChanged', onChange)
   }, [sync])
 
+  const subscribeMarketBookRef = useRef(subscribeMarketBook)
+  subscribeMarketBookRef.current = subscribeMarketBook
+
   const bookTickRafRef = useRef<number | null>(null)
   useEffect(() => {
-    if (!subscribeMarketBook) return
-    return subscribeMarketBook(() => {
+    const sub = subscribeMarketBookRef.current
+    if (!sub) return
+    return sub(() => {
       if (bookTickRafRef.current != null) return
       bookTickRafRef.current = requestAnimationFrame(() => {
         bookTickRafRef.current = null
         setBookTick((n) => n + 1)
       })
     })
-  }, [subscribeMarketBook])
+  }, [chartSymbol, practiceAccountId])
   useEffect(() => {
     return () => {
       if (bookTickRafRef.current != null) cancelAnimationFrame(bookTickRafRef.current)

@@ -9,6 +9,27 @@ import {
   type PracticeAccountSize,
 } from '../services/practice/practicePlans'
 import { computeDrawdownFloor, evaluatePracticeRules } from '../services/practice/practiceRules'
+import {
+  PRACTICE_PROP_FIRM_CONFIGS,
+  getPracticePropFirmConfig,
+  practiceFirmHasExclusiveMdsSlot,
+  practiceFirmShowsOfflineModeSection,
+  practiceFirmSupportsOfflineBracketWatcher,
+  resolveOfflineModePositionsForFirm,
+  type PracticePropFirmConfigId,
+} from './practicePropFirms'
+
+export {
+  PRACTICE_PROP_FIRM_CONFIGS,
+  getPracticePropFirmConfig,
+  practiceFirmHasExclusiveMdsSlot,
+  practiceFirmShowsOfflineModeSection,
+  practiceFirmSupportsOfflineBracketWatcher,
+  resolveOfflineModePositionsForFirm,
+  type PracticePropFirmConfigId,
+  type PracticeMarketDataSlotPolicy,
+  type PracticePropFirmMarketDataConfig,
+} from './practicePropFirms'
 
 export const PRACTICE_STORAGE_KEYS = {
   MARKET_DATA: 'practiceMarketData',
@@ -42,8 +63,11 @@ export const PRACTICE_CONTRACT_SYMBOL_PRESETS = [
   'RTY',
 ] as const
 
-export const PRACTICE_PROP_FIRMS = [{ id: 'tradesea', displayName: 'Tradesea' }] as const
-export type PracticePropFirmId = (typeof PRACTICE_PROP_FIRMS)[number]['id']
+export const PRACTICE_PROP_FIRMS = PRACTICE_PROP_FIRM_CONFIGS.map(({ id, displayName }) => ({
+  id,
+  displayName,
+}))
+export type PracticePropFirmId = PracticePropFirmConfigId
 
 export type PracticeAccountStatus = 'active' | 'passed' | 'blown'
 
@@ -51,6 +75,8 @@ export interface PracticeMarketDataSettings {
   propFirmId: string
   accountId: string
   accountLabel: string
+  /** When true, server holds the MDS slot while away and tracks SL/TP on open bracket positions. */
+  offlineModePositions?: boolean
 }
 
 export interface PracticeDayPnL {
@@ -75,6 +101,8 @@ export interface PracticeAccount {
   blownAt?: string
   marketDataAccountId: string
   marketDataAccountLabel: string
+  lockoutUntil?: string | null
+  lockoutReason?: string | null
 }
 
 let accountsCache: PracticeAccount[] | null = null
@@ -105,11 +133,23 @@ function loadLocalMarketData(): PracticeMarketDataSettings {
   } catch {
     /* ignore */
   }
+  const propFirmId = localStorage.getItem(PRACTICE_PROP_FIRM_KEY) || 'tradesea'
   return {
-    propFirmId: localStorage.getItem(PRACTICE_PROP_FIRM_KEY) || 'tradesea',
+    propFirmId,
     accountId: localStorage.getItem(PRACTICE_ACCOUNT_ID_KEY) || '',
     accountLabel: localStorage.getItem(PRACTICE_ACCOUNT_LABEL_KEY) || '',
+    offlineModePositions: getPracticePropFirmConfig(propFirmId).defaultOfflineModePositions,
   }
+}
+
+/** Effective offline bracket mode for the selected prop firm. */
+export function resolveOfflineModePositions(
+  settings?: PracticeMarketDataSettings | null
+): boolean {
+  return resolveOfflineModePositionsForFirm(
+    settings?.propFirmId,
+    settings?.offlineModePositions
+  )
 }
 
 async function migrateLocalToApiIfNeeded(): Promise<void> {
@@ -167,13 +207,16 @@ export async function refreshPracticeFromApi(options?: { notify?: boolean }): Pr
 }
 
 export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
-  return (
+  const raw =
     marketDataCache || {
       propFirmId: 'tradesea',
       accountId: '',
       accountLabel: '',
     }
-  )
+  return {
+    ...raw,
+    offlineModePositions: resolveOfflineModePositions(raw),
+  }
 }
 
 export async function savePracticeMarketDataSettings(
