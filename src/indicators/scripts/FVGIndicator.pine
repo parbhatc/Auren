@@ -1,0 +1,33 @@
+//@version=5
+indicator("Fair Value Gap", "FVG", overlay = true, max_boxes_count = 500)
+showFvg      = input.bool(true,  "Show FVG",        group = "FVG Settings")
+lengthOfBox  = input.int(20,     "Length of Box",   group = "FVG Settings", minval = 1, maxval = 50)
+bullishColor = input.color(color.new(color.green, 80), "Bullish Color", group = "FVG Settings")
+bearishColor = input.color(color.new(color.red,   80), "Bearish Color", group = "FVG Settings")
+
+bullishFvg = low > high[2]
+bearishFvg = high < low[2]
+
+if showFvg and bullishFvg
+    box.new(
+         left   = bar_index[2],
+         top    = low,
+         right  = bar_index + lengthOfBox,
+         bottom = high[2],
+         bgcolor      = bullishColor,
+         border_color = bullishColor,
+         text         = "FVG",
+         text_size    = size.small)
+
+if showFvg and bearishFvg
+    box.new(
+         left   = bar_index[2],
+         top    = high[2],
+         right  = bar_index + lengthOfBox,
+         bottom = low,
+         bgcolor      = bearishColor,
+         border_color = bearishColor,
+         text         = "FVG",
+         text_size    = size.small)
+
+plot(na, title = "FVG", display = display.none)

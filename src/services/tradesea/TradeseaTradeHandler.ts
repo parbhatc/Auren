@@ -17,6 +17,7 @@ import { TradeseaTradeCache } from './TradeseaTradeCache'
 import { normalizeTradeseaTradeInstrument } from './tradeseaInstrument'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { toTradeseaDelayedTicker } from './tradeseaStreamSymbol'
+import { isMarketClosedApiError, MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 
 export class TradeseaTradeHandler {
   private widget: any = null
@@ -301,6 +302,16 @@ export class TradeseaTradeHandler {
     return chartSymbol || this.propFirm.chartSymbol || 'NQ'
   }
 
+  private getMarketClosedMessage(chartSymbol: string): string | null {
+    const datafeed = this.propFirm.chartServices?.datafeed
+    if (!datafeed?.isMarketOpenForChart) return null
+    return datafeed.isMarketOpenForChart(chartSymbol) ? null : MARKET_CLOSED_MESSAGE
+  }
+
+  private formatOrderError(message: string): string {
+    return isMarketClosedApiError(message) ? MARKET_CLOSED_MESSAGE : message
+  }
+
   private resolveInstrument(chartSymbol: string): string {
     const datafeed = this.propFirm.chartServices?.datafeed
     if (datafeed) {
@@ -408,6 +419,12 @@ export class TradeseaTradeHandler {
     }
 
     const chartSymbol = this.getChartSymbol(data?.symbol)
+    const closedMsg = this.getMarketClosedMessage(chartSymbol)
+    if (closedMsg) {
+      aurenToast.error(closedMsg)
+      return
+    }
+
     const instrument = this.resolveInstrument(chartSymbol)
 
     switch (buttonName) {
@@ -433,12 +450,14 @@ export class TradeseaTradeHandler {
             aurenToast.success(`${buttonName} order placed (${qty} @ ${instrument})`)
             this.scheduleRefresh(chartSymbol)
           } else {
-            aurenToast.error(result.error || result.errmsg || `Failed to place ${side} order`)
+            aurenToast.error(
+              this.formatOrderError(result.error || result.errmsg || `Failed to place ${side} order`)
+            )
           }
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : `Failed to place ${side} order`
           console.error('[TradeseaTradeHandler] placeOrder failed:', err)
-          aurenToast.error(msg)
+          aurenToast.error(this.formatOrderError(msg))
         }
         break
       }

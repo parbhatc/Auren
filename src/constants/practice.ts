@@ -65,6 +65,9 @@ export const PRACTICE_CONTRACT_SYMBOL_PRESETS = [
   'RTY',
 ] as const
 
+/** Default TradingView chart ticker when practice has no saved layout/symbol. */
+export const DEFAULT_PRACTICE_CHART_SYMBOL = 'CME:MNQ'
+
 export const PRACTICE_PROP_FIRMS = PRACTICE_PROP_FIRM_CONFIGS.map(({ id, displayName }) => ({
   id,
   displayName,

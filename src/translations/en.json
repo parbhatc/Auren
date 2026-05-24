@@ -398,7 +398,9 @@
     },
     "marketData": {
       "waitTitle": "Waiting for quotes",
-      "waitSubtitle": "Connect market data or retry stream"
+      "waitSubtitle": "Connect market data or retry stream",
+      "closedTitle": "Market closed",
+      "closedSubtitle": "Futures session is not open for trading"
     },
     "order": {
       "invalidQtyTitle": "Invalid size",

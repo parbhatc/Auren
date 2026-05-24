@@ -5,7 +5,7 @@ import { ROUTES } from '../../constants/routes'
 import { t } from '../../utils/translator'
 import { appHeaderShell, appPageBackground } from '../../styles/aurenTheme'
 import Logo from '../common/Logo'
-import { PracticeHeaderThemeButton } from '../trading/Practice/PracticeHeaderThemeButton'
+import { PracticeHeaderThemeButton } from '../trading/shared/header/HeaderThemeButton'
 import SettingsTabs from '../settings/SettingsTabs'
 
 export default function SettingsPageLayout({

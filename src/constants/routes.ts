@@ -15,23 +15,36 @@ export const ROUTES = {
   PRACTICE_SETTINGS: '/settings/practice',
   /** Practice hub (same as HOME) */
   PRACTICE: '/',
-  PRACTICE_TRADE: '/trade',
+  /** Simulated accounts — `/practice/trade/:accountId` */
+  PRACTICE_TRADE: '/practice/trade',
 } as const
 
-export type Route = typeof ROUTES[keyof typeof ROUTES]
+export type Route = (typeof ROUTES)[keyof typeof ROUTES]
 
-export function practiceTradePath(practiceAccountId: string): string {
-  return `${ROUTES.PRACTICE_TRADE}/${practiceAccountId}`
+export function practiceSessionPath(accountId: string): string {
+  return `${ROUTES.PRACTICE_TRADE}/${accountId}`
 }
 
-export function practiceTradeStatsPath(practiceAccountId: string): string {
-  return `${ROUTES.PRACTICE_TRADE}/${practiceAccountId}/stats`
+/** @deprecated use practiceSessionPath */
+export const practiceTradePath = practiceSessionPath
+
+export function practiceSessionStatsPath(accountId: string): string {
+  return `${ROUTES.PRACTICE_TRADE}/${accountId}/stats`
 }
 
-export function practiceTradeNewsPath(practiceAccountId: string): string {
-  return `${ROUTES.PRACTICE_TRADE}/${practiceAccountId}/news`
+/** @deprecated use practiceSessionStatsPath */
+export const practiceTradeStatsPath = practiceSessionStatsPath
+
+export function practiceSessionNewsPath(accountId: string): string {
+  return `${ROUTES.PRACTICE_TRADE}/${accountId}/news`
 }
 
-export function practiceTradePadPath(practiceAccountId: string): string {
-  return `${ROUTES.PRACTICE_TRADE}/${practiceAccountId}/pad`
+/** @deprecated use practiceSessionNewsPath */
+export const practiceTradeNewsPath = practiceSessionNewsPath
+
+export function practiceSessionPadPath(accountId: string): string {
+  return `${ROUTES.PRACTICE_TRADE}/${accountId}/pad`
 }
+
+/** @deprecated use practiceSessionPadPath */
+export const practiceTradePadPath = practiceSessionPadPath

@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { toast, type ToastOptions, type TypeOptions } from 'react-toastify'
-import { AurenToastContent, type AurenToastKind } from '../components/common/AurenToastContent'
+import { AurenToastContent } from '../components/common/AurenToastContent'
+import type { AurenToastKind } from '../types/toast'
 import { t } from './translator'
 
 const TOAST_CLASS = 'auren-toastify'
@@ -60,6 +61,10 @@ function mapMessage(message: string): { title: string; subtitle?: string } {
     'Waiting for market data…': {
       title: t('toast.marketData.waitTitle'),
       subtitle: t('toast.marketData.waitSubtitle'),
+    },
+    'Market closed': {
+      title: t('toast.marketData.closedTitle'),
+      subtitle: t('toast.marketData.closedSubtitle'),
     },
     'Enter a valid quantity': {
       title: t('toast.order.invalidQtyTitle'),

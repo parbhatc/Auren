@@ -1,31 +1,10 @@
-export type OrderType = 'market' | 'limit' | 'stop'
-export type OrderSide = 'buy' | 'sell'
-export type BracketDistanceUnit = 'ticks' | 'points'
-
-export type PracticeBracketOptions = {
-  stopLoss: number | null
-  takeProfit: number | null
-}
-
-export type PracticeOrderSubmitOptions = {
-  orderType: OrderType
-  entryPrice?: number
-  stopLimitPrice?: number
-}
-
-export type PracticeTradePanelProps = {
-  quantity: string | number
-  onQuantityChange: (delta: number) => void
-  onQuantityInputChange: (v: string) => void
-  onQuantityBlur: () => void
-  onBuy: () => void
-  onSell: () => void
-  onSubmitOrder?: (
-    side: OrderSide,
-    brackets: PracticeBracketOptions,
-    order?: PracticeOrderSubmitOptions
-  ) => void
-}
-
-export const DEFAULT_SL_TICKS = 10
-export const DEFAULT_TP_TICKS = 10
+export type { PadTab, TradePanelTab } from '../../shared/pad/types'
+export type {
+  BracketOptions,
+  BracketOptions as PracticeBracketOptions,
+  OrderSubmitOptions,
+  OrderSubmitOptions as PracticeOrderSubmitOptions,
+  TradePanelProps,
+  TradePanelProps as PracticeTradePanelProps,
+} from '../../shared/pad/types'
+export { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../../shared/pad/types'

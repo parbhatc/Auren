@@ -35,6 +35,7 @@ import {
   TradeseaSearchSymbolResult,
 } from './tradeseaSymbolInfo'
 import { TradeseaMarketBookStore, type TradeseaMarketBook } from './tradeseaMarketBook'
+import { isSymbolMarketOpen } from '../../utils/marketSession'
 
 export type { TradeseaMarketBook } from './tradeseaMarketBook'
 
@@ -516,6 +517,11 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   getSymbolInfo(symbol: string): LibrarySymbolInfo | undefined {
     const row = findInstrument(this.instrumentIndex, symbol)
     return row ? instrumentToLibrarySymbolInfo(row, this.delayed) : undefined
+  }
+
+  isMarketOpenForChart(chartSymbol: string, now?: Date): boolean {
+    const info = this.getSymbolInfo(chartSymbol)
+    return isSymbolMarketOpen(info, now)
   }
 
   /** NQ / MNQ / GC — not CME_MINI:NQ or CME-Delayed:MNQ. */

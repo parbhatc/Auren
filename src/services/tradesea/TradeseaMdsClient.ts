@@ -10,6 +10,8 @@ import {
   writeMdsAutoReconnect,
   writeMdsReconnectOnLimit,
 } from './mdsReconnectPrefs'
+import { resolveMdsSubscribeTicker } from './tradeseaMdsSymbols'
+import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 
 /** MDS frame type constants (mdsWorker) */
 const F_BEST_BID_ASK = 1
@@ -832,9 +834,13 @@ export class TradeseaMdsClient {
       return
     }
 
-    console.warn(
-      '[Tradesea MDS] Connected with no subscriptions — set bootstrap or subscribe chart bars first'
-    )
+    const fallbackSymbols = [
+      resolveMdsSubscribeTicker(DEFAULT_PRACTICE_CHART_SYMBOL, this.marketDepthEntitled),
+    ]
+    this.setBootstrap({ symbols: fallbackSymbols, resolution: this.bootstrap?.resolution || '1' })
+    this.applyBootstrap(false)
+    this.logWs('Resubscribed', { streams: this.activeSubs.size, defaultSymbol: fallbackSymbols[0] })
+    return
   }
 
   private sendWire(frame: MdsWireFrame): void {

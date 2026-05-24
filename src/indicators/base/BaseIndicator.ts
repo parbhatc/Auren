@@ -15,8 +15,9 @@ import type {
   TimeframeChange,
   PineJSContext,
   InputCallback,
-  PineJS
+  PineJS,
 } from '../types'
+import { pineTvLog, pineDebug } from '../pine/debug/pineDebug'
 
 export abstract class BaseIndicator {
   name: string
@@ -39,17 +40,28 @@ export abstract class BaseIndicator {
   period: string | null
   symbol: string | null
   
+  /** Increments once per new bar (Pine `bar_index`). */
+  protected _barIndex = -1
+  
   // Timeframe ID to index mapping
   protected _timeframeIdMap: Map<string, number>
   
   // Shapes API for drawing operations
   protected _shapesAPI: ShapesAPI
   
+  // Tracked chart shapes (key → shapeId)
+  protected shapeRegistry = new Map<string | number, { shapeId: string; meta?: Record<string, unknown> }>()
+  
   // Reference to IndicatorManager (set when registered)
   protected _indicatorManager: any
   
   // Previous inputs tracking
   protected _previousInputs?: Map<string, any>
+
+  /** Set by TradingView Pine wrapper each bar (also synced onto the indicator instance). */
+  protected _context?: PineJSContext
+  protected _PineJS?: PineJS
+  protected _input?: InputCallback
 
   constructor(name: string, displayName: string, description: string) {
     this.name = name
@@ -371,6 +383,66 @@ export abstract class BaseIndicator {
     return this._previousInputs ? this._previousInputs.get(id) : undefined
   }
 
+  /** Shorthand for `getInputValueById`. */
+  protected input(id: string): any {
+    return this.getInputValueById(id)
+  }
+
+  /** PineScript-style bar index (0 on first bar). */
+  getBarIndex(): number {
+    return Math.max(0, this._barIndex)
+  }
+
+  /** How many bars ago `timeMs` is relative to the latest bar (0 = latest). */
+  barsBackFromLatest(timeMs: number, seriesId = 'current'): number {
+    const latest = this.latestCandle.get(seriesId)
+    if (!latest || !Number.isFinite(timeMs)) return 0
+    let node: CandleNode | null = latest
+    let count = 0
+    while (node && node.time > timeMs) {
+      node = node.previous
+      count++
+    }
+    return count
+  }
+
+  /** True when `timeMs` falls within the last `lookbackBars` bars. */
+  isWithinLookback(timeMs: number, lookbackBars: number, seriesId = 'current'): boolean {
+    if (!lookbackBars || lookbackBars <= 0) return true
+    return this.barsBackFromLatest(timeMs, seriesId) < lookbackBars
+  }
+
+  /** Register a drawn shape so it can be removed by key. */
+  protected trackShape(key: string | number, shapeId: string, meta?: Record<string, unknown>): void {
+    this.shapeRegistry.set(key, { shapeId, meta })
+  }
+
+  /** Delete a tracked shape and drop it from the registry. */
+  protected async removeTrackedShape(key: string | number): Promise<void> {
+    const entry = this.shapeRegistry.get(key)
+    if (!entry) return
+    try {
+      await this.getShapes().deleteShape(entry.shapeId)
+    } catch {
+      /* shape may already be gone */
+    }
+    this.shapeRegistry.delete(key)
+  }
+
+  /** Extend a rectangle's end time (seconds). */
+  protected extendShapeEnd(shapeId: string, endTimeSec: number): void {
+    const shape = this.getShapes().getShapeById(shapeId)
+    if (!shape || typeof (shape as { getPoints?: () => unknown }).getPoints !== 'function') return
+    try {
+      const points = (shape as { getPoints: () => Array<{ time: number; price: number }> }).getPoints()
+      if (points.length < 2) return
+      points[1].time = endTimeSec
+      ;(shape as { setPoints: (p: typeof points) => void }).setPoints(points)
+    } catch {
+      /* ignore */
+    }
+  }
+
   protected _resolveTimeframeIndex(identifier: number | string): number {
     if (typeof identifier === 'number') {
       return identifier
@@ -590,7 +662,9 @@ export abstract class BaseIndicator {
     const self = this
     return function(this: any) {
       this._indicatorInstance = self
-      
+      pineDebug(self.name, 'tv study constructor invoked')
+      console.log(`[pine:${self.name}] tv constructor`)
+
       this.init = function(context: PineJSContext, inputCallback: InputCallback) {
         this._context = context
         this._input = inputCallback
@@ -667,7 +741,11 @@ export abstract class BaseIndicator {
         }
         
         if ((self as any).init) {
-          ;(self as any).init.call(this, context, inputCallback, firstInit ? null : changes)
+          self._context = context
+          self._PineJS = PineJS
+          self._input = inputCallback
+          pineTvLog(self.name, 'init', { studyId, firstInit, period: self.period, symbol: self.symbol })
+          ;(self as any).init.call(self, context, inputCallback, firstInit ? null : changes)
         }
       }
       
@@ -676,12 +754,22 @@ export abstract class BaseIndicator {
         this._input = inputCallback
         this._PineJS = PineJS
         
+        self._context = context
+        self._PineJS = PineJS
+        self._input = inputCallback
+        
         this.candle = function(offset: number, id?: string) {
           return self.candle.call(self, offset, id)
         }
+
+        const tvMainCount = ((self as any)._tvMainCount ?? 0) + 1
+        ;(self as any)._tvMainCount = tvMainCount
+        if (tvMainCount <= 3 || tvMainCount % 500 === 0) {
+          pineTvLog(self.name, 'main', { call: tvMainCount, period: self.period })
+        }
         
         if ((self as any).main) {
-          return (self as any).main.call(this, context, inputCallback)
+          return (self as any).main.call(self, context, inputCallback)
         }
         
         return NaN
@@ -760,6 +848,7 @@ export abstract class BaseIndicator {
     }
 
     const candle = new CandleNode(time, open, high, low, close)
+    this._barIndex++
     
     if (!latestCandleForId) {
       this.latestCandle.set(id, candle)
@@ -901,6 +990,8 @@ export abstract class BaseIndicator {
   reset(): void {
     this.candleMap = new Map()
     this.latestCandle = new Map()
+    this.shapeRegistry.clear()
+    this._barIndex = -1
 
     this._shapesAPI.shapeIds.forEach(shapeId => {
       this.getShapes().deleteShape(shapeId)

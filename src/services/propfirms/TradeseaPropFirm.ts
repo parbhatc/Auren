@@ -1021,10 +1021,8 @@ export class TradeseaPropFirm extends PropFirmBase {
     this.chartResolution = timeframe || this.chartResolution
 
     if (this.practiceMode) {
-      // Do not overwrite TV-restored symbol with React default (MNQ) on every re-render.
-      if (this.chartSymbolSyncedFromTv) {
-        this.applyMdsBootstrapForChartSymbol()
-      }
+      // Bootstrap MDS with default NQ until TV restores a symbol from load_last_chart.
+      this.applyMdsBootstrapForChartSymbol()
     } else {
       this.chartSymbol = symbol || this.chartSymbol
       this.applyMdsBootstrapForChartSymbol()

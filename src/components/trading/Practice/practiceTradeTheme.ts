@@ -3,20 +3,7 @@
  * Use for color-only swaps; do not change layout from these tokens.
  */
 
-/** Dark surfaces (was GitHub-style #0b0e11 / #161b22) */
-export const PRACTICE_DARK = {
-  page: '#020617', // slate-950
-  shell: '#020617',
-  surface: '#0f172a', // slate-900
-  elevated: '#1e293b', // slate-800
-  border: '#475569', // slate-600
-  borderSubtle: '#334155', // slate-700
-  muted: '#94a3b8', // slate-400
-  text: '#f1f5f9', // slate-100
-  textSecondary: '#cbd5e1', // slate-300
-  accent: '#8b5cf6', // violet-500
-  accentMuted: '#a78bfa', // violet-400
-} as const
+export { PRACTICE_DARK } from '../../../constants/practiceTheme'
 
 export const practiceTradePageClass = (isDark: boolean) =>
   isDark

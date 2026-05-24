@@ -1,134 +1,51 @@
 # TradingView Custom Indicators
 
-This module provides a TypeScript framework for creating custom TradingView indicators.
+## Add a custom indicator (`.pine` only)
 
-## Quick Start
+1. Create `scripts/MyStudy.pine` with standard Pine Script
+2. Reload — auto-registered via `loadPineScriptIndicators()`
 
-### 1. Create an IndicatorManager instance
+No JSON meta comments. `PineJSIndicator` is the template for every `.pine` file.
 
-```typescript
-import { IndicatorManager, FVGIndicator, SwingIndicator } from '@/indicators'
+```pine
+//@version=5
+indicator("Fair Value Gap", "FVG", overlay=true, max_boxes_count=500)
 
-const manager = new IndicatorManager()
+showFvg      = input.bool(true,  "Show FVG",        group="FVG Settings")
+lengthOfBox  = input.int(20,     "Length of Box",   group="FVG Settings", minval=1, maxval=50)
+bullishColor = input.color(color.new(color.green, 80), "Bullish Color", group="FVG Settings")
+bearishColor = input.color(color.new(color.red,   80), "Bearish Color", group="FVG Settings")
 
-// Register indicators
-manager.register(new FVGIndicator())
-manager.register(new SwingIndicator())
+bullishFvg = low > high[2]
+bearishFvg = high < low[2]
+
+if showFvg and bullishFvg
+    box.new(left=bar_index[2], top=low, right=bar_index + lengthOfBox, bottom=high[2], bgcolor=bullishColor, text="FVG")
+
+plot(na, title="FVG", display=display.none)
 ```
 
-### 2. Use with TradingView Widget
+## Layout
 
-When creating a TradingView widget, pass the `getter` method as the `custom_indicators_getter`:
-
-```typescript
-import { IndicatorManager, FVGIndicator, SwingIndicator } from '@/indicators'
-
-const manager = new IndicatorManager()
-manager.register(new FVGIndicator())
-manager.register(new SwingIndicator())
-
-// In your TradingViewChart component or widget config:
-const widgetConfig = {
-  // ... other config
-  custom_indicators_getter: manager.getter.bind(manager)
-  // OR use the helper method:
-  // custom_indicators_getter: manager.getCustomIndicatorsGetter()
-}
-
-// When widget is ready, set it on the manager
-widget.onChartReady(() => {
-  manager.setWidget(widget)
-  manager.onReady()
-})
+```
+indicators/
+  types/pine/          # PineMeta, PineBody, PineBox types
+  pine/
+    parser/            # parsePineMeta, parsePineBody
+    runtime/           # pineBoxRuntime (box.new executor)
+    PineJSIndicator.ts # template class for .pine scripts
+  scripts/*.pine       # your indicators
 ```
 
-### 3. Complete Example
+## Runtime
 
-```typescript
-import { IndicatorManager, FVGIndicator, SwingIndicator } from '@/indicators'
-import TradingViewChart from '@/services/tradingview/TradingViewChart'
+| Piece | Role |
+|-------|------|
+| `PineJSIndicator` | Template for all `.pine` scripts |
+| `parser/parsePineMeta` | Auto-generates study config from Pine |
+| `parser/parsePineBody` | Parses conditions + `box.new` |
+| `runtime/pineBoxRuntime` | Draws boxes on chart |
 
-function MyChart() {
-  const managerRef = useRef<IndicatorManager | null>(null)
+## Class-based indicators
 
-  useEffect(() => {
-    // Initialize manager
-    const manager = new IndicatorManager()
-    manager.register(new FVGIndicator())
-    manager.register(new SwingIndicator())
-    managerRef.current = manager
-
-    return () => {
-      // Cleanup if needed
-    }
-  }, [])
-
-  return (
-    <TradingViewChart
-      symbol="AAPL"
-      timeframe="1h"
-      widgetConfig={{
-        custom_indicators_getter: (PineJS) => {
-          return managerRef.current?.getter(PineJS) || Promise.resolve([])
-        }
-      }}
-      onWidgetReady={(widget) => {
-        if (managerRef.current) {
-          managerRef.current.setWidget(widget)
-          managerRef.current.onReady()
-        }
-      }}
-    />
-  )
-}
-```
-
-## Available Indicators
-
-- **FVGIndicator**: Fair Value Gap indicator
-- **SwingIndicator**: Swing High/Low indicator
-
-## Creating Custom Indicators
-
-Extend `BaseIndicator` to create your own indicators:
-
-```typescript
-import { BaseIndicator } from '@/indicators'
-import type { PineJSContext, InputCallback } from '@/indicators/types'
-
-export class MyCustomIndicator extends BaseIndicator {
-  constructor() {
-    super('MyIndicator', 'My Custom Indicator', 'Description of my indicator')
-    
-    // Configure plots, inputs, etc.
-    this.setPriceStudy(true)
-      .addPlot('plot_0', 'line')
-      .addIntegerInput('my_param', 'My Parameter', 10, 1, 100)
-  }
-
-  main(context: PineJSContext, inputCallback: InputCallback): number {
-    const PineJS = (this as any)._PineJS
-    const value = inputCallback(0) // Get first input value
-    
-    // Your indicator logic here
-    const close = PineJS.Std.close(context)
-    
-    return close * value // Example calculation
-  }
-}
-```
-
-## API Reference
-
-### IndicatorManager
-
-- `register(indicator: BaseIndicator)`: Register a single indicator
-- `registerAll(indicators: BaseIndicator[])`: Register multiple indicators
-- `getter(PineJS: PineJS)`: Get all indicators in TradingView format (used as callback)
-- `getCustomIndicatorsGetter()`: Get a bound function for use as `custom_indicators_getter`
-- `setWidget(widget: TradingViewWidget)`: Set the TradingView widget reference
-- `onReady()`: Call when widget is ready to set up event listeners
-
-### BaseIndicator
-
-See the BaseIndicator class for all available methods for configuring plots, inputs, timeframes, etc.
+`SwingIndicator` remains TypeScript. Everything else is `scripts/*.pine`.

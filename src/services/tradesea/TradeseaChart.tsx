@@ -19,6 +19,7 @@ import {
   shouldUseDelayedMdsSymbols,
 } from './tradeseaMdsSymbols'
 import { debugPracticeChartSymbol } from './practiceChartSymbolDebug'
+import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 
 export type TradeseaChartServices = {
   mds: TradeseaMdsClient
@@ -80,6 +81,13 @@ class TradeseaChart extends BaseChart {
     if (this.config) {
       // Practice: restore drawings/studies/layout per sim account. Live: avoid cross-account schema warnings.
       this.config.load_last_chart = isPracticeChart
+      if (isPracticeChart && !String(props.symbol || '').trim()) {
+        const useDelayedMd = shouldUseDelayedMdsSymbols(services.streamConfig)
+        this.config.symbol = resolveMdsSubscribeTicker(
+          DEFAULT_PRACTICE_CHART_SYMBOL,
+          useDelayedMd
+        )
+      }
     }
     debugPracticeChartSymbol('TradeseaChart.init', {
       propsSymbol: props.symbol,
@@ -178,17 +186,43 @@ class TradeseaChart extends BaseChart {
     }
   }
 
+  private resolveDefaultChartTvSymbol(): string {
+    const useDelayedMd = shouldUseDelayedMdsSymbols(
+      this.services?.streamConfig ?? { delayed: this.datafeed?.isDelayedMarketData?.() ?? true }
+    )
+    return resolveMdsSubscribeTicker(DEFAULT_PRACTICE_CHART_SYMBOL, useDelayedMd)
+  }
+
   /** After load_last_chart, align app symbol with whatever TradingView restored. */
   private emitActiveChartSymbol(label = 'emit'): void {
     try {
-      const widget = (this as { widgetRef?: { activeChart?: () => { symbol?: () => string } } })
-        .widgetRef
-      const sym = widget?.activeChart?.()?.symbol?.()
+      const widget = (this as {
+        widgetRef?: {
+          activeChart?: () => {
+            symbol?: () => string
+            setSymbol?: (symbol: string, callback?: () => void) => void
+          }
+        }
+      }).widgetRef
+      const chart = widget?.activeChart?.()
+      if (!chart) return
+
+      const sym = chart.symbol?.()?.trim()
       debugPracticeChartSymbol(`TradeseaChart.${label}`, {
         activeSymbol: sym ?? null,
         propsSymbol: (this.props as TradingViewChartProps).symbol,
       }, { force: true })
-      if (sym) this.handleSymbolChange(sym)
+
+      if (sym) {
+        this.handleSymbolChange(sym)
+        return
+      }
+
+      const fallback = this.resolveDefaultChartTvSymbol()
+      debugPracticeChartSymbol(`TradeseaChart.${label}:defaultSymbol`, { fallback }, { force: true })
+      chart.setSymbol?.(fallback, () => {
+        this.handleSymbolChange(fallback)
+      })
     } catch (err) {
       debugPracticeChartSymbol(`TradeseaChart.${label}:notReady`, {
         error: err instanceof Error ? err.message : String(err),

@@ -31,7 +31,7 @@ class TradingNav extends Component<TradingNavProps> {
       }
     }
 
-    const practiceTradeMatch = currentPath.match(/^\/trade\/([^/]+)/)
+    const practiceTradeMatch = currentPath.match(/^\/practice\/trade\/([^/]+)/)
     const practiceAccountId = practiceTradeMatch?.[1]
     const isPracticeTrade = Boolean(practiceAccountId)
     const isPracticeHub = currentPath === ROUTES.HOME

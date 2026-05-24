@@ -192,12 +192,18 @@ export class ShapesAPI {
       if (chart) {
         this.executeOperation(chart, operation)
           .then((result) => {
+            if (!result && typeof localStorage !== 'undefined' && (localStorage.getItem('auren.pine.debug') === '1' || import.meta.env?.DEV)) {
+              console.warn('[pine:shapes] operation returned null', { type, ownerStudyId: this.ownerStudyId, hasWidget: Boolean(this.widget) })
+            }
             resolve(result)
           })
           .catch((error) => {
             reject(error)
           })
       } else {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('auren.pine.debug') === '1') {
+          console.log('[pine:shapes] chart not ready — queued', { type, queueLen: this.queue.length + 1, ownerStudyId: this.ownerStudyId })
+        }
         this.queue.push(operation)
       }
     })

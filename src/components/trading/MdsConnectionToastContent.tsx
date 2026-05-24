@@ -1,11 +1,7 @@
 import { Wifi, WifiOff, Loader2, AlertTriangle } from 'lucide-react'
+import type { MdsConnectionToastKind } from '../../types/toast'
 
-export type MdsConnectionToastKind =
-  | 'connecting'
-  | 'reconnecting'
-  | 'connected'
-  | 'disconnected'
-  | 'limit'
+export type { MdsConnectionToastKind } from '../../types/toast'
 
 const META: Record<
   MdsConnectionToastKind,
@@ -63,4 +59,3 @@ export function MdsConnectionToastContent({ kind }: { kind: MdsConnectionToastKi
     </div>
   )
 }
-

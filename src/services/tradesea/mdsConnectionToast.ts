@@ -1,9 +1,7 @@
 import { createElement } from 'react'
 import { toast, type ToastOptions } from 'react-toastify'
-import {
-  MdsConnectionToastContent,
-  type MdsConnectionToastKind,
-} from '../../components/trading/MdsConnectionToastContent'
+import { MdsConnectionToastContent } from '../../components/trading/MdsConnectionToastContent'
+import type { MdsConnectionToastKind } from '../../types/toast'
 
 const TOAST_ID = 'tradesea-mds-connection'
 

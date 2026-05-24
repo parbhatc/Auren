@@ -1,5 +1,12 @@
 import { ChartPositionLineProps } from '../../types/chart'
+import {
+  chartLineColors,
+  chartQtyColors,
+  sideToChartAction,
+  TRADING_SIDE_CHART,
+} from '../../constants/tradingSide'
 import { debugTradeseaSl } from '../../services/tradesea/tradeseaDebug'
+import type { OrderSide } from '../../types/order'
 
 /**
  * Chart Position Line Utility
@@ -193,7 +200,8 @@ class ChartPositionLine {
     line.setQuantity(size.toString());
     line.setLineStyle(0);
     line.setLineLength(this.RIGHT_PLOT_SIDE);
-    line.setQuantityBackgroundColor(size > 0 ? '#00ff00' : '#ff0000');
+    const qtyColors = chartQtyColors(size > 0 ? 'buy' : 'sell');
+    line.setQuantityBackgroundColor(qtyColors.fill);
     line.setCancelTooltip('Close position');
   }
 
@@ -296,9 +304,9 @@ class ChartPositionLine {
     line.setQuantity((size * -1).toString());
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
-    line.setQuantityBackgroundColor(pnl >= 0 ? '#00ff00' : '#ff0000');
-    this.setLineColor(line, pnl >= 0);
-    line
+    const slQty = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
+    line.setQuantityBackgroundColor(slQty.fill);
+    this.applyChartLineColor(line, pnl >= 0);
   }
 
   async updateStopLossLine(){
@@ -353,8 +361,9 @@ class ChartPositionLine {
     try {
       this.line.setQuantity((size * -1).toString());
       this.line.setPrice(price);
-      this.line.setQuantityBackgroundColor(pnl >= 0 ? '#00ff00' : '#ff0000');
-      this.setLineColor(this.line, pnl >= 0);
+      const qtyColors = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
+      this.line.setQuantityBackgroundColor(qtyColors.fill);
+      this.applyChartLineColor(this.line, pnl >= 0);
       if(size > 0){
         if(price <= entryPrice){
           this.setLineColor(this.line, false);
@@ -428,8 +437,8 @@ class ChartPositionLine {
     line.setQuantity((size * -1).toString());
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
-    line.setQuantityBackgroundColor('#00ff00');
-    this.setLineColor(line);
+    line.setQuantityBackgroundColor(TRADING_SIDE_CHART.buy.fill);
+    this.applyChartLineColor(line, true);
   }
 
   async updateTakeProfitLine(){
@@ -563,13 +572,26 @@ class ChartPositionLine {
   }
 
   /**
-   * Create a limit order line (for Limit Buy or Limit Sell orders)
-   * @param price - The limit price
-   * @param quantity - The order quantity
-   * @param orderType - 'Limit' or 'Stop'
-   * @param action - 'Buy' or 'Sell'
-   * @param onCancel - Optional callback when order is cancelled
-   * @returns The created order line or null if failed
+   * Working limit/stop order line — prefer this over createLimitOrder.
+   */
+  async createWorkingOrder(opts: {
+    price: number
+    quantity: number
+    side: OrderSide
+    orderType?: 'limit' | 'stop'
+    onCancel?: () => void
+  }): Promise<any | null> {
+    return this.createLimitOrder(
+      opts.price,
+      opts.quantity,
+      opts.orderType === 'stop' ? 'Stop' : 'Limit',
+      sideToChartAction(opts.side),
+      opts.onCancel
+    )
+  }
+
+  /**
+   * @deprecated use createWorkingOrder
    */
   async createLimitOrder(
     price: number,
@@ -610,21 +632,15 @@ class ChartPositionLine {
       line.setLineStyle(0)
       line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE)
       
-      // Set gray background color (like cancel button)
-      const grayColor = '#808080' // Gray color similar to cancel button
-      line.setBodyBackgroundColor(grayColor)
-      line.setBodyTextColor('#000') // Black text on gray background
+      const gray = TRADING_SIDE_CHART.neutral
+      line.setBodyBackgroundColor(gray.fill)
+      line.setBodyTextColor(gray.textOnFill)
       line.setBodyBorderColor('#000')
-      line.setLineColor(grayColor)
-      
-      // Set quantity background color based on buy/sell
-      if (action === 'Buy') {
-        line.setQuantityBackgroundColor('#00ff00') // Green for buy
-        line.setQuantityTextColor('#000')
-      } else {
-        line.setQuantityBackgroundColor('#ff0000') // Red for sell
-        line.setQuantityTextColor('#fff')
-      }
+      line.setLineColor(gray.fill)
+
+      const qtyColors = chartQtyColors(action === 'Buy' ? 'buy' : 'sell')
+      line.setQuantityBackgroundColor(qtyColors.fill)
+      line.setQuantityTextColor(qtyColors.text)
       line.setQuantityBorderColor('#000')
       
       // Set cancel button colors
@@ -648,11 +664,16 @@ class ChartPositionLine {
     }
   }
 
-  private setLineColor(line: any, isGreen = true){
-    const color = isGreen ? '#00ff00' : '#ff0000';
-    line.setBodyBackgroundColor(color)
-    line.setBodyTextColor(isGreen ? '#000' : '#fff')
-    line.setLineColor(color)
+  private applyChartLineColor(line: any, profit = true): void {
+    const { fill, text } = chartLineColors(profit)
+    line.setBodyBackgroundColor(fill)
+    line.setBodyTextColor(text)
+    line.setLineColor(fill)
+  }
+
+  /** @deprecated use applyChartLineColor */
+  private setLineColor(line: any, isGreen = true): void {
+    this.applyChartLineColor(line, isGreen)
   }
 
   private calcPnL(entryPrice: number, currentPrice: number, positionSize: number, tickSize: number, tickValue: number): number {

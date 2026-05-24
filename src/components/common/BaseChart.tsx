@@ -1,111 +1,13 @@
 import { Component, createRef } from 'react'
 import { TradingViewChartProps, TradingViewWidgetConfig } from '../../types/chart'
-import { IndicatorManager, FVGIndicator, SwingIndicator } from '../../indicators'
+import { createIndicatorManager, type IndicatorManager } from '../../indicators'
 import { createStubDatafeed } from '../../services/tradingview/TradingViewDatafeed'
 import { getDefaultContextMenuConfig, setContextMenuCallbacks, setContextMenuWidget } from './ChartContextMenu'
 import { getShortcutsWithCustomizations, getActiveShortcut } from '../../utils/keyboardShortcutsStorage'
 import { debugPracticeChartSymbol } from '../../services/tradesea/practiceChartSymbolDebug'
+import { SUPPORTED_TRADINGVIEW_TIMEZONES } from '../../constants/tradingviewTimezones'
 
-/**
- * Supported TradingView timezones
- * These are the only timezones supported by TradingView Charting Library
- */
-export const SUPPORTED_TRADINGVIEW_TIMEZONES = [
-  'Etc/UTC',
-  'Africa/Cairo',
-  'Africa/Casablanca',
-  'Africa/Johannesburg',
-  'Africa/Lagos',
-  'Africa/Nairobi',
-  'Africa/Tunis',
-  'America/Anchorage',
-  'America/Argentina/Buenos_Aires',
-  'America/Bogota',
-  'America/Caracas',
-  'America/Chicago',
-  'America/El_Salvador',
-  'America/Juneau',
-  'America/Lima',
-  'America/Los_Angeles',
-  'America/Mexico_City',
-  'America/New_York',
-  'America/Phoenix',
-  'America/Santiago',
-  'America/Sao_Paulo',
-  'America/Toronto',
-  'America/Vancouver',
-  'Asia/Astana',
-  'Asia/Ashkhabad',
-  'Asia/Bahrain',
-  'Asia/Bangkok',
-  'Asia/Chongqing',
-  'Asia/Colombo',
-  'Asia/Dhaka',
-  'Asia/Dubai',
-  'Asia/Ho_Chi_Minh',
-  'Asia/Hong_Kong',
-  'Asia/Jakarta',
-  'Asia/Jerusalem',
-  'Asia/Karachi',
-  'Asia/Kabul',
-  'Asia/Kathmandu',
-  'Asia/Kolkata',
-  'Asia/Kuala_Lumpur',
-  'Asia/Kuwait',
-  'Asia/Manila',
-  'Asia/Muscat',
-  'Asia/Nicosia',
-  'Asia/Qatar',
-  'Asia/Riyadh',
-  'Asia/Seoul',
-  'Asia/Shanghai',
-  'Asia/Singapore',
-  'Asia/Taipei',
-  'Asia/Tehran',
-  'Asia/Tokyo',
-  'Asia/Yangon',
-  'Atlantic/Azores',
-  'Atlantic/Reykjavik',
-  'Australia/Adelaide',
-  'Australia/Brisbane',
-  'Australia/Perth',
-  'Australia/Sydney',
-  'Europe/Amsterdam',
-  'Europe/Athens',
-  'Europe/Belgrade',
-  'Europe/Berlin',
-  'Europe/Bratislava',
-  'Europe/Brussels',
-  'Europe/Bucharest',
-  'Europe/Budapest',
-  'Europe/Copenhagen',
-  'Europe/Dublin',
-  'Europe/Helsinki',
-  'Europe/Istanbul',
-  'Europe/Lisbon',
-  'Europe/London',
-  'Europe/Luxembourg',
-  'Europe/Madrid',
-  'Europe/Malta',
-  'Europe/Moscow',
-  'Europe/Oslo',
-  'Europe/Paris',
-  'Europe/Prague',
-  'Europe/Riga',
-  'Europe/Rome',
-  'Europe/Stockholm',
-  'Europe/Tallinn',
-  'Europe/Vienna',
-  'Europe/Vilnius',
-  'Europe/Warsaw',
-  'Europe/Zurich',
-  'Pacific/Auckland',
-  'Pacific/Chatham',
-  'Pacific/Fakaofo',
-  'Pacific/Honolulu',
-  'Pacific/Norfolk',
-  'US/Mountain',
-] as const
+export { SUPPORTED_TRADINGVIEW_TIMEZONES } from '../../constants/tradingviewTimezones'
 
 /**
  * Get user timezone from settings or return a valid TradingView timezone
@@ -445,6 +347,8 @@ class BaseChart extends Component<TradingViewChartProps> {
     } catch (error) {
       console.error('Error resetting chart data:', error)
     }
+
+    this.indicatorManager?.reset()
   }
 
   /**
@@ -538,9 +442,7 @@ class BaseChart extends Component<TradingViewChartProps> {
     // Add custom indicators getter if indicator manager is available
     if (!mergedConfig.custom_indicators_getter) {
       if (!this.indicatorManager) {
-        this.indicatorManager = new IndicatorManager()
-        this.indicatorManager.register(new FVGIndicator())
-        this.indicatorManager.register(new SwingIndicator())
+        this.indicatorManager = createIndicatorManager()
         ;(window as any).indicatorManager = this.indicatorManager
       }
       mergedConfig.custom_indicators_getter = this.indicatorManager.getter.bind(this.indicatorManager)

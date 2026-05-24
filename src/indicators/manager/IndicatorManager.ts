@@ -104,9 +104,12 @@ export class IndicatorManager {
         if (!currentChart) return
         
         switch (action) {
-          case 'create':
+          case 'create': {
             this.studies = currentChart.getAllStudies()
+            const created = this.studies.find((s: { id: string }) => s.id === studyId)
+            console.log('[indicators] study created:', created?.name ?? studyId)
             break
+          }
           case 'remove':
             const indicator = this.getIndicatorByStudyId(studyId)
             this.studies = currentChart.getAllStudies()
@@ -122,7 +125,12 @@ export class IndicatorManager {
   }
 
   getIndicatorByName(name: string): BaseIndicator | undefined {
-    return this.indicators.find(ind => ind.displayName === name || ind.name === name)
+    return this.indicators.find(
+      (ind) =>
+        ind.displayName === name ||
+        ind.name === name ||
+        ind.description === name
+    )
   }
 
   getIndicatorByStudyId(studyId: string): BaseIndicator | null {

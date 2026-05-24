@@ -8,16 +8,9 @@ import {
   TrendingUp,
   XCircle,
 } from 'lucide-react'
+import type { AurenToastKind } from '../../types/toast'
 
-export type AurenToastKind =
-  | 'success'
-  | 'error'
-  | 'info'
-  | 'warning'
-  | 'lockout'
-  | 'buy'
-  | 'sell'
-  | 'pending'
+export type { AurenToastKind } from '../../types/toast'
 
 const META: Record<
   AurenToastKind,

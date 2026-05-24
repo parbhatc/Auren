@@ -20,7 +20,7 @@ import {
 } from './practiceOrderToasts'
 import { showPracticeOrderToast } from './showPracticeOrderToast'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
-import ChartPositionLine from '../../components/common/ChartPositionLine'
+import { createWorkingOrderLine } from '../../chart/positionLineApi'
 import {
   isPracticeLimitFillable,
   type PracticePendingOrder,
@@ -28,6 +28,7 @@ import {
 import { evaluatePracticeRules } from './practiceRules'
 import { evaluatePracticeLockout } from './practiceLockout'
 import { t } from '../../utils/translator'
+import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { getPracticeMarketDataSettings } from '../../constants/practice'
 import { getTradeseaConnectionGroupId } from '../tradesea/tradeseaDeviceFingerprint'
 
@@ -74,6 +75,13 @@ export class PracticeTradeHandler {
     }
     const lock = evaluatePracticeLockout(account)
     return lock.locked ? lock.message : null
+  }
+
+  private getMarketClosedMessage(chartSymbol?: string): string | null {
+    const datafeed = this.propFirm.chartServices?.datafeed
+    if (!datafeed?.isMarketOpenForChart) return null
+    const symbol = chartSymbol?.trim() || this.getChartSymbol()
+    return datafeed.isMarketOpenForChart(symbol) ? null : MARKET_CLOSED_MESSAGE
   }
 
   setUnrealizedPl(value: number): void {
@@ -339,6 +347,12 @@ export class PracticeTradeHandler {
     if (!account) return
 
     const chartSymbol = this.getChartSymbol()
+    const closedMsg = this.getMarketClosedMessage(chartSymbol)
+    if (closedMsg) {
+      aurenToast.error(closedMsg)
+      return
+    }
+
     const qty = Number(quantity)
     if (!Number.isFinite(qty) || qty <= 0) {
       aurenToast.error('Enter a valid quantity')
@@ -421,24 +435,18 @@ export class PracticeTradeHandler {
       return
     }
     const datafeed = this.propFirm.chartServices?.datafeed ?? null
-    const positionLine = new ChartPositionLine({
-      symbol: order.symbol,
-      price: order.limitPrice,
-      entryPrice: order.limitPrice,
-      contracts: order.contracts,
-      lineType: 'position',
+    const result = await createWorkingOrderLine({
       chart,
       datafeed,
+      symbol: order.symbol,
+      price: order.limitPrice,
+      quantity: order.contracts,
+      side: order.side,
+      orderType: 'limit',
+      onCancel: () => this.cancelPendingOrder(order.id),
     })
-    const line = await positionLine.createLimitOrder(
-      order.limitPrice,
-      order.contracts,
-      'Limit',
-      order.side === 'buy' ? 'Buy' : 'Sell',
-      () => this.cancelPendingOrder(order.id)
-    )
-    if (line) {
-      order.line = line
+    if (result?.tvLine) {
+      order.line = result.tvLine
     }
   }
 
@@ -678,6 +686,12 @@ export class PracticeTradeHandler {
     if (!account) return
 
     const chartSymbol = this.getChartSymbol()
+    const closedMsg = this.getMarketClosedMessage(data?.symbol || chartSymbol)
+    if (closedMsg) {
+      aurenToast.error(closedMsg)
+      return
+    }
+
     const isEntry = buttonName === 'Buy' || buttonName === 'Sell'
     const isReverse = buttonName === 'Reverse Position'
     const qty = Number(data?.quantity)

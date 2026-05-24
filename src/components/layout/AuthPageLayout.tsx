@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { appPageBackground } from '../../styles/aurenTheme'
-import { PracticeHeaderThemeButton } from '../trading/Practice/PracticeHeaderThemeButton'
+import { PracticeHeaderThemeButton } from '../trading/shared/header/HeaderThemeButton'
 
 export default function AuthPageLayout({
   isDark,

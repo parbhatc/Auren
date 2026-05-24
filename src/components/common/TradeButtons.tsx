@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { TradeButtonsProps } from '../../types/common'
+import { TradeSideButton } from './TradeSideButton'
 
 class TradeButtons extends Component<TradeButtonsProps> {
   render() {
@@ -7,30 +8,15 @@ class TradeButtons extends Component<TradeButtonsProps> {
 
     return (
       <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={onBuy}
-          className={`px-4 py-3 rounded-lg font-bold text-sm transition-all ${
-            isDark
-              ? 'bg-green-900/50 text-green-400 hover:bg-green-900/70 border border-green-700 active:scale-95'
-              : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300 active:scale-95'
-          }`}
-        >
+        <TradeSideButton side="buy" variant="panel" isDark={isDark} onClick={onBuy}>
           Buy
-        </button>
-        <button
-          onClick={onSell}
-          className={`px-4 py-3 rounded-lg font-bold text-sm transition-all ${
-            isDark
-              ? 'bg-red-900/50 text-red-400 hover:bg-red-900/70 border border-red-700 active:scale-95'
-              : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300 active:scale-95'
-          }`}
-        >
+        </TradeSideButton>
+        <TradeSideButton side="sell" variant="panel" isDark={isDark} onClick={onSell}>
           Sell
-        </button>
+        </TradeSideButton>
       </div>
     )
   }
 }
 
 export default TradeButtons
-

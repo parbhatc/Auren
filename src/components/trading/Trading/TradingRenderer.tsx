@@ -16,12 +16,12 @@ import { renderLayout, renderPracticeTradeLayout } from '../../../utils/layoutRe
 import { getAccountColorClasses, FormattedAccount, saveSelectedAccountId } from '../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../constants/trade'
 import { propFirmRegistry } from '../../../services/propfirms'
-import { PracticeTradeHeader } from './PracticeTradeHeader'
-import PracticeTradePanel from '../Practice/PracticeTradePanel'
+import { TradeHeader } from './TradeHeader'
+import TradePanel from '../shared/pad/TradePanel'
 import { PracticeTradeHandler } from '../../../services/practice/PracticeTradeHandler'
 import type { TradeseaDatafeed } from '../../../services/tradesea/TradeseaDatafeed'
 import { resolveTradePanelBidAsk } from '../../../services/tradesea/tradeseaMarketBook'
-import { PracticeDetachedTradePanel } from '../Practice/PracticeDetachedTradePanel'
+import { DetachedTradePanel } from '../shared/mobile/DetachedTradePanel'
 import { t } from '../../../utils/translator'
 import { getPracticeAccountById } from '../../../constants/practice'
 import { getMaxContractsForSymbol } from '../../../services/practice/practiceLimits'
@@ -38,13 +38,13 @@ import {
   getInitialPracticeShowNav,
   savePracticeShowNav,
 } from '../../../utils/practiceTradePreferences'
-import { PracticeMobileScalpBar } from '../Practice/PracticeMobileScalpBar'
-import { PracticeMobileOrderSheet } from '../Practice/PracticeMobileOrderSheet'
+import { MobileScalpBar } from '../shared/mobile/MobileScalpBar'
+import { MobileOrderSheet } from '../shared/mobile/MobileOrderSheet'
 import {
-  getPracticeMobileTradePrefs,
+  getMobileTradePrefs,
   PRACTICE_MOBILE_TRADE_PREFS_EVENT,
-  setPracticeMobileFloatingPad,
-} from '../../../utils/practiceMobileTradePrefs'
+  setMobileFloatingPad,
+} from '../../../utils/mobileTradePrefs'
 
 /**
  * Trading renderer component
@@ -578,7 +578,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {practiceMode ? (
-            <PracticeTradeHeader
+            <TradeHeader
               isDark={isDark}
               navigate={navigate}
               toggleTheme={toggleTheme}
@@ -873,7 +873,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   runTrade(side === 'buy' ? 'Buy' : 'Sell', { entryPrice: price })
                 }
                 const padProps = {
-                  practiceAccountId,
+                  accountId: practiceAccountId,
+                  mode: 'practice' as const,
                   isDark,
                   chartSymbol: chartSymbolLabel,
                   onChartSymbolChange: (sym: string) => {
@@ -967,16 +968,16 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 }
 
                 const mobileOrderOpen = Boolean(this.state.practiceMobileOrderOpen)
-                const mobileTradePrefs = getPracticeMobileTradePrefs(practiceAccountId)
+                const mobileTradePrefs = getMobileTradePrefs(practiceAccountId)
 
                 return (
                   <div className="relative flex flex-1 min-h-0 min-w-0 h-full w-full">
                     {renderPracticeTradeLayout(
                       chartElement,
-                      padDetached ? null : <PracticeTradePanel {...padProps} />,
+                      padDetached ? null : <TradePanel {...padProps} />,
                       {
                         mobileScalpBar: (
-                          <PracticeMobileScalpBar
+                          <MobileScalpBar
                             accountId={practiceAccountId}
                             props={padProps}
                             maxQty={practiceMaxQty}
@@ -985,7 +986,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                         ),
                       }
                     )}
-                    <PracticeMobileOrderSheet
+                    <MobileOrderSheet
                       open={mobileOrderOpen}
                       onClose={() => this.setState({ practiceMobileOrderOpen: false })}
                       isDark={isDark}
@@ -993,7 +994,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     />
                     {padDetached && (
                       <div className="hidden lg:block">
-                        <PracticeDetachedTradePanel
+                        <DetachedTradePanel
                           accountId={practiceAccountId}
                           isDark={isDark}
                           padProps={padProps}
@@ -1005,7 +1006,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     )}
                     {mobileTradePrefs.floatingPad && (
                       <div className="lg:hidden">
-                        <PracticeDetachedTradePanel
+                        <DetachedTradePanel
                           accountId={practiceAccountId}
                           isDark={isDark}
                           padProps={padProps}
@@ -1014,7 +1015,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           dockMode="mobile-float"
                           dockTitle="Pin quick trade"
                           onDock={() => {
-                            setPracticeMobileFloatingPad(practiceAccountId, false)
+                            setMobileFloatingPad(practiceAccountId, false)
                             this.forceUpdate()
                           }}
                         />

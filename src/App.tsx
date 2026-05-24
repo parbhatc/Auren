@@ -8,23 +8,23 @@ import {
   useParams,
   useLocation,
 } from 'react-router-dom'
-import Login from './components/auth/Login'
-import Register from './components/auth/Register'
-import VerifyEmail from './components/auth/VerifyEmail'
-import ForgotPassword from './components/auth/ForgotPassword'
-import ResetPassword from './components/auth/ResetPassword'
-import Settings from './components/settings/Settings'
-import PropsSettings from './components/settings/PropsSettings'
-import UtilsSettings from './components/settings/UtilsSettings'
-import KeyboardShortcutsSettings from './components/settings/KeyboardShortcutsSettings'
-import AdminSettings from './components/admin/AdminSettings'
-import RolesManager from './components/admin/RolesManager'
-import UserManager from './components/admin/UserManager'
-import PracticeHub from './components/trading/Practice/PracticeHub'
-import PracticeTrade from './components/trading/Practice/PracticeTradeWrapper'
-import PracticeTradePadPage from './components/trading/Practice/PracticeTradePadPage'
-import PracticeStatsWrapper from './components/trading/Practice/PracticeStatsWrapper'
-import PracticeNewsWrapper from './components/trading/Practice/PracticeNewsWrapper'
+import Login from './components/auth/login'
+import Register from './components/auth/register'
+import VerifyEmail from './components/auth/verify_email'
+import ForgotPassword from './components/auth/forgot_password'
+import ResetPassword from './components/auth/reset_password'
+import Settings from './components/settings/account'
+import PropsSettings from './components/settings/prop_firms'
+import UtilsSettings from './components/settings/utils'
+import KeyboardShortcutsSettings from './components/settings/keyboard_shortcuts'
+import AdminSettings from './components/admin/site_settings'
+import RolesManager from './components/admin/roles'
+import UserManager from './components/admin/users'
+import PracticeHubPage from './pages/trading/practice/HubPage'
+import PracticeTradePage from './pages/trading/practice/TradePage'
+import PracticeTradePadPage from './pages/trading/practice/PadPage'
+import PracticeStatsPage from './pages/trading/practice/StatsPage'
+import PracticeNewsPage from './pages/trading/practice/NewsPage'
 import NotFound from './components/common/NotFound'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import GuestRoute from './components/common/GuestRoute'
@@ -41,11 +41,20 @@ import './App.css'
 
 const LegacyRedirect = () => <Navigate to={ROUTES.HOME} replace />
 
-/** /practice/trade/:id/... → /trade/:id/... */
-const LegacyPracticeTradeRedirect = () => {
+/** /practice/:id/... → /practice/trade/:id/... (legacy short URLs) */
+const LegacyShortPracticeRedirect = () => {
   const { practiceAccountId } = useParams<{ practiceAccountId: string }>()
   const location = useLocation()
-  const prefix = `/practice/trade/${practiceAccountId ?? ''}`
+  const prefix = `/practice/${practiceAccountId ?? ''}`
+  const tail = location.pathname.startsWith(prefix) ? location.pathname.slice(prefix.length) : ''
+  return <Navigate to={`${ROUTES.PRACTICE_TRADE}/${practiceAccountId ?? ''}${tail}${location.search}`} replace />
+}
+
+/** /trade/:id/... → /practice/trade/:id/... (legacy practice URLs) */
+const LegacyTradeToPracticeRedirect = () => {
+  const { practiceAccountId } = useParams<{ practiceAccountId: string }>()
+  const location = useLocation()
+  const prefix = `/trade/${practiceAccountId ?? ''}`
   const tail = location.pathname.startsWith(prefix) ? location.pathname.slice(prefix.length) : ''
   return <Navigate to={`${ROUTES.PRACTICE_TRADE}/${practiceAccountId ?? ''}${tail}${location.search}`} replace />
 }
@@ -116,17 +125,19 @@ function App() {
           path={ROUTES.HOME}
           element={
             <ProtectedRoute>
-              <PracticeHub />
+              <PracticeHubPage />
             </ProtectedRoute>
           }
         />
         <Route path="/practice" element={<Navigate to={ROUTES.HOME} replace />} />
-        <Route path="/practice/trade/:practiceAccountId/*" element={<LegacyPracticeTradeRedirect />} />
+        <Route path="/trade/:firmId/:accountId/*" element={<LegacyRedirect />} />
+        <Route path="/backtest/*" element={<LegacyRedirect />} />
+        <Route path="/trade/:practiceAccountId/*" element={<LegacyTradeToPracticeRedirect />} />
         <Route
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId/stats`}
           element={
             <ProtectedRoute>
-              <PracticeStatsWrapper />
+              <PracticeStatsPage />
             </ProtectedRoute>
           }
         />
@@ -134,7 +145,7 @@ function App() {
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId/news`}
           element={
             <ProtectedRoute>
-              <PracticeNewsWrapper />
+              <PracticeNewsPage />
             </ProtectedRoute>
           }
         />
@@ -150,10 +161,12 @@ function App() {
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId`}
           element={
             <ProtectedRoute>
-              <PracticeTrade />
+              <PracticeTradePage />
             </ProtectedRoute>
           }
         />
+
+        <Route path="/practice/:practiceAccountId/*" element={<LegacyShortPracticeRedirect />} />
 
         <Route
           path={ROUTES.SETTINGS}

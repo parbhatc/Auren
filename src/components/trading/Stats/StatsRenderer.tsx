@@ -6,7 +6,7 @@ import { StatsRendererProps, StatsRendererState } from '../../../types/common'
 import DayStatsDialog from './DayStatsDialog'
 import WeekStatsDialog from './WeekStatsDialog'
 import StatsHeader from './StatsHeader'
-import { PracticeTradeHeader } from '../Trading/PracticeTradeHeader'
+import { TradeHeader } from '../Trading/TradeHeader'
 import DateRangeSelector from './DateRangeSelector'
 import StatsTabs from './StatsTabs'
 import OverviewTab from './OverviewTab'
@@ -22,7 +22,7 @@ import {
 import { saveSelectedAccountId } from '../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../constants/trade'
 import { practiceTradePanelClass } from '../Practice/practiceTradeTheme'
-import { PracticeEvalStatsPanel } from '../Practice/PracticeEvalStatsPanel'
+import { EvalStatsPanel } from '../Practice/EvalStatsPanel'
 import {
   getInitialPracticeShowNav,
   savePracticeShowNav,
@@ -857,7 +857,7 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
 
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {practiceMode ? (
-            <PracticeTradeHeader
+            <TradeHeader
               isDark={isDark}
               navigate={navigate}
               toggleTheme={toggleTheme}
@@ -933,7 +933,7 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
                 </h1>
               </div>
               {this.props.practiceAccountId && (
-                <PracticeEvalStatsPanel
+                <EvalStatsPanel
                   practiceAccountId={this.props.practiceAccountId}
                   isDark={isDark}
                 />

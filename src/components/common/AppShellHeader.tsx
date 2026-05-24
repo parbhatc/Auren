@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { LogOut, Menu } from 'lucide-react'
 import { ROUTES } from '../../constants/routes'
 import Logo from './Logo'
-import { PracticeHeaderThemeButton } from '../trading/Practice/PracticeHeaderThemeButton'
+import { PracticeHeaderThemeButton } from '../trading/shared/header/HeaderThemeButton'
 
 /**
  * Compact app header (practice trade style) — logo, optional center slot, logout, theme.
