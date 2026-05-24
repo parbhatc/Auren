@@ -19,8 +19,11 @@ function respondTradeWrite(res, proxied, fallbackError = 'Request failed') {
   })
 }
 
-const TRADESEA_SESSION_EXPIRED =
-  'Tradesea session expired. Reconnect in Prop Firm settings.'
+const MARKET_DATA_NOT_CONNECTED = 'Market data is not connected.'
+const MARKET_DATA_NOT_CONNECTED_HINT =
+  'Market data is not connected. Connect in Settings → Market data.'
+const MARKET_DATA_SESSION_EXPIRED =
+  'Market data session expired. Reconnect in Settings → Market data.'
 
 class TradeseaController {
   async persistTradeseaTokens(userId, accessToken, refreshToken) {
@@ -47,7 +50,7 @@ class TradeseaController {
       return {
         connected: false,
         configured: false,
-        error: 'Tradesea is not connected. Connect in Prop Firm settings first.',
+        error: MARKET_DATA_NOT_CONNECTED_HINT,
         status: HTTP_STATUS.UNAUTHORIZED,
       }
     }
@@ -74,7 +77,7 @@ class TradeseaController {
           connected: false,
           configured: true,
           sessionExpired: true,
-          error: error.message || TRADESEA_SESSION_EXPIRED,
+          error: error.message || MARKET_DATA_SESSION_EXPIRED,
           status: HTTP_STATUS.UNAUTHORIZED,
         }
       }
@@ -96,7 +99,7 @@ class TradeseaController {
         connected: false,
         configured: true,
         sessionExpired: Boolean(tokens.refreshToken) || connection.reason === 'unauthorized',
-        error: TRADESEA_SESSION_EXPIRED,
+        error: MARKET_DATA_SESSION_EXPIRED,
         status: HTTP_STATUS.UNAUTHORIZED,
       }
     }
@@ -113,7 +116,7 @@ class TradeseaController {
   async getTradeseaTokensForUser(userId) {
     const session = await this.resolveTradeseaSession(userId, { autoRefresh: true })
     if (!session.connected) {
-      return { error: session.error || TRADESEA_SESSION_EXPIRED, status: session.status }
+      return { error: session.error || MARKET_DATA_SESSION_EXPIRED, status: session.status }
     }
     return { tokens: session.tokens }
   }
@@ -238,7 +241,7 @@ class TradeseaController {
           success: false,
           connected: false,
           sessionExpired: session.sessionExpired,
-          message: session.error || TRADESEA_SESSION_EXPIRED,
+          message: session.error || MARKET_DATA_SESSION_EXPIRED,
         })
       }
 
@@ -261,7 +264,7 @@ class TradeseaController {
           success: true,
           connected: false,
           accounts: [],
-          message: 'Tradesea is not connected. Connect in Prop Firm settings first.',
+          message: MARKET_DATA_NOT_CONNECTED_HINT,
         })
       }
 
@@ -271,7 +274,7 @@ class TradeseaController {
           connected: false,
           accounts: [],
           sessionExpired: session.sessionExpired,
-          message: session.error || TRADESEA_SESSION_EXPIRED,
+          message: session.error || MARKET_DATA_SESSION_EXPIRED,
         })
       }
 
@@ -310,7 +313,7 @@ class TradeseaController {
         return res.status(HTTP_STATUS.OK).json({
           success: false,
           connected: false,
-          message: 'Tradesea is not connected.',
+          message: MARKET_DATA_NOT_CONNECTED,
         })
       }
 
@@ -361,7 +364,7 @@ class TradeseaController {
       if (!firm?.token) {
         return res.status(HTTP_STATUS.UNAUTHORIZED).json({
           success: false,
-          error: 'Tradesea is not connected.',
+          error: MARKET_DATA_NOT_CONNECTED,
         })
       }
 
@@ -413,7 +416,7 @@ class TradeseaController {
       if (!firm?.token) {
         return res.status(HTTP_STATUS.UNAUTHORIZED).json({
           success: false,
-          error: 'Tradesea is not connected.',
+          error: MARKET_DATA_NOT_CONNECTED,
         })
       }
 
@@ -797,7 +800,7 @@ class TradeseaController {
       if (!firm?.token) {
         return res.status(HTTP_STATUS.UNAUTHORIZED).json({
           success: false,
-          error: 'Tradesea is not connected.',
+          error: MARKET_DATA_NOT_CONNECTED,
         })
       }
 

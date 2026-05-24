@@ -181,6 +181,7 @@ Health check endpoint.
 
 ## Notes
 
+- **Default admin** (first run, empty database): username `admin`, password `admin`. Change after first login.
 - **Email Verification**: New users must verify their email before logging in
 - **Password Reset**: Uses 6-digit codes sent via email
 - JWT tokens expire after 7 days (configurable in `data/config.json`)

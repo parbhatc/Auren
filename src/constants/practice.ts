@@ -12,6 +12,7 @@ import { computeDrawdownFloor, evaluatePracticeRules } from '../services/practic
 import {
   PRACTICE_PROP_FIRM_CONFIGS,
   getPracticePropFirmConfig,
+  normalizePracticePropFirmId,
   practiceFirmHasExclusiveMdsSlot,
   practiceFirmShowsOfflineModeSection,
   practiceFirmSupportsOfflineBracketWatcher,
@@ -22,6 +23,7 @@ import {
 export {
   PRACTICE_PROP_FIRM_CONFIGS,
   getPracticePropFirmConfig,
+  normalizePracticePropFirmId,
   practiceFirmHasExclusiveMdsSlot,
   practiceFirmShowsOfflineModeSection,
   practiceFirmSupportsOfflineBracketWatcher,
@@ -133,7 +135,9 @@ function loadLocalMarketData(): PracticeMarketDataSettings {
   } catch {
     /* ignore */
   }
-  const propFirmId = localStorage.getItem(PRACTICE_PROP_FIRM_KEY) || 'tradesea'
+  const propFirmId = normalizePracticePropFirmId(
+    localStorage.getItem(PRACTICE_PROP_FIRM_KEY) || 'tradesea'
+  )
   return {
     propFirmId,
     accountId: localStorage.getItem(PRACTICE_ACCOUNT_ID_KEY) || '',
@@ -213,19 +217,25 @@ export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
       accountId: '',
       accountLabel: '',
     }
+  const propFirmId = normalizePracticePropFirmId(raw.propFirmId)
   return {
     ...raw,
-    offlineModePositions: resolveOfflineModePositions(raw),
+    propFirmId,
+    offlineModePositions: resolveOfflineModePositions({ ...raw, propFirmId }),
   }
 }
 
 export async function savePracticeMarketDataSettings(
   settings: PracticeMarketDataSettings
 ): Promise<void> {
-  marketDataCache = settings
-  localStorage.setItem(PRACTICE_STORAGE_KEYS.MARKET_DATA, JSON.stringify(settings))
+  const normalized = {
+    ...settings,
+    propFirmId: normalizePracticePropFirmId(settings.propFirmId),
+  }
+  marketDataCache = normalized
+  localStorage.setItem(PRACTICE_STORAGE_KEYS.MARKET_DATA, JSON.stringify(normalized))
   try {
-    await practiceAPI.saveMarketData(settings)
+    await practiceAPI.saveMarketData(normalized)
     await refreshPracticeFromApi()
   } catch {
     /* saved locally */

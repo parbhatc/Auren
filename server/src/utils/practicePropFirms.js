@@ -9,19 +9,20 @@ export const PRACTICE_PROP_FIRM_CONFIGS = [
     supportsOfflineBracketWatcher: true,
     defaultOfflineModePositions: true,
   },
-  {
-    id: 'topstep',
-    displayName: 'Topstep',
-    marketDataSlotPolicy: 'concurrent',
-    supportsOfflineBracketWatcher: false,
-    defaultOfflineModePositions: false,
-  },
 ]
+
+const REMOVED_PROP_FIRM_IDS = new Set(['topstep'])
 
 const CONFIG_BY_ID = new Map(PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c]))
 
+export function normalizePracticePropFirmId(propFirmId) {
+  const id = String(propFirmId || '').trim()
+  if (!id || REMOVED_PROP_FIRM_IDS.has(id)) return 'tradesea'
+  return CONFIG_BY_ID.has(id) ? id : 'tradesea'
+}
+
 export function getPracticePropFirmConfig(propFirmId) {
-  return CONFIG_BY_ID.get(String(propFirmId || '').trim()) || PRACTICE_PROP_FIRM_CONFIGS[0]
+  return CONFIG_BY_ID.get(normalizePracticePropFirmId(propFirmId)) || PRACTICE_PROP_FIRM_CONFIGS[0]
 }
 
 export function practiceFirmHasExclusiveMdsSlot(propFirmId) {
@@ -42,7 +43,7 @@ export function resolveOfflineModePositionsFromDb(row) {
       offlineModePositions: firm.defaultOfflineModePositions,
     }
   }
-  const propFirmId = row.prop_firm_id || 'tradesea'
+  const propFirmId = normalizePracticePropFirmId(row.prop_firm_id)
   const firm = getPracticePropFirmConfig(propFirmId)
   let saved = null
   if (row.offline_mode_positions === 1) saved = true

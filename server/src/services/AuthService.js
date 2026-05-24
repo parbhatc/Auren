@@ -13,6 +13,33 @@ import Translator from '../utils/Translator.js'
 class AuthService {
   constructor() {
     this.config = ConfigLoader.load()
+    this.verificationResendCooldownMs = 60 * 1000
+    this.lastVerificationResendByEmail = new Map()
+    this.lastPasswordResetResendByEmail = new Map()
+  }
+
+  markVerificationEmailSent(email) {
+    this.lastVerificationResendByEmail.set(String(email || '').trim().toLowerCase(), Date.now())
+  }
+
+  markPasswordResetEmailSent(email) {
+    this.lastPasswordResetResendByEmail.set(String(email || '').trim().toLowerCase(), Date.now())
+  }
+
+  getVerificationResendWaitSeconds(email) {
+    const key = String(email || '').trim().toLowerCase()
+    const lastSent = this.lastVerificationResendByEmail.get(key)
+    if (!lastSent) return 0
+    const remainingMs = this.verificationResendCooldownMs - (Date.now() - lastSent)
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0
+  }
+
+  getPasswordResetResendWaitSeconds(email) {
+    const key = String(email || '').trim().toLowerCase()
+    const lastSent = this.lastPasswordResetResendByEmail.get(key)
+    if (!lastSent) return 0
+    const remainingMs = this.verificationResendCooldownMs - (Date.now() - lastSent)
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0
   }
 
   /**
@@ -65,6 +92,7 @@ class AuthService {
     // Send verification email
     try {
       await EmailService.sendVerificationEmail(email, name, verificationCode)
+      this.markVerificationEmailSent(email)
     } catch (error) {
       console.error('Failed to send verification email:', error)
       // Don't fail registration if email fails, but log it
@@ -120,6 +148,62 @@ class AuthService {
   }
 
   /**
+   * Resend email verification code
+   */
+  async resendVerificationEmail(email) {
+    const normalizedEmail = String(email || '').trim()
+    if (!normalizedEmail) {
+      throw new Error(Translator.t('validation.emailRequired'))
+    }
+
+    const waitSeconds = this.getVerificationResendWaitSeconds(normalizedEmail)
+    if (waitSeconds > 0) {
+      const err = new Error(
+        Translator.translate('auth.verifyEmail.resendCooldown', { seconds: waitSeconds })
+      )
+      err.code = 'RESEND_COOLDOWN'
+      err.waitSeconds = waitSeconds
+      throw err
+    }
+
+    const user = await Database.findUserByEmail(normalizedEmail)
+    if (!user) {
+      throw new Error(Translator.t('auth.verifyEmail.userNotFound'))
+    }
+
+    if (user.email_verified) {
+      throw new Error(Translator.t('auth.verifyEmail.alreadyVerified'))
+    }
+
+    await Database.deleteVerificationCodesForEmail(normalizedEmail, 'email_verification')
+
+    const verificationCode = TokenService.generateVerificationCode()
+    const expiresAt = new Date(
+      Date.now() + this.config.verificationCode.expiryMinutes * 60 * 1000
+    ).toISOString()
+
+    await Database.storeVerificationCode(
+      verificationCode,
+      normalizedEmail,
+      'email_verification',
+      expiresAt
+    )
+
+    try {
+      await EmailService.sendVerificationEmail(normalizedEmail, user.name, verificationCode)
+      this.markVerificationEmailSent(normalizedEmail)
+    } catch (error) {
+      console.error('Failed to resend verification email:', error)
+      throw new Error(Translator.t('auth.verifyEmail.resendFailed'))
+    }
+
+    return {
+      success: true,
+      message: Translator.t('auth.verifyEmail.resendSuccess'),
+    }
+  }
+
+  /**
    * Login user
    */
   async login(username, password) {
@@ -159,31 +243,50 @@ class AuthService {
    * Request password reset
    */
   async forgotPassword(email) {
-    const user = await Database.findUserByEmail(email)
+    const normalizedEmail = String(email || '').trim()
+    if (!normalizedEmail) {
+      throw new Error(Translator.t('validation.emailRequired'))
+    }
+
+    const waitSeconds = this.getPasswordResetResendWaitSeconds(normalizedEmail)
+    if (waitSeconds > 0) {
+      const err = new Error(
+        Translator.translate('auth.forgotPassword.resendCooldown', { seconds: waitSeconds })
+      )
+      err.code = 'RESEND_COOLDOWN'
+      err.waitSeconds = waitSeconds
+      throw err
+    }
+
+    const user = await Database.findUserByEmail(normalizedEmail)
 
     // Always return success for security (don't reveal if email exists)
     if (user) {
-      // Generate reset code
+      await Database.deleteVerificationCodesForEmail(normalizedEmail, 'password_reset')
+
       const resetCode = TokenService.generateResetCode()
       const expiresAt = new Date(
         Date.now() + this.config.resetCode.expiryMinutes * 60 * 1000
       ).toISOString()
 
-      // Store reset code
-      await Database.storeVerificationCode(resetCode, email, 'password_reset', expiresAt)
+      await Database.storeVerificationCode(
+        resetCode,
+        normalizedEmail,
+        'password_reset',
+        expiresAt
+      )
 
-      // Send reset email
       try {
-        await EmailService.sendPasswordResetEmail(email, resetCode)
+        await EmailService.sendPasswordResetEmail(normalizedEmail, resetCode)
+        this.markPasswordResetEmailSent(normalizedEmail)
       } catch (error) {
         console.error('Failed to send password reset email:', error)
-        // Don't reveal if email exists
       }
     }
 
     return {
       success: true,
-      message: 'If the email exists, a reset code has been sent',
+      message: Translator.t('auth.forgotPassword.success'),
     }
   }
 

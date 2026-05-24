@@ -10,6 +10,7 @@ import {
 } from 'react-router-dom'
 import Login from './components/auth/Login'
 import Register from './components/auth/Register'
+import VerifyEmail from './components/auth/VerifyEmail'
 import ForgotPassword from './components/auth/ForgotPassword'
 import ResetPassword from './components/auth/ResetPassword'
 import Settings from './components/settings/Settings'
@@ -38,19 +39,6 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
 
-const VerifyEmailRedirect = () => {
-  const [searchParams] = useSearchParams()
-  const code = searchParams.get('code')
-  const email = searchParams.get('email')
-
-  const params = new URLSearchParams()
-  if (code) params.set('code', code)
-  if (email) params.set('email', email)
-
-  return <Navigate to={`${ROUTES.REGISTER}?${params.toString()}`} replace />
-}
-
-/** Redirect removed NexusSyncPro routes to practice hub */
 const LegacyRedirect = () => <Navigate to={ROUTES.HOME} replace />
 
 /** /practice/trade/:id/... → /trade/:id/... */
@@ -272,10 +260,10 @@ function App() {
           }
         />
         <Route
-          path="/verify-email"
+          path={ROUTES.VERIFY_EMAIL}
           element={
             <GuestRoute>
-              <VerifyEmailRedirect />
+              <VerifyEmail />
             </GuestRoute>
           }
         />

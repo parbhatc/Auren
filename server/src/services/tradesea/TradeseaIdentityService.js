@@ -134,7 +134,7 @@ class TradeseaIdentityService {
   async refreshAccessToken(refreshToken) {
     const token = String(refreshToken || '').trim()
     if (!token) {
-      throw new Error('No refresh token stored. Reconnect in Prop Firm settings.')
+      throw new Error('Market data session expired. Reconnect in Settings → Market data.')
     }
 
     const cookieRefreshed = await this.refreshAccessTokenWithCookie(token)
@@ -162,7 +162,7 @@ class TradeseaIdentityService {
       }
     }
 
-    throw new Error('Could not refresh Tradesea session. Reconnect in Prop Firm settings.')
+    throw new Error('Market data session expired. Reconnect in Settings → Market data.')
   }
 
   parseTokensFromSetCookie(headers) {
@@ -734,7 +734,7 @@ class TradeseaIdentityService {
 
   async proxyDiscoveryRequest(tokens, method, path, body = null) {
     if (!tokens?.accessToken) {
-      throw new Error('Tradesea is not connected')
+      throw new Error('Market data is not connected.')
     }
 
     const suffix = path.startsWith('/') ? path : `/${path}`

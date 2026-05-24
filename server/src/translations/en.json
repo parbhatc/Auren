@@ -14,11 +14,16 @@
     "verifyEmail": {
       "success": "Email verified successfully",
       "invalidCode": "Invalid or expired verification code",
-      "userNotFound": "User not found"
+      "userNotFound": "User not found",
+      "alreadyVerified": "This email is already verified. You can sign in.",
+      "resendSuccess": "A new verification code has been sent.",
+      "resendFailed": "Could not send verification email. Try again later.",
+      "resendCooldown": "Please wait {seconds} seconds before requesting another code."
     },
     "forgotPassword": {
       "success": "If the email exists, a reset code has been sent",
-      "emailNotFound": "If the email exists, a reset code has been sent"
+      "emailNotFound": "If the email exists, a reset code has been sent",
+      "resendCooldown": "Please wait {seconds} seconds before requesting another code."
     },
     "verifyResetCode": {
       "success": "Reset code verified",

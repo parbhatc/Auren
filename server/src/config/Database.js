@@ -424,6 +424,11 @@ class Database {
     await run('UPDATE users SET email = ? WHERE id = ?', [email, userId])
   }
 
+  async verifyUserEmail(email) {
+    const run = promisify(this.db.run.bind(this.db))
+    await run('UPDATE users SET email_verified = 1 WHERE email = ?', [email])
+  }
+
   async updateUserRole(userId, role) {
     const run = promisify(this.db.run.bind(this.db))
     await run('UPDATE users SET role = ? WHERE id = ?', [role, userId])
@@ -483,13 +488,18 @@ class Database {
   }
 
   // Verification code operations
-  async storeVerificationCode(code, email, type) {
+  async storeVerificationCode(code, email, type, expiresAt = null) {
     const run = promisify(this.db.run.bind(this.db))
-    const expiresAt = new Date(Date.now() + 900000) // 15 minutes from now
+    const expiry = expiresAt || new Date(Date.now() + 900000).toISOString()
     await run(
       'INSERT OR REPLACE INTO verification_codes (code, email, type, expires_at) VALUES (?, ?, ?, ?)',
-      [code, email, type, expiresAt.toISOString()]
+      [code, email, type, expiry]
     )
+  }
+
+  async deleteVerificationCodesForEmail(email, type) {
+    const run = promisify(this.db.run.bind(this.db))
+    await run('DELETE FROM verification_codes WHERE email = ? AND type = ?', [email, type])
   }
 
   async getVerificationCode(code, type) {

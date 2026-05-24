@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import Database from '../config/Database.js'
 import {
+  normalizePracticePropFirmId,
   offlineModeToDbValue,
   resolveOfflineModePositionsFromDb,
 } from '../utils/practicePropFirms.js'
@@ -44,7 +45,7 @@ function rowToAccount(row) {
   const rules = { ...defaults, ...parseJson(row.rules_json, {}) }
   return {
     id: row.id,
-    propFirmId: row.prop_firm_id,
+    propFirmId: normalizePracticePropFirmId(row.prop_firm_id),
     mode: row.mode,
     size: row.size,
     status: row.status,
@@ -76,8 +77,9 @@ class PracticeService {
 
   async saveMarketData(userId, settings) {
     await Database.initialize()
+    const propFirmId = normalizePracticePropFirmId(settings.propFirmId)
     const offlineMode = offlineModeToDbValue(
-      settings.propFirmId,
+      propFirmId,
       settings.offlineModePositions
     )
     await Database.run(
@@ -91,7 +93,7 @@ class PracticeService {
          updated_at = CURRENT_TIMESTAMP`,
       [
         userId,
-        settings.propFirmId || 'tradesea',
+        propFirmId,
         settings.accountId || '',
         settings.accountLabel || '',
         offlineMode,

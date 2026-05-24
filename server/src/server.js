@@ -47,7 +47,7 @@ class Server {
       const userCount = await Database.getUserCount()
       if (userCount === 0) {
         console.log('📝 No users found. Creating default admin user...')
-        const hashedPassword = await bcrypt.hash('password', 10)
+        const hashedPassword = await bcrypt.hash('admin', 10)
         await Database.createUser({
           id: 'admin-' + Date.now().toString(),
           name: 'Administrator',
@@ -59,7 +59,7 @@ class Server {
         })
         console.log('✅ Default admin user created:')
         console.log('   Username: admin')
-        console.log('   Password: password')
+        console.log('   Password: admin')
         console.log('   Role: admin')
         console.log('   ⚠️  Please change the password after first login!')
       }

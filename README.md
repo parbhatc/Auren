@@ -10,7 +10,7 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 
 - Simulated **25K / 50K / 100K** eval and funded accounts: create, reset, delete
 - **Custom rules** when opening an account: profit target, max loss, drawdown type, consistency, commissions, contract caps
-- **Prop firm presets** (Tradesea live; more firms listed as they are wired up)
+- **Tradesea** market data for practice charts
 - Account states: **active**, **passed**, **blown** with dashboard stats
 - Embedded **settings**: profile, market data, keyboard shortcuts, timezone
 
@@ -201,7 +201,16 @@ App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 
 ### 6. First-time use
 
-1. Register or log in.
+On a fresh install (empty database), the server creates a default admin account:
+
+| Field | Value |
+|-------|-------|
+| Username | `admin` |
+| Password | `admin` |
+
+Change this password after first login. You can also register a new account if signup is enabled.
+
+1. Log in with the default admin account, or register a new user.
 2. Open **Settings → Market data** and connect Tradesea for charts (orders remain simulated).
 3. On **Auren**, create a **25K Eval** (or other size).
 4. Open **Trade** on that account.

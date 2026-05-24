@@ -15,6 +15,7 @@ class EmailService {
   constructor() {
     this.config = ConfigLoader.load()
     this.transporter = null
+    this.smtpConfigured = false
     this.templatePath = path.join(__dirname, '../templates/email-template.html')
     this.emailTemplate = null
     this.loadTemplate()
@@ -46,12 +47,15 @@ class EmailService {
     if (!smtpUser || !smtpPass) {
       console.warn('⚠️  SMTP credentials not configured in config.json. Email sending will be logged to console.')
       console.warn('⚠️  To enable email sending, add smtp.user and smtp.password to data/config.json')
+      this.smtpConfigured = false
       // Use console transport for development
       this.transporter = nodemailer.createTransport({
         jsonTransport: true,
       })
       return
     }
+
+    this.smtpConfigured = true
 
     // Gmail SMTP settings
     this.transporter = nodemailer.createTransport({
@@ -170,6 +174,7 @@ class EmailService {
       to: email,
       subject: `Verify Your ${this.config.email.appName} Account`,
       html,
+      code,
     })
   }
 
@@ -193,13 +198,14 @@ class EmailService {
       to: email,
       subject: `Reset Your ${this.config.email.appName} Password`,
       html,
+      code,
     })
   }
 
   /**
    * Send email
    */
-  async sendEmail({ to, subject, html }) {
+  async sendEmail({ to, subject, html, code }) {
     try {
       const mailOptions = {
         from: this.config.email.from,
@@ -210,15 +216,9 @@ class EmailService {
 
       const info = await this.transporter.sendMail(mailOptions)
 
-      // If using console transport (development), log the email
-      if (this.transporter.transporter && this.transporter.transporter.name === 'JSONTransport') {
-        console.log('\n📧 Email sent (development mode - SMTP_PASS not configured):')
-        console.log('To:', to)
-        console.log('Subject:', subject)
-        console.log('HTML Preview:', html.substring(0, 200) + '...')
-        console.log('Full email info:', JSON.stringify(info, null, 2))
-        console.log('\n💡 To enable real email sending, set SMTP_PASS in .env file')
-        console.log('   See README.md for Gmail setup instructions\n')
+      if (!this.smtpConfigured) {
+        const codePart = code ? ` Code: ${code}` : ''
+        console.log(`Email Sent To: ${to}${codePart}`)
       } else {
         console.log(`✅ Email sent successfully to ${to}`)
       }

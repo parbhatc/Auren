@@ -22,6 +22,12 @@ export interface RegisterData {
 
 export interface ForgotPasswordData {
   email: string
+  code: string
+}
+
+export interface VerifyEmailData {
+  email: string
+  code: string
 }
 
 export interface ResetPasswordData {
@@ -84,11 +90,41 @@ export interface ForgotPasswordProps {
   toggleTheme: () => void
   error: string
   success: string
+  resendMessage: string
   loading: boolean
+  sending: boolean
+  resending: boolean
+  continuing: boolean
+  resendCooldownSeconds: number
   register: (name: keyof ForgotPasswordData, options?: any) => UseFormRegisterReturn
   handleSubmit: UseFormHandleSubmit<ForgotPasswordData>
   errors: FieldErrors<ForgotPasswordData>
-  onSubmit: (data: ForgotPasswordData) => void
+  onSendCode: (data: ForgotPasswordData) => void
+  onCodeChange: (code: string) => void
+  onResend: () => void
+  onContinue: () => void
+  code: string
+  email: string
+}
+
+export interface VerifyEmailProps {
+  isDark: boolean
+  toggleTheme: () => void
+  error: string
+  success: string
+  resendMessage: string
+  loading: boolean
+  verifying: boolean
+  resending: boolean
+  resendCooldownSeconds: number
+  register: (name: keyof VerifyEmailData, options?: any) => UseFormRegisterReturn
+  handleSubmit: UseFormHandleSubmit<VerifyEmailData>
+  errors: FieldErrors<VerifyEmailData>
+  onSubmit: (data: VerifyEmailData) => void
+  onCodeChange: (code: string) => void
+  onResend: () => void
+  code: string
+  email: string
 }
 
 export interface ResetPasswordProps {

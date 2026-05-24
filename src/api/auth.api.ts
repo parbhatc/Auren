@@ -47,6 +47,14 @@ export const authAPI = {
   },
 
   /**
+   * Resend email verification code
+   */
+  resendVerificationEmail: async (data: { email: string }): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/resend-verification', data)
+    return response.data
+  },
+
+  /**
    * Verify reset code
    */
   verifyResetCode: async (data: { email: string; code: string }): Promise<AuthResponse> => {

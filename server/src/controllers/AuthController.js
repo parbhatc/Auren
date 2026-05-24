@@ -79,6 +79,27 @@ class AuthController {
   }
 
   /**
+   * Resend verification email
+   */
+  async resendVerificationEmail(req, res) {
+    try {
+      const { email } = req.body
+      const result = await AuthService.resendVerificationEmail(email)
+
+      return res.status(HTTP_STATUS.OK).json(result)
+    } catch (error) {
+      if (
+        error.code === 'RESEND_COOLDOWN' ||
+        error.message === Translator.t('auth.verifyEmail.userNotFound') ||
+        error.message === Translator.t('auth.verifyEmail.alreadyVerified')
+      ) {
+        return ErrorHandler.handleValidationError(res, error.message)
+      }
+      return ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  /**
    * Request password reset
    */
   async forgotPassword(req, res) {
@@ -88,6 +109,9 @@ class AuthController {
 
       return res.status(HTTP_STATUS.OK).json(result)
     } catch (error) {
+      if (error.code === 'RESEND_COOLDOWN') {
+        return ErrorHandler.handleValidationError(res, error.message)
+      }
       return ErrorHandler.handleServerError(res, error)
     }
   }

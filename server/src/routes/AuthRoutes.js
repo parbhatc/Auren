@@ -45,6 +45,13 @@ class AuthRoutes {
       AuthController.verifyEmail.bind(AuthController)
     )
 
+    // Resend verification email route
+    this.router.post(
+      '/resend-verification',
+      Validator.validateForgotPassword.bind(Validator),
+      AuthController.resendVerificationEmail.bind(AuthController)
+    )
+
     // Verify reset code route
     this.router.post(
       '/verify-reset-code',
