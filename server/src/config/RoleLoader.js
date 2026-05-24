@@ -16,14 +16,43 @@ class RoleLoader {
     this.roles = null
   }
 
+  ensureDataDir() {
+    const dataDir = path.dirname(this.rolesPath)
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+  }
+
+  getDefaultRoles() {
+    return [
+      {
+        id: 'user',
+        name: 'User',
+        permissions: ['user.read', 'user.write'],
+      },
+      {
+        id: 'admin',
+        name: 'Admin',
+        permissions: ['*'],
+      },
+    ]
+  }
+
   /**
    * Load roles from roles.json
    */
   load() {
     try {
       if (!fs.existsSync(this.rolesPath)) {
-        console.error('❌ roles.json not found')
-        throw new Error(Translator.t('roles.fileNotFound'))
+        console.warn('⚠️  roles.json not found, creating default roles')
+        this.ensureDataDir()
+        const defaultRoles = this.getDefaultRoles()
+        fs.writeFileSync(
+          this.rolesPath,
+          JSON.stringify({ roles: defaultRoles }, null, 2),
+          'utf8'
+        )
+        console.log('✅ Created default roles.json with admin and user roles')
       }
 
       const rolesData = fs.readFileSync(this.rolesPath, 'utf8')
@@ -103,7 +132,8 @@ class RoleLoader {
     if (!this.roles) {
       this.roles = this.load()
     }
-    return this.roles[0]?.id || 'user'
+    const userRole = this.roles.find(role => role.id === 'user')
+    return userRole?.id || this.roles[0]?.id || 'user'
   }
 
   /**

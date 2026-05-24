@@ -98,6 +98,11 @@ class RoleError extends Component<RoleErrorProps> {
                           name: 'User',
                           permissions: ['user.read', 'user.write'],
                         },
+                        {
+                          id: 'admin',
+                          name: 'Admin',
+                          permissions: ['*'],
+                        },
                       ],
                     },
                     null,

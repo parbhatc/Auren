@@ -58,6 +58,7 @@ Thumbs.db
 *.cursor/
 
 # Scratch / local scripts
+update.sh
 patch_dom_rows.py
 patch_dom_rows_fragment.txt
 *.patch.bak

@@ -36,7 +36,7 @@ class Server {
       } catch (error) {
         console.error('\n❌ CRITICAL ERROR: Roles validation failed')
         console.error('The server cannot start without at least one role defined.')
-        console.error('Please create data/roles.json with at least one role.\n')
+        console.error('Default roles could not be loaded. Check server/data/roles.json.\n')
         process.exit(1)
       }
 
