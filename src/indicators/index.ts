@@ -13,7 +13,6 @@ export { ShapesAPI } from './shapes'
 
 // Indicators (`.pine` scripts auto-load from scripts/)
 export { loadPineScriptIndicators } from './scripts'
-export { SwingIndicator } from './swing'
 
 // Manager
 export { IndicatorManager } from './manager'

@@ -3,7 +3,8 @@
 ## Add a custom indicator (`.pine` only)
 
 1. Create `scripts/MyStudy.pine` with standard Pine Script
-2. Reload — auto-registered via `loadPineScriptIndicators()`
+2. Add `import myStudySource from './MyStudy.pine?raw'` in `loadPineScripts.ts` (or restart dev server — Vite glob is compile-time)
+3. Reload — auto-registered via `loadPineScriptIndicators()`
 
 No JSON meta comments. `PineJSIndicator` is the template for every `.pine` file.
 
@@ -43,9 +44,21 @@ indicators/
 |-------|------|
 | `PineJSIndicator` | Template for all `.pine` scripts |
 | `parser/parsePineMeta` | Auto-generates study config from Pine |
-| `parser/parsePineBody` | Parses conditions + `box.new` |
-| `runtime/pineBoxRuntime` | Draws boxes on chart |
+| `parser/parsePineBody` | Parses conditions + `box.new` (optional) |
+| FVG runtime | `box.new` scripts — fair value gap boxes |
+| Swing runtime | `ta.pivothigh` / `ta.pivotlow` scripts — horizontal swing lines |
 
-## Class-based indicators
+## Example: Swing
 
-`SwingIndicator` remains TypeScript. Everything else is `scripts/*.pine`.
+```pine
+//@version=5
+indicator("Swing High/Low", "Swing", overlay=true, max_lines_count=500)
+
+leftBars  = input.int(5, "Left Bars",  group="Swing Settings", minval=1, maxval=50)
+rightBars = input.int(5, "Right Bars", group="Swing Settings", minval=1, maxval=50)
+
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+plot(na, title="Swing", display=display.none)
+```

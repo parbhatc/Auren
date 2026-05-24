@@ -169,10 +169,6 @@ export function parsePineBody(source: string, meta?: PineScriptMeta): ParsedPine
   const conditions = parseConditions(source)
   const boxRules = parseBoxRules(source, conditions)
 
-  if (boxRules.length === 0) {
-    throw new Error('No box.new rules found in pine script')
-  }
-
   let lookback = 0
   for (const expr of conditions.values()) {
     lookback = Math.max(lookback, maxOffsetInCompare(expr))

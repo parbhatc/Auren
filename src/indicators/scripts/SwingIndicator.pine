@@ -1,0 +1,27 @@
+//@version=5
+indicator("Swing High/Low", "Swing", overlay = true, max_lines_count = 500)
+leftBars  = input.int(5, "Left Bars",  group = "Swing Settings", minval = 1, maxval = 50)
+rightBars = input.int(5, "Right Bars", group = "Swing Settings", minval = 1, maxval = 50)
+
+ph = ta.pivothigh(high, leftBars, rightBars)
+pl = ta.pivotlow(low, leftBars, rightBars)
+
+if not na(ph)
+    line.new(
+         x1     = bar_index[rightBars],
+         y1     = ph,
+         x2     = bar_index,
+         y2     = ph,
+         color  = color.red,
+         width  = 2)
+
+if not na(pl)
+    line.new(
+         x1     = bar_index[rightBars],
+         y1     = pl,
+         x2     = bar_index,
+         y2     = pl,
+         color  = color.green,
+         width  = 2)
+
+plot(na, title = "Swing", display = display.none)
