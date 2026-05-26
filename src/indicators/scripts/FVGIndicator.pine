@@ -1,33 +1,65 @@
 //@version=5
 indicator("Fair Value Gap", "FVG", overlay = true, max_boxes_count = 500)
-showFvg      = input.bool(true,  "Show FVG",        group = "FVG Settings")
-lengthOfBox  = input.int(20,     "Length of Box",   group = "FVG Settings", minval = 1, maxval = 50)
-bullishColor = input.color(color.new(color.green, 80), "Bullish Color", group = "FVG Settings")
-bearishColor = input.color(color.new(color.red,   80), "Bearish Color", group = "FVG Settings")
 
-bullishFvg = low > high[2]
-bearishFvg = high < low[2]
+// ===== INPUTS =====
+showFVG    = input.bool(true, "Show FVG", group = "FVG")
+showBull   = input.bool(true, "Bullish", group = "FVG")
+showBear   = input.bool(true, "Bearish", group = "FVG")
+autoDel    = input.bool(true, "Delete After Fill", group = "FVG")
+bullCol    = input.color(color.new(color.green, 80), "Bull Color", group = "FVG")
+bearCol    = input.color(color.new(color.red, 80), "Bear Color", group = "FVG")
+extendBars = input.int(50, "Extend Bars", group = "FVG")
 
-if showFvg and bullishFvg
-    box.new(
-         left   = bar_index[2],
-         top    = low,
-         right  = bar_index + lengthOfBox,
-         bottom = high[2],
-         bgcolor      = bullishColor,
-         border_color = bullishColor,
-         text         = "FVG",
-         text_size    = size.small)
+showIFVG  = input.bool(false, "Show Inverse FVG", group = "Inverse FVG")
+bullColIF = input.color(color.new(color.green, 80), "Bull IFVG Color", group = "Inverse FVG")
+bearColIF = input.color(color.new(color.red, 80), "Bear IFVG Color", group = "Inverse FVG")
 
-if showFvg and bearishFvg
-    box.new(
-         left   = bar_index[2],
-         top    = high[2],
-         right  = bar_index + lengthOfBox,
-         bottom = low,
-         bgcolor      = bearishColor,
-         border_color = bearishColor,
-         text         = "FVG",
-         text_size    = size.small)
+// ===== ARRAYS (runtime mirrors array.push from f_addBox) =====
+var box[] fvgBoxes = array.new_box()
+var string[] fvgType = array.new_string()
+var float[] fvgTop = array.new_float()
+var float[] fvgBottom = array.new_float()
+var int[] barIdx = array.new_int()
+
+// ===== LOGIC =====
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+f_addBox(_type, _top, _bot, _col) =>
+    if showFVG
+        b = box.new(bar_index - 2, _top, bar_index + extendBars, _bot, bgcolor = _col, border_color = _col, text = "FVG", text_color = color.new(_col, 0), text_size = size.normal)
+        array.push(fvgBoxes, b)
+    array.push(fvgType, _type)
+    array.push(fvgTop, _top)
+    array.push(fvgBottom, _bot)
+    array.push(barIdx, bar_index)
+
+if showFVG
+    if showBull and bullFVG
+        f_addBox("bull", low, high[2], bullCol)
+    if showBear and bearFVG
+        f_addBox("bear", high, low[2], bearCol)
+
+if autoDel
+    i = array.size(fvgType) - 1
+    while i >= 0
+        t = array.get(fvgType, i)
+        top_ = array.get(fvgTop, i)
+        bot_ = array.get(fvgBottom, i)
+        idx = array.get(barIdx, i)
+        filled = (t == "bull" and close < bot_) or (t == "bear" and close > top_)
+        colIF = t == "bull" ? bearColIF : bullColIF
+
+        if filled
+            if showIFVG
+                box.new(idx - 2, top_, bar_index + 2, bot_, bgcolor = colIF, border_color = colIF, text = "IFVG", text_color = color.new(colIF, 0), text_size = size.normal)
+            if i < array.size(fvgBoxes)
+                box.delete(array.get(fvgBoxes, i))
+                array.remove(fvgBoxes, i)
+            array.remove(fvgType, i)
+            array.remove(fvgTop, i)
+            array.remove(fvgBottom, i)
+            array.remove(barIdx, i)
+        i -= 1
 
 plot(na, title = "FVG", display = display.none)

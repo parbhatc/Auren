@@ -100,6 +100,8 @@ export interface ChartAPI {
   createExecutionShape: (point: Point, options: ShapeOptions) => Promise<any>
   getShapeById: (shapeId: string) => any
   removeEntity: (shapeId: string) => void
+  getAllShapes?: () => Array<{ id?: string } | string>
+  removeAllShapes?: () => void
   getAllStudies: () => any[]
   getStudyById: (studyId: string) => any
 }

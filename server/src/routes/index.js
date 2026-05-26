@@ -9,6 +9,7 @@ import TradingJournalRoutes from './TradingJournalRoutes.js'
 import TradingViewRoutes from './TradingViewRoutes.js'
 import TradeseaRoutes from './TradeseaRoutes.js'
 import PracticeRoutes from './PracticeRoutes.js'
+import DebugRoutes from './DebugRoutes.js'
 import RoleController from '../controllers/RoleController.js'
 import Translator from '../utils/Translator.js'
 import { HTTP_STATUS } from '../config/constants.js'
@@ -78,6 +79,10 @@ class Routes {
     // Practice sim accounts (eval/funded)
     const practiceRoutes = new PracticeRoutes()
     this.router.use('/practice', practiceRoutes.getRouter())
+
+    // Dev/debug: persisted chart history for indicator debugging
+    const debugRoutes = new DebugRoutes()
+    this.router.use('/debug', debugRoutes.getRouter())
   }
 
   /**

@@ -323,32 +323,31 @@ class BaseChart extends Component<TradingViewChartProps> {
    * Resets the widget cache and all chart instances
    */
   resetAllChartData = () => {
-    if (!this.widgetRef) {
-      console.warn('BaseChart: Widget not available for reset')
-      return
+    const widget = this.widgetRef
+    if (!widget) return
+
+    // Clear indicator candle/box state before TV replays history (avoids one bar with stale arrays).
+    this.indicatorManager?.reset()
+
+    if (typeof widget.resetCache === 'function') {
+      try {
+        widget.resetCache()
+      } catch {
+        /* TV chart model not ready yet (common right after MDS reconnect) */
+      }
     }
 
-    try {
-      // Reset widget cache
-      if (this.widgetRef.resetCache) {
-        this.widgetRef.resetCache()
-      }
-
-      // Reset data for all charts
-      if (this.widgetRef.chartsCount) {
-        const chartsCount = this.widgetRef.chartsCount()
-        for (let i = 0; i < chartsCount; i++) {
-          const chart = this.widgetRef.chart(i)
-          if (chart && chart.resetData) {
-            chart.resetData()
-          }
+    if (typeof widget.chartsCount === 'function') {
+      const chartsCount = widget.chartsCount()
+      for (let i = 0; i < chartsCount; i++) {
+        try {
+          const chart = typeof widget.chart === 'function' ? widget.chart(i) : null
+          chart?.resetData?.()
+        } catch {
+          /* pane not ready */
         }
       }
-    } catch (error) {
-      console.error('Error resetting chart data:', error)
     }
-
-    this.indicatorManager?.reset()
   }
 
   /**

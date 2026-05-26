@@ -145,6 +145,17 @@ export class PineRuntime {
     return this.PineJS.Std.time(this.context)
   }
 
+  /** Candle already stored for `timeMs` (ms), or null if that bar was never fed. */
+  candleAtTime(timeMs: number): import('../base/CandleNode').CandleNode | null {
+    const map = this.indicator.candleMap?.get(this.seriesId)
+    return map?.get(timeMs) ?? null
+  }
+
+  /** Last bar in the linked chain for this series. */
+  latestCandle(): import('../base/CandleNode').CandleNode | null {
+    return this.indicator.latestCandle?.get(this.seriesId) ?? null
+  }
+
   /** Feed current context bar into the candle chain; returns the node or null on duplicate tick. */
   feedCandle(): import('../base/CandleNode').CandleNode | null {
     const time = this.contextTime()

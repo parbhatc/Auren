@@ -44,10 +44,10 @@ export const PRACTICE_PROP_FIRM_KEY = 'practicePropFirm'
 export const PRACTICE_ACCOUNT_ID_KEY = 'practiceAccountId'
 export const PRACTICE_ACCOUNT_LABEL_KEY = 'practiceAccountLabel'
 
-/** Quick quantity chips (mobile scalp bar + DOM); filtered by account max size. */
-export const PRACTICE_CONTRACT_QTY_PRESETS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 35, 40, 50, 60,
-] as const
+/** Quick quantity chips (DOM / order pad / mobile); filtered by account max size. */
+export const PRACTICE_CONTRACT_QTY_PRESETS = [1, 3, 6, 10, 15] as const
+
+export const PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT = PRACTICE_CONTRACT_QTY_PRESETS.length
 
 /** Quick Trade / DOM contract root symbols (CME product codes). */
 export const PRACTICE_CONTRACT_SYMBOL_PRESETS = [

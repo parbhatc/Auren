@@ -3,11 +3,14 @@
  */
 import { BaseIndicator } from '../base/BaseIndicator'
 import type { TradingViewWidget, PineJS } from '../types'
-
 export class IndicatorManager {
   private indicators: BaseIndicator[] = []
   public widget: TradingViewWidget | null = null
   private studies: any[] = []
+  /** TV study instance id → registered indicator template (FVG / Swing). */
+  private studyById = new Map<string, BaseIndicator>()
+  /** Last known visibility per study id (to avoid false onShown/onHidden on settings edits). */
+  private studyVisibilityById = new Map<string, boolean>()
 
   /**
    * Set the TradingView widget reference
@@ -60,11 +63,64 @@ export class IndicatorManager {
     return (PineJS: PineJS) => this.getter(PineJS)
   }
 
+  private getActiveChart(): ReturnType<TradingViewWidget['chart']> | null {
+    if (!this.widget) return null
+    try {
+      return (this.widget as { activeChart?: () => ReturnType<TradingViewWidget['chart']> }).activeChart?.() ?? this.widget.chart?.() ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private isCustomAurenStudy(studyName: string): boolean {
+    const n = studyName.trim()
+    return this.indicators.some(
+      (ind) =>
+        n === ind.displayName ||
+        n === ind.name ||
+        n === ind.description ||
+        n.includes(ind.displayName) ||
+        n.includes(ind.name)
+    )
+  }
+
+  /** Log every study on the active chart pane (built-in TV + custom Auren). */
+  logActiveChartStudies(reason = 'snapshot'): void {
+    const chart = this.getActiveChart()
+    if (!chart?.getAllStudies) {
+      console.warn('[chart] no chart — cannot list studies')
+      return
+    }
+
+    let studies: Array<{ id: string; name: string }> = []
+    try {
+      studies = chart.getAllStudies()
+      this.studies = studies
+    } catch (err) {
+      console.warn('[chart] getAllStudies failed', err)
+      return
+    }
+
+    const onChart = studies.map((s, index) => ({
+      '#': index + 1,
+      name: s.name,
+      id: s.id,
+      source: this.isCustomAurenStudy(s.name) ? 'Auren (custom pine)' : 'TradingView',
+    }))
+
+    console.group(`[chart] active studies (${studies.length}) — ${reason}`)
+    if (onChart.length === 0) {
+      console.log('(none on chart)')
+    } else {
+      console.table(onChart)
+    }
+    console.groupEnd()
+  }
+
   onReady(): void {
     if (!this.widget) return
 
-    // Safely get chart - try activeChart first, then chart()
-    const chart = (this.widget as any).activeChart?.() || this.widget.chart?.()
+    const chart = this.getActiveChart()
     if (!chart) {
       console.warn('[IndicatorManager] Chart not available yet, widget may not be fully initialized')
       return
@@ -72,9 +128,25 @@ export class IndicatorManager {
     
     try {
       this.studies = chart.getAllStudies()
+      this.studyVisibilityById.clear()
+      for (const s of this.studies as Array<{ id: string }>) {
+        try {
+          const visible = chart.getStudyById(s.id)?.isVisible?.()
+          if (typeof visible === 'boolean') this.studyVisibilityById.set(s.id, visible)
+        } catch {
+          /* ignore visibility bootstrap errors */
+        }
+      }
     } catch (error) {
       console.warn('[IndicatorManager] Error getting studies:', error)
       return
+    }
+
+    this.logActiveChartStudies('chart ready')
+
+    if (typeof window !== 'undefined') {
+      ;(window as Window & { logChartStudies?: () => void }).logChartStudies = () =>
+        this.logActiveChartStudies('manual')
     }
 
     this.widget.subscribe('study_properties_changed', (studyId: string) => {
@@ -84,12 +156,11 @@ export class IndicatorManager {
         try {
           const study = chart.getStudyById(studyId)
           const isVisible = study.isVisible()
-
-          if (!isVisible) {
-            indicator.onHidden()
-          } else {
-            indicator.onShown()
-          }
+          const prevVisible = this.studyVisibilityById.get(studyId)
+          this.studyVisibilityById.set(studyId, isVisible)
+          if (prevVisible === undefined || prevVisible === isVisible) return
+          if (!isVisible) indicator.onHidden()
+          else indicator.onShown()
         } catch (error) {
           console.warn('[IndicatorManager] Error handling study properties changed:', error)
         }
@@ -106,17 +177,39 @@ export class IndicatorManager {
         switch (action) {
           case 'create': {
             this.studies = currentChart.getAllStudies()
-            const created = this.studies.find((s: { id: string }) => s.id === studyId)
-            console.log('[indicators] study created:', created?.name ?? studyId)
+            const created = this.studies.find((s: { id: string; name: string }) => s.id === studyId)
+            const addedName = created?.name ?? studyId
+            const indicator = this.getIndicatorByName(addedName)
+            try {
+              const visible = currentChart.getStudyById(studyId)?.isVisible?.()
+              if (typeof visible === 'boolean') this.studyVisibilityById.set(studyId, visible)
+            } catch {
+              /* ignore */
+            }
+            if (indicator) {
+              indicator.setStudyId(studyId)
+              this.studyById.set(studyId, indicator)
+            }
+            this.logActiveChartStudies(`added: ${addedName}`)
             break
           }
-          case 'remove':
-            const indicator = this.getIndicatorByStudyId(studyId)
-            this.studies = currentChart.getAllStudies()
+          case 'remove': {
+            const removedStudy = this.studies.find(
+              (s: { id: string; name: string }) => s.id === studyId
+            )
+            const indicator =
+              this.studyById.get(studyId) ?? this.getIndicatorByStudyId(studyId)
+            const removedName =
+              removedStudy?.name ?? indicator?.displayName ?? indicator?.name ?? studyId
+            this.studyById.delete(studyId)
+            this.studyVisibilityById.delete(studyId)
             if (indicator) {
               indicator.onRemove()
             }
+            this.studies = currentChart.getAllStudies()
+            this.logActiveChartStudies(`removed: ${removedName}`)
             break
+          }
         }
       } catch (error) {
         console.warn('[IndicatorManager] Error handling study event:', error)

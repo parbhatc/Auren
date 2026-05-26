@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { TradeSideButton } from '../../../../common/TradeSideButton'
 import { tradeSideMeta } from '../../../../../constants/tradingSide'
-import { PRACTICE_CONTRACT_QTY_PRESETS } from '../../../../../constants/practice'
+import {
+  PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
+  PRACTICE_CONTRACT_QTY_PRESETS,
+} from '../../../../../constants/practice'
 import type { TradeseaMarketBook } from '../../../../../services/tradesea/tradeseaMarketBook'
 import {
   fmtPrice,
@@ -24,8 +27,6 @@ import type {
 import { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../types'
 
 const ORDER_TYPES: OrderType[] = ['market', 'limit', 'stop']
-const QTY_CHIP_LIMIT = 6
-
 export function OrderTab({
   props,
   maxQty,
@@ -68,7 +69,11 @@ export function OrderTab({
     bid != null && ask != null ? Math.round(((bid + ask) / 2) * 100) / 100 : marketPrice
 
   const qtyPresets = useMemo(
-    () => PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(0, QTY_CHIP_LIMIT),
+    () =>
+      PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(
+        0,
+        PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT
+      ),
     [maxQty]
   )
   const qtyNum = parseInt(String(props.quantity).replace(/\D/g, ''), 10) || 0

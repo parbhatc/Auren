@@ -1,9 +1,6 @@
-/** Enable: `localStorage.setItem('auren.pine.debug', '1')` then reload. */
+/** Opt-in only: `localStorage.setItem('auren.pine.debug', '1')` then reload. */
 export function isPineDebugEnabled(): boolean {
-  if (typeof localStorage !== 'undefined' && localStorage.getItem('auren.pine.debug') === '1') {
-    return true
-  }
-  return Boolean(import.meta.env?.DEV)
+  return typeof localStorage !== 'undefined' && localStorage.getItem('auren.pine.debug') === '1'
 }
 
 export function pineDebug(scope: string, message: string, data?: unknown): void {

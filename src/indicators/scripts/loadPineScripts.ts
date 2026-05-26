@@ -22,14 +22,15 @@ export function loadPineScriptIndicators(): BaseIndicator[] {
   for (const [path, source] of Object.entries(pineModules)) {
     try {
       const IndicatorClass = createIndicatorFromPineFile(source, path)
-      const instance = new IndicatorClass()
-      indicators.push(instance)
-      console.log('[indicators] registered pine script:', (instance as { name?: string }).name, path)
+      indicators.push(new IndicatorClass())
     } catch (err) {
       console.error(`[indicators] Failed to load ${path}:`, err)
     }
   }
 
-  console.log(`[indicators] ${indicators.length} pine script(s) registered`)
+  if (indicators.length > 0) {
+    const names = indicators.map((i) => i.name).join(', ')
+    console.log(`[indicators] ${indicators.length} pine script(s): ${names}`)
+  }
   return indicators
 }

@@ -44,9 +44,11 @@ indicators/
 |-------|------|
 | `PineJSIndicator` | Template for all `.pine` scripts |
 | `parser/parsePineMeta` | Auto-generates study config from Pine |
-| `parser/parsePineBody` | Parses conditions + `box.new` (optional) |
-| FVG runtime | `box.new` scripts — fair value gap boxes |
-| Swing runtime | `ta.pivothigh` / `ta.pivotlow` scripts — horizontal swing lines |
+| `parser/parsePineBody` | Parses conditions, `box.new`, `line.new`, `ta.pivot*`, arrays, fill `while` |
+| `eval/evalPineExpr.ts` | Evaluates parsed expressions (`bar_index - 2`, `bar_index[rightBars]`, etc.) |
+| `runtime/pineScriptRuntime.ts` | Executes parsed boxes and/or pivot lines on each bar |
+| `runtime/pineBoxRuntime.ts` | Box draw, arrays, fill-loop handling |
+| `runtime/pineLineRuntime.ts` | Pivot + `line.new` from `if not na(ph)` blocks |
 
 ## Example: Swing
 

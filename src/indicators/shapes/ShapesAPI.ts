@@ -19,6 +19,16 @@ export class ShapesAPI {
   private ownerStudyId: string | null = null
   public shapeIds: Set<string> = new Set()
 
+  private isMissingShapeError(err: unknown): boolean {
+    const msg =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : String(err ?? '')
+    return /no such shape|can't find a source with id|not found/i.test(msg)
+  }
+
   /**
    * Set the TradingView widget reference
    */
@@ -310,9 +320,21 @@ export class ShapesAPI {
       }
 
       try {
-        const shape = chart.getShapeById(shapeId)
+        let shape: any = null
+        try {
+          shape = chart.getShapeById(shapeId)
+        } catch (error) {
+          if (this.isMissingShapeError(error)) {
+            this.shapeIds.delete(shapeId)
+            resolve(false)
+            return
+          }
+          reject(error)
+          return
+        }
         if (!shape) {
-          reject(new Error(`Shape with ID ${shapeId} not found`))
+          this.shapeIds.delete(shapeId)
+          resolve(false)
           return
         }
 
@@ -343,6 +365,11 @@ export class ShapesAPI {
 
         resolve(true)
       } catch (error) {
+        if (this.isMissingShapeError(error)) {
+          this.shapeIds.delete(shapeId)
+          resolve(false)
+          return
+        }
         reject(error)
       }
     })
@@ -366,6 +393,11 @@ export class ShapesAPI {
         this.shapeIds.delete(shapeId)
         resolve(true)
       } catch (error) {
+        if (this.isMissingShapeError(error)) {
+          this.shapeIds.delete(shapeId)
+          resolve(false)
+          return
+        }
         reject(error)
       }
     })

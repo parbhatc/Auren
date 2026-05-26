@@ -1,71 +1,27 @@
 import type { CandleNode } from '../../base/CandleNode'
-import type { BoxRule, PineBoxState, PineCompareExpr, PineExpr } from '../../types/pine'
+import { barsToSeconds } from '../../base/indicatorHelpers'
+import type { BoxRule, PineBoxState } from '../../types/pine'
 import type { PineRuntime } from '../PineRuntime'
+import { evalBool, evalColor, evalPrice, evalTimeSec, type EvalContext } from '../eval/evalPineExpr'
 import { pineDebug, pineWarn, shouldLogBar } from '../debug/pineDebug'
 
 function inputIdForVar(state: PineBoxState, varName: string): string {
   return state.parsed.varToInputId.get(varName) ?? varName
 }
 
-function evalCompare(candle: CandleNode, expr: PineCompareExpr): boolean {
-  const left = evalPrice(candle, expr.left)
-  const right = evalPrice(candle, expr.right)
-  if (!Number.isFinite(left) || !Number.isFinite(right)) return false
-  switch (expr.op) {
-    case '>':
-      return left > right
-    case '<':
-      return left < right
-    case '>=':
-      return left >= right
-    case '<=':
-      return left <= right
+function evalCtx(
+  p: PineRuntime,
+  state: PineBoxState,
+  candle: CandleNode,
+  locals: Record<string, string | number> = {}
+): EvalContext {
+  return {
+    candle,
+    p,
+    period: state.period,
+    resolutionToMinutes: state.resolutionToMinutes,
+    locals,
   }
-}
-
-function evalPrice(candle: CandleNode, expr: PineExpr): number {
-  switch (expr.kind) {
-    case 'series': {
-      const node = candle.at(expr.offset)
-      if (!node) return NaN
-      if (expr.name === 'bar_index') return node.time
-      return node[expr.name]
-    }
-    case 'literal':
-      return typeof expr.value === 'number' ? expr.value : NaN
-    case 'var':
-    case 'add':
-      return NaN
-  }
-}
-
-function evalTimeSec(candle: CandleNode, expr: PineExpr, p: PineRuntime, state: PineBoxState): number {
-  if (expr.kind === 'series' && expr.name === 'bar_index') {
-    const node = candle.at(expr.offset)
-    return node ? node.time / 1000 : NaN
-  }
-  if (expr.kind === 'add' && expr.left.kind === 'series' && expr.left.name === 'bar_index' && expr.right.kind === 'var') {
-    const lengthOfBox = p.input.int(inputIdForVar(state, expr.right.name), 20)
-    return candle.time / 1000 + extendedLength(state, lengthOfBox)
-  }
-  const price = evalPrice(candle, expr)
-  return Number.isFinite(price) ? (price > 1e12 ? price / 1000 : price) : NaN
-}
-
-function evalColor(p: PineRuntime, state: PineBoxState, expr: PineExpr): string {
-  if (expr.kind === 'var') {
-    return p.input.color(inputIdForVar(state, expr.name))
-  }
-  if (expr.kind === 'literal' && typeof expr.value === 'string') return expr.value
-  return '#ffffff'
-}
-
-function extendedLength(state: PineBoxState, lengthOfBox: number, period: string | null = null): number {
-  const res = period ?? state.period ?? '5'
-  if (!res) return 0
-  const chartBarIntervalMinutes = state.resolutionToMinutes(res) / 60
-  const chartBarIntervalSeconds = chartBarIntervalMinutes * 60
-  return parseInt(res, 10) * 60 * lengthOfBox + lengthOfBox * chartBarIntervalSeconds
 }
 
 function ruleMatches(
@@ -77,12 +33,12 @@ function ruleMatches(
 ): boolean {
   for (const varName of rule.guardVars) {
     if (state.parsed.conditions.has(varName)) {
-      const ok = evalCompare(candle, state.parsed.conditions.get(varName)!)
-      if (!ok) return false
+      const cond = state.parsed.conditions.get(varName)!
+      if (!evalBool(cond, evalCtx(p, state, candle), state.parsed.varToInputId)) return false
       continue
     }
     const id = inputIdForVar(state, varName)
-  if (!p.input.bool(id)) {
+    if (!p.input.bool(id)) {
       if (shouldLogBar(studyId, candle.time)) {
         pineDebug(studyId, `rule blocked by input ${varName} (${id})=false`)
       }
@@ -90,6 +46,99 @@ function ruleMatches(
     }
   }
   return true
+}
+
+function initArrays(parsed: PineBoxState['parsed']): Map<string, unknown[]> {
+  const arrays = new Map<string, unknown[]>()
+  for (const name of parsed.arrayVars) {
+    arrays.set(name, [])
+  }
+  return arrays
+}
+
+function arr<T>(state: PineBoxState, name: string): T[] {
+  if (!state.arrays.has(name)) state.arrays.set(name, [])
+  return state.arrays.get(name)! as T[]
+}
+
+function leftBarOffset(expr: import('../../types/pine').PineExpr): number {
+  if (expr.kind === 'sub' && expr.right.kind === 'literal' && typeof expr.right.value === 'number') {
+    return expr.right.value
+  }
+  if (expr.kind === 'series' && expr.name === 'bar_index') return expr.offset
+  return 2
+}
+
+/** TV rectangles need top price > bottom when script passes inverted top/bottom. */
+function normalizeBoxCorners(
+  left: number,
+  right: number,
+  top: number,
+  bottom: number
+): { left: number; right: number; top: number; bottom: number } {
+  return {
+    left: Math.min(left, right),
+    right: Math.max(left, right),
+    top: Math.max(top, bottom),
+    bottom: Math.min(top, bottom),
+  }
+}
+
+function buildFillLocals(
+  state: PineBoxState,
+  fl: NonNullable<PineBoxState['parsed']['fillLoop']>,
+  index: number,
+  candle: CandleNode
+): Record<string, string | number> {
+  const locals: Record<string, string | number> = { close: candle.close }
+  for (const loc of fl.locals) {
+    const values = arr<unknown>(state, loc.arrayName)
+    locals[loc.varName] = values[index] as string | number
+  }
+  if ('idx' in locals && state.anchorTimes[index] != null) {
+    locals.idx = state.anchorTimes[index]
+  }
+  if (fl.colorTernary?.resultVar) {
+    const t = fl.colorTernary
+    const eqVal = String(locals[t.eqVar] ?? '')
+    const colorVar = eqVal === t.whenLiteral ? t.thenVar : t.elseVar
+    locals[t.resultVar] = colorVar
+  }
+  return locals
+}
+
+function runArrayPushes(
+  p: PineRuntime,
+  state: PineBoxState,
+  rule: BoxRule,
+  candle: CandleNode,
+  shapeId: string | null
+): void {
+  const ctx = evalCtx(p, state, candle)
+  for (const push of rule.arrayPushes) {
+    const target = arr<unknown>(state, push.array)
+    let value: unknown
+    switch (push.value) {
+      case 'box':
+        value = shapeId ?? ''
+        break
+      case '_type':
+        value = rule.typeLiteral ?? ''
+        break
+      case '_top':
+        value = evalPrice(rule.box.top, ctx, state.parsed.varToInputId)
+        break
+      case '_bot':
+        value = evalPrice(rule.box.bottom, ctx, state.parsed.varToInputId)
+        break
+      case 'bar_index':
+        value = candle.time
+        break
+      default:
+        value = push.value
+    }
+    target.push(value)
+  }
 }
 
 export function createPineBoxState(
@@ -105,79 +154,289 @@ export function createPineBoxState(
   return {
     cache: new Map(),
     list: new Map(),
+    arrays: initArrays(parsed),
+    anchorTimes: [],
     period: deps.period ?? null,
     shapes: deps.shapes,
     resolutionToMinutes: deps.resolutionToMinutes,
     rgbaToOpaque: deps.rgbaToOpaque,
     drawChain: Promise.resolve(),
+    drawGeneration: 0,
+    highWaterTime: null,
     parsed,
     meta,
   }
 }
 
+/** TV history reload replays bars from the past — clear stale FVG arrays/shapes. */
+function onHistoryRewind(state: PineBoxState, studyId: string): void {
+  pineDebug(studyId, 'history rewind — reset box state')
+  resetPineBoxState(state)
+}
+
+function collectBoxShapeIds(state: PineBoxState): string[] {
+  const ids = new Set<string>()
+  for (const item of state.list.values()) {
+    if (item.shapeId) ids.add(item.shapeId)
+  }
+  const fl = state.parsed.fillLoop
+  if (fl?.deleteBoxesArray) {
+    for (const id of arr<string>(state, fl.deleteBoxesArray)) {
+      if (typeof id === 'string' && id) ids.add(id)
+    }
+  }
+  return [...ids]
+}
+
+function removeStoredBoxByShapeId(state: PineBoxState, shapeId: string): void {
+  for (const [k, item] of state.list.entries()) {
+    if (item.shapeId === shapeId) {
+      state.list.delete(k)
+      break
+    }
+  }
+}
+
+export async function deleteAllBoxShapes(state: PineBoxState): Promise<void> {
+  const ids = collectBoxShapeIds(state)
+  await Promise.all(ids.map((id) => state.shapes.deleteRectangle(id).catch(() => false)))
+}
+
+function barHasDrawnRule(state: PineBoxState, candle: CandleNode): boolean {
+  for (let i = 0; i < state.parsed.boxRules.length; i++) {
+    if (state.list.has(candle.time * 10 + i)) return true
+  }
+  return false
+}
+
+/** Draw cached bars once `candle.at(lookback)` becomes available (out-of-order / scroll). */
+function flushCachedBarsWhenReady(
+  p: PineRuntime,
+  state: PineBoxState,
+  studyId: string
+): void {
+  const lookback = state.parsed.lookback
+  for (const [time, cached] of [...state.cache.entries()]) {
+    if (!cached.at(lookback)) continue
+    state.cache.delete(time)
+    enqueueDraw(p, state, cached, studyId)
+  }
+}
+
+function scheduleBarDraw(
+  p: PineRuntime,
+  state: PineBoxState,
+  candle: CandleNode,
+  studyId: string
+): void {
+  const lookback = state.parsed.lookback
+  if (!candle.at(lookback)) {
+    state.cache.set(candle.time, candle)
+    return
+  }
+
+  const wasPending = state.cache.delete(candle.time)
+  const fillOnly = !wasPending && barHasDrawnRule(state, candle)
+  enqueueDraw(p, state, candle, studyId, fillOnly ? { fillOnly: true } : undefined)
+}
+
 export function pineBoxOnBar(p: PineRuntime, state: PineBoxState, studyId = 'pine'): number {
   const time = p.contextTime()
+  if (Number.isFinite(time)) {
+    if (state.highWaterTime != null && time < state.highWaterTime) {
+      onHistoryRewind(state, studyId)
+    }
+    if (state.highWaterTime == null || time > state.highWaterTime) {
+      state.highWaterTime = time
+    }
+  }
+
   const candle = p.feedCandle()
 
-  if (state.cache.has(time)) {
-    const current = state.cache.get(time)!
-    if (current.at(state.parsed.lookback)) {
-      if (shouldLogBar(studyId, time)) {
-        pineDebug(studyId, 'cache replay draw', { time, lookback: state.parsed.lookback })
-      }
-      enqueueDraw(p, state, current, studyId)
-      state.cache.delete(time)
-    }
+  if (candle) {
+    flushCachedBarsWhenReady(p, state, studyId)
+    scheduleBarDraw(p, state, candle, studyId)
     return p.na
   }
 
-  if (!candle) {
-    if (shouldLogBar(studyId, time)) {
-      pineDebug(studyId, 'feedCandle returned null (duplicate tick)', { time })
-    }
-    return p.na
-  }
+  // TV revisits the same bar when scrolling (duplicate OHLC → null).
+  const existing = p.candleAtTime(time)
+  if (!existing) return p.na
 
-  enqueueDraw(p, state, candle, studyId)
+  flushCachedBarsWhenReady(p, state, studyId)
+  scheduleBarDraw(p, state, existing, studyId)
   return p.na
 }
 
-function enqueueDraw(p: PineRuntime, state: PineBoxState, candle: CandleNode, studyId: string): void {
+type DrawBarOptions = { fillOnly?: boolean }
+
+function enqueueDraw(
+  p: PineRuntime,
+  state: PineBoxState,
+  candle: CandleNode,
+  studyId: string,
+  options?: DrawBarOptions
+): void {
   state.drawChain = state.drawChain
-    .then(() => drawBoxes(p, state, candle, studyId))
-    .catch((err) => {
-      pineWarn(studyId, 'draw chain error', err)
-    })
+    .then(() => drawBoxes(p, state, candle, studyId, options))
+    .catch((err) => pineWarn(studyId, 'draw chain error', err))
+}
+
+function drawStale(state: PineBoxState, gen: number): boolean {
+  return gen !== state.drawGeneration
 }
 
 async function drawBoxes(
   p: PineRuntime,
   state: PineBoxState,
   candle: CandleNode,
-  studyId: string
+  studyId: string,
+  options?: DrawBarOptions
 ): Promise<void> {
-  if (!candle.at(state.parsed.lookback)) {
-    state.cache.set(candle.time, candle)
-    if (shouldLogBar(studyId, candle.time)) {
-      pineDebug(studyId, 'waiting for lookback', {
-        time: candle.time,
-        need: state.parsed.lookback,
-        hasChain: Boolean(candle.at(1)),
-      })
-    }
-    return
-  }
+  const gen = state.drawGeneration
+  if (drawStale(state, gen)) return
 
-  let matched = 0
+  await processFillLoop(p, state, candle, studyId)
+  if (drawStale(state, gen)) return
+
+  if (options?.fillOnly) return
+
   for (let i = 0; i < state.parsed.boxRules.length; i++) {
     const rule = state.parsed.boxRules[i]
     if (!ruleMatches(p, state, candle, rule, studyId)) continue
-    matched++
     await drawBox(p, state, candle, rule, i, studyId)
+    if (drawStale(state, gen)) return
+  }
+}
+
+function fillLoopEnabled(p: PineRuntime, state: PineBoxState): boolean {
+  const fl = state.parsed.fillLoop
+  return Boolean(fl && p.input.bool(inputIdForVar(state, fl.guardVar)))
+}
+
+function entryCreatedAtMs(state: PineBoxState, index: number): number | null {
+  const arrayName = state.parsed.creationBarArray
+  if (!arrayName) return null
+  const values = arr<number>(state, arrayName)
+  if (index < 0 || index >= values.length) return null
+  const t = values[index]
+  return typeof t === 'number' && Number.isFinite(t) ? t : null
+}
+
+/** Skip fill on bars before the entry was created (history chunk replay). */
+function canEvaluateFillAtBar(state: PineBoxState, index: number, candle: CandleNode): boolean {
+  const createdAt = entryCreatedAtMs(state, index)
+  if (createdAt == null) return true
+  return candle.time >= createdAt
+}
+
+/** Pine `if filled` body for a single array index at one bar. Returns true when removed. */
+async function tryFillAtIndex(
+  p: PineRuntime,
+  state: PineBoxState,
+  index: number,
+  candle: CandleNode,
+  _studyId: string
+): Promise<boolean> {
+  const fl = state.parsed.fillLoop
+  if (!fl) return false
+
+  const sizeValues = arr<unknown>(state, fl.sizeArray)
+  if (index < 0 || index >= sizeValues.length) return false
+  if (!canEvaluateFillAtBar(state, index, candle)) return false
+
+  const locals = buildFillLocals(state, fl, index, candle)
+  const ctx = evalCtx(p, state, candle, locals)
+  if (!evalBool(fl.filledExpr, ctx, state.parsed.varToInputId)) return false
+
+  const createdAt = entryCreatedAtMs(state, index)
+  pineDebug('box-fill', 'removed', { index, barTime: candle.time, createdAt })
+
+  const boxes = fl.deleteBoxesArray ? arr<string>(state, fl.deleteBoxesArray) : []
+  const onFilled = fl.onFilledBox
+  if (onFilled && p.input.bool(inputIdForVar(state, onFilled.guardVar))) {
+    const { box } = onFilled
+    let color: string
+    if (onFilled.bgcolorVar && fl.colorTernary) {
+      const t = fl.colorTernary
+      const eqVal = String(locals[t.eqVar] ?? '')
+      color = p.input.color(inputIdForVar(state, eqVal === t.whenLiteral ? t.thenVar : t.elseVar))
+    } else {
+      color = evalColor(box.bgcolor, ctx, state.parsed.varToInputId)
+    }
+
+      let left = evalTimeSec(box.left, ctx, state.parsed.varToInputId)
+      let right = evalTimeSec(box.right, ctx, state.parsed.varToInputId)
+      let top = evalPrice(box.top, ctx, state.parsed.varToInputId)
+      let bottom = evalPrice(box.bottom, ctx, state.parsed.varToInputId)
+      if ([left, right, top, bottom].every(Number.isFinite)) {
+        ;({ left, right, top, bottom } = normalizeBoxCorners(left, right, top, bottom))
+        await state.shapes.createRectangle(
+          { time: left, price: top },
+          { time: right, price: bottom },
+        {
+          properties: {
+            color,
+            backgroundColor: color,
+            text: box.text,
+            textColor: state.rgbaToOpaque(color),
+          },
+        }
+      )
+    }
   }
 
-  if (matched > 0 && shouldLogBar(studyId, candle.time)) {
-    pineDebug(studyId, 'rules matched', { time: candle.time, matched, totalBoxes: state.list.size })
+  const shapeId = index < boxes.length ? boxes[index] : ''
+  if (shapeId) {
+    await state.shapes.deleteRectangle(shapeId)
+    removeStoredBoxByShapeId(state, shapeId)
+  }
+  if (index < boxes.length) boxes.splice(index, 1)
+
+  for (const arrayName of fl.removeArrays) {
+    const a = arr<unknown>(state, arrayName)
+    if (index < a.length) a.splice(index, 1)
+  }
+  if (index < state.anchorTimes.length) state.anchorTimes.splice(index, 1)
+
+  return true
+}
+
+/** Walk bars forward from creation — catches fills when TV processes bars out of order. */
+async function scanForwardFillFrom(
+  p: PineRuntime,
+  state: PineBoxState,
+  index: number,
+  fromCandle: CandleNode,
+  studyId: string
+): Promise<void> {
+  if (!fillLoopEnabled(p, state)) return
+
+  const createdAt = entryCreatedAtMs(state, index)
+  let node: CandleNode | null = fromCandle
+  while (node) {
+    if (createdAt != null && node.time < createdAt) {
+      node = node.next
+      continue
+    }
+    if (await tryFillAtIndex(p, state, index, node, studyId)) return
+    node = node.next
+  }
+}
+
+async function processFillLoop(
+  p: PineRuntime,
+  state: PineBoxState,
+  candle: CandleNode,
+  studyId: string
+): Promise<void> {
+  if (!fillLoopEnabled(p, state)) return
+
+  const fl = state.parsed.fillLoop!
+  const sizeValues = arr<unknown>(state, fl.sizeArray)
+
+  for (let i = sizeValues.length - 1; i >= 0; i--) {
+    await tryFillAtIndex(p, state, i, candle, studyId)
   }
 }
 
@@ -189,25 +448,21 @@ async function drawBox(
   ruleIndex: number,
   studyId: string
 ): Promise<void> {
-  const leftTime = evalTimeSec(candle, rule.box.left, p, state)
-  const rightTime = evalTimeSec(candle, rule.box.right, p, state)
-  const top = evalPrice(candle, rule.box.top)
-  const bottom = evalPrice(candle, rule.box.bottom)
+  const gen = state.drawGeneration
+  const ctx = evalCtx(p, state, candle)
+  let left = evalTimeSec(rule.box.left, ctx, state.parsed.varToInputId)
+  let right = evalTimeSec(rule.box.right, ctx, state.parsed.varToInputId)
+  let top = evalPrice(rule.box.top, ctx, state.parsed.varToInputId)
+  let bottom = evalPrice(rule.box.bottom, ctx, state.parsed.varToInputId)
 
-  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || !Number.isFinite(top) || !Number.isFinite(bottom)) {
-    pineWarn(studyId, 'invalid box geometry — skipped', {
-      time: candle.time,
-      ruleIndex,
-      leftTime,
-      rightTime,
-      top,
-      bottom,
-      period: state.period,
-    })
+  if (![left, right, top, bottom].every(Number.isFinite)) {
+    pineWarn(studyId, 'invalid box geometry', { time: candle.time, ruleIndex })
     return
   }
 
-  const color = evalColor(p, state, rule.box.bgcolor)
+  ;({ left, right, top, bottom } = normalizeBoxCorners(left, right, top, bottom))
+
+  const color = evalColor(rule.box.bgcolor, ctx, state.parsed.varToInputId)
   const properties = {
     color,
     backgroundColor: color,
@@ -215,63 +470,70 @@ async function drawBox(
     textColor: state.rgbaToOpaque(color),
   }
 
-  const leftOffset = rule.box.left.kind === 'series' ? rule.box.left.offset : 2
-  const anchorTime = candle.at(leftOffset)?.time ?? candle.time
+  const anchorTime = candle.at(leftBarOffset(rule.box.left))?.time ?? candle.time
   const key = candle.time * 10 + ruleIndex
 
-  if (state.list.has(key)) {
-    await state.shapes.updateRectangle(state.list.get(key)!.shapeId, { properties })
-    return
+  let shapeId: string | null = null
+  const canDraw = !rule.boxGuardVar || p.input.bool(inputIdForVar(state, rule.boxGuardVar))
+
+  if (canDraw) {
+    if (state.list.has(key)) {
+      const existing = state.list.get(key)!
+      const updated = await state.shapes.updateRectangle(existing.shapeId, { properties })
+      if (drawStale(state, gen)) return
+      if (updated) {
+        shapeId = existing.shapeId
+      } else {
+        // Shape was deleted externally (e.g. delete-after-fill); clear stale id.
+        state.list.delete(key)
+      }
+    } else {
+      shapeId = await state.shapes.createRectangle(
+        { time: left, price: top },
+        { time: right, price: bottom },
+        { properties }
+      )
+      if (drawStale(state, gen)) return
+      if (shapeId) {
+        state.list.set(key, {
+          shapeId,
+          start: anchorTime,
+          end: candle.time,
+          side: 'bullish',
+          ruleIndex,
+          period: state.period,
+        })
+        state.anchorTimes.push(anchorTime)
+      }
+    }
   }
 
-  pineDebug(studyId, 'createRectangle', {
-    time: candle.time,
-    ruleIndex,
-    side: rule.side,
-    leftTime,
-    rightTime,
-    top,
-    bottom,
-    color,
-    period: state.period,
-  })
+  if (drawStale(state, gen)) return
 
-  const shapeId = await state.shapes.createRectangle(
-    { time: leftTime, price: top },
-    { time: rightTime, price: bottom },
-    { properties }
-  )
-
-  if (!shapeId) {
-    pineWarn(studyId, 'createRectangle returned null — chart widget may not be ready', {
-      time: candle.time,
-      ruleIndex,
-    })
-    return
+  if (rule.arrayPushes.length > 0) {
+    runArrayPushes(p, state, rule, candle, shapeId)
+    const fl = state.parsed.fillLoop
+    if (fl) {
+      const idx = arr<unknown>(state, fl.sizeArray).length - 1
+      await scanForwardFillFrom(p, state, idx, candle, studyId)
+    }
   }
-
-  pineDebug(studyId, 'box created', { shapeId, time: candle.time, ruleIndex, total: state.list.size + 1 })
-
-  state.list.set(key, {
-    shapeId,
-    start: anchorTime,
-    end: candle.time,
-    side: rule.side,
-    ruleIndex,
-    period: state.period,
-  })
 }
 
 export function pineBoxOnSettingsChange(
   changes: Record<string, { new?: unknown }>,
   state: PineBoxState
 ): boolean {
-  const boolGuard = state.parsed.boxRules
-    .flatMap((r) => r.guardVars)
+  const boolVars = state.parsed.boxRules
+    .flatMap((r) => [...r.guardVars, ...(r.boxGuardVar ? [r.boxGuardVar] : [])])
     .filter((v) => !state.parsed.conditions.has(v))
-    .some((v) => changes[inputIdForVar(state, v)])
-
-  if (boolGuard) return true
+  if (state.parsed.fillLoop) {
+    boolVars.push(state.parsed.fillLoop.guardVar)
+    if (state.parsed.fillLoop.onFilledBox) {
+      boolVars.push(state.parsed.fillLoop.onFilledBox.guardVar)
+    }
+  }
+  if (boolVars.some((v) => changes[inputIdForVar(state, v)])) return true
 
   const lengthVars = new Set<string>()
   const colorVars = new Set<string>()
@@ -295,13 +557,13 @@ export function pineBoxOnSettingsChange(
       if (lengthChanged) {
         for (const varName of lengthVars) {
           const id = inputIdForVar(state, varName)
-          const lengthOfBox = changes[id]?.new
-          if (lengthOfBox == null) continue
-          const end = item.end / 1000 + extendedLength(state, Number(lengthOfBox), item.period)
+          const bars = changes[id]?.new
+          if (bars == null) continue
+          const end = item.end / 1000 + barsToSeconds(Number(bars), item.period)
           try {
             const points = (shape as { getPoints: () => Array<{ time: number; price: number }> }).getPoints()
             points[1].time = end
-            ;(shape as { setPoints: (p: typeof points) => void }).setPoints(points)
+            ;(shape as { setPoints: (pts: typeof points) => void }).setPoints(points)
           } catch {
             /* removed */
           }
@@ -328,7 +590,14 @@ export function pineBoxOnSettingsChange(
 }
 
 export function resetPineBoxState(state: PineBoxState): void {
+  state.drawGeneration++
+  void deleteAllBoxShapes(state)
   state.cache.clear()
   state.list.clear()
+  state.anchorTimes = []
+  state.highWaterTime = null
+  for (const name of state.parsed.arrayVars) {
+    state.arrays.set(name, [])
+  }
   state.drawChain = Promise.resolve()
 }

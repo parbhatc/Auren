@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { PRACTICE_CONTRACT_QTY_PRESETS } from '../../../../constants/practice'
+import {
+  PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
+  PRACTICE_CONTRACT_QTY_PRESETS,
+} from '../../../../constants/practice'
 import {
   getTradePanelSettings,
   type TradePanelSettings,
@@ -26,7 +29,11 @@ export function QuickTradeCard({
   const [ui, setUi] = useState<TradePanelSettings>(() => getTradePanelSettings())
   const qty = Number(props.quantity) || 1
   const presets = useMemo(
-    () => PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(0, QTY_CHIP_LIMIT),
+    () =>
+      PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(
+        0,
+        PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT
+      ),
     [maxQty]
   )
 

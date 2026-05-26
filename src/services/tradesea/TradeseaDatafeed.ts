@@ -10,6 +10,7 @@ import { TradeseaMdsClient } from './TradeseaMdsClient'
 import type { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { debugPracticeChartSymbol } from './practiceChartSymbolDebug'
+import { saveLoadedCandlesChunk } from '../debug/candleDebugCapture'
 import { tradeseaDollarsPerPoint, tradeseaDollarsPerTick } from './tradeseaPnL'
 import {
   tradeseaInstrumentsAllSymbolsUrl,
@@ -201,6 +202,11 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       .filter(Boolean)
     // resubscribeAll runs ~150ms after open; backfill candles + reset chart after that.
     setTimeout(() => {
+      try {
+        this.chartResetCallback?.()
+      } catch {
+        /* ignore */
+      }
       for (const label of chartSymbols) {
         this.ensureMarketBookSubscription(label)
       }
@@ -435,12 +441,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       for (const resKey of this.subIdByKey.keys()) {
         this.lastBarTimeByKey.delete(resKey)
       }
-      try {
-        this.chartResetCallback?.()
-      } catch {
-        /* ignore */
-      }
-
       const tasks: Promise<void>[] = []
       for (const resKey of this.subIdByKey.keys()) {
         const parsed = this.parseResKey(resKey)
@@ -1068,6 +1068,22 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         if (bars.length > 0) {
           this.rememberLastBar(symbolInfo, String(resolution), bars[bars.length - 1])
         }
+        void saveLoadedCandlesChunk({
+          symbol: chartSymbol,
+          resolution: String(resolution),
+          from,
+          to,
+          udf: {
+            s: data.s,
+            t: data.t,
+            o: data.o,
+            h: data.h,
+            l: data.l,
+            c: data.c,
+            v: data.v,
+          },
+          note: periodParams.firstDataRequest ? 'firstDataRequest' : 'getBars',
+        })
         onResult(bars, { noData: false })
       })
       .catch((err) => {

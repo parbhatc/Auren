@@ -15,11 +15,18 @@ export type StoredBox = {
 export type PineBoxState = {
   cache: Map<number, CandleNode>
   list: Map<number, StoredBox>
+  /** Runtime arrays declared with `var type[] name = array.new_*()` in `.pine`. */
+  arrays: Map<string, unknown[]>
+  anchorTimes: number[]
   period: string | null
   shapes: ShapesAPI
   resolutionToMinutes: (res: string) => number
   rgbaToOpaque: (color: string, opacity?: number) => string
   drawChain: Promise<void>
+  /** Bumped on reset/teardown — in-flight draws no-op when stale. */
+  drawGeneration: number
+  /** Latest bar time (ms) seen in `main()` — rewind triggers a box-state reset. */
+  highWaterTime: number | null
   parsed: ParsedPineBody
   meta: PineScriptMeta
 }

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { PRACTICE_CONTRACT_QTY_PRESETS } from '../../../../../constants/practice'
+import {
+  PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
+  PRACTICE_CONTRACT_QTY_PRESETS,
+} from '../../../../../constants/practice'
 import { tradeSideMeta } from '../../../../../constants/tradingSide'
 import type { TradePanelSettings } from '../../../../../constants/tradePanelSettings'
 import type { TradePanelProps, OrderSide } from '../types'
@@ -311,7 +314,9 @@ export function DomTab({
               <Plus className="w-3.5 h-3.5 text-[#7d8590]" />
             </button>
           </div>
-          {PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).map((p) => (
+          {PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty)
+            .slice(0, PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT)
+            .map((p) => (
             <button
               key={p}
               type="button"

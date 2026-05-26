@@ -662,8 +662,7 @@ export abstract class BaseIndicator {
     const self = this
     return function(this: any) {
       this._indicatorInstance = self
-      pineDebug(self.name, 'tv study constructor invoked')
-      console.log(`[pine:${self.name}] tv constructor`)
+      pineDebug(self.name, 'tv constructor')
 
       this.init = function(context: PineJSContext, inputCallback: InputCallback) {
         this._context = context
@@ -702,15 +701,17 @@ export abstract class BaseIndicator {
           self.period = period
         }
         
-        if (self.symbol !== symbol) {
-          if (self.symbol !== null) {
+        const normSymbol = self.normalizeTvSymbol(symbol)
+        const prevSymbol = self.symbol != null ? self.normalizeTvSymbol(self.symbol) : null
+        if (prevSymbol !== normSymbol) {
+          if (prevSymbol !== null) {
             if (typeof (self as any).onSymbolChanged === 'function') {
-              ;(self as any).onSymbolChanged.call(self, self.symbol, symbol)
+              ;(self as any).onSymbolChanged.call(self, prevSymbol, normSymbol)
             } else {
               self.reset()
             }
           }
-          self.symbol = symbol
+          self.symbol = normSymbol
         }
         
         let changes: Record<string, any> = {}
@@ -971,6 +972,11 @@ export abstract class BaseIndicator {
     }
   }
 
+  /** Treat delayed feed tickers as the same symbol so history load does not wipe state. */
+  normalizeTvSymbol(symbol: string): string {
+    return String(symbol || '').replace(/^CME-Delayed:/i, 'CME:')
+  }
+
   resolutionToMinutes(res: string): number {
     const number = parseInt(res, 10)
     if (res.includes('D')) return number * 1440
@@ -993,9 +999,11 @@ export abstract class BaseIndicator {
     this.shapeRegistry.clear()
     this._barIndex = -1
 
-    this._shapesAPI.shapeIds.forEach(shapeId => {
-      this.getShapes().deleteShape(shapeId)
-    })
+    const shapeIds = [...this._shapesAPI.shapeIds]
+    this._shapesAPI.shapeIds.clear()
+    for (const shapeId of shapeIds) {
+      void this.getShapes().deleteShape(shapeId)
+    }
   }
 }
 
