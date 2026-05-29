@@ -72,6 +72,12 @@ export abstract class PropFirmBase {
       commissionFee?: number
       totalFees?: number
     }>
+    durationAnalysisData?: Array<{ label: string; rate?: number; count?: number }>
+    winRateAnalysisData?: Array<{ label: string; rate: number }>
+    tradeseaCalendarDays?: unknown
+    tradeseaDashboard?: unknown
+    practiceAccount?: unknown
+    practiceRulesStatus?: unknown
   } | null> {
     // Default implementation returns null
     // Override in subclasses to provide stats

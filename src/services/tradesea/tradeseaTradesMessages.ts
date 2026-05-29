@@ -112,7 +112,7 @@ export function resolveAccountState(
 
 export function sumUnrealizedPl(positions: unknown[] | undefined): number {
   if (!Array.isArray(positions)) return 0
-  return positions.reduce((sum, p) => {
+  return positions.reduce<number>((sum, p) => {
     if (!p || typeof p !== 'object') return sum
     const row = p as Record<string, unknown>
     const upl = row.unrealizedPl ?? row.unrealized_pl ?? row.upl

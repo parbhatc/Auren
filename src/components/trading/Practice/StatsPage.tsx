@@ -236,29 +236,7 @@ export default function StatsPage() {
 
       selectedAccount={displayName}
 
-      accounts={[
-
-        {
-
-          accountId: 1,
-
-          displayName,
-
-          templateName: 'Practice',
-
-          accountName: displayName,
-
-          isIneligible: false,
-
-          isCombine: false,
-
-          isExpress: false,
-
-          account: { id: practiceAccountId },
-
-        },
-
-      ]}
+      accounts={[displayName]}
 
       showAccountDropdown={false}
 

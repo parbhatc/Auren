@@ -8,8 +8,8 @@ import {
   useParams,
   useLocation,
 } from 'react-router-dom'
-import Login from './components/auth/login'
-import Register from './components/auth/register'
+import Login from './components/auth/Login'
+import Register from './components/auth/Register'
 import VerifyEmail from './components/auth/verify_email'
 import ForgotPassword from './components/auth/forgot_password'
 import ResetPassword from './components/auth/reset_password'

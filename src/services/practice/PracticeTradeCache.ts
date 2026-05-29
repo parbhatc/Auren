@@ -152,7 +152,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     entryTime: number | null = null,
 
-    id: number | null = null,
+    id: number | string | null = null,
 
     stopLossOrderId: number | string | null = null,
 
@@ -190,7 +190,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         line,
 
-        id,
+        typeof id === 'string' ? Number(id) || null : id,
 
         stopLossOrderId,
 
@@ -224,7 +224,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       entryTime,
 
-      id,
+      typeof id === 'string' ? Number(id) || null : id,
 
       stopLossOrderId,
 

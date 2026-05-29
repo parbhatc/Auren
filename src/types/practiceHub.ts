@@ -18,6 +18,7 @@ export type InlineRulesFormProps = {
   onChange: (r: PracticeAccountRules) => void
   onReset?: () => void
   validationError?: string | null
+  compact?: boolean
 }
 
 /** @deprecated use InlineRulesFormHandle */

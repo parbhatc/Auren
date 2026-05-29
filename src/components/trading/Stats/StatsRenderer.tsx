@@ -981,7 +981,9 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
               worstTrade={worstTrade}
               equityCurveData={equityCurveData}
               initialBalance={chartInitialBalance}
-              durationAnalysisData={durationAnalysisData}
+              durationAnalysisData={
+                durationAnalysisData as Array<{ label: string; count: number }>
+              }
               winRateAnalysisData={winRateAnalysisData}
               dateRange={dateRange}
               symbolData={this.state.symbolData}
@@ -997,7 +999,11 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
               isDark={isDark}
               currentMonth={this.state.currentMonth}
               trades={displayTrades}
-              calendarDaySummaries={propFirmStats?.tradeseaCalendarDays}
+              calendarDaySummaries={
+                propFirmStats?.tradeseaCalendarDays as
+                  | Array<{ date: string; pnl: number; tradesCount: number }>
+                  | undefined
+              }
               dateRange={dateRange}
               referenceDate={referenceDate}
               symbolData={this.state.symbolData}

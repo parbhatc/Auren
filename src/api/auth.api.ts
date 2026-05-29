@@ -1,5 +1,11 @@
 import api, { getAuthHeaders } from './api'
-import { LoginCredentials, RegisterData, ForgotPasswordData, ResetPasswordData, AuthResponse } from '../types/auth'
+import {
+  LoginCredentials,
+  RegisterData,
+  RequestPasswordResetData,
+  ResetPasswordData,
+  AuthResponse,
+} from '../types/auth'
 
 /**
  * Authentication API service
@@ -25,7 +31,7 @@ export const authAPI = {
   /**
    * Request password reset link
    */
-  forgotPassword: async (data: ForgotPasswordData): Promise<AuthResponse> => {
+  forgotPassword: async (data: RequestPasswordResetData): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/forgot-password', data)
     return response.data
   },

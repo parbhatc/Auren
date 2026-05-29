@@ -54,12 +54,9 @@ class TradeseaChart extends BaseChart {
 
   protected init(): void {
     super.init()
-    const props = this.props as TradingViewChartProps & {
-      tradeseaServices?: TradeseaChartServices | null
-      practiceAccountId?: string
-    }
+    const props = this.props as TradingViewChartProps
 
-    const services = props.tradeseaServices
+    const services = props.tradeseaServices as TradeseaChartServices | null | undefined
     if (!services) return
 
     const practiceAccountId = String(props.practiceAccountId || '').trim()
@@ -151,7 +148,7 @@ class TradeseaChart extends BaseChart {
     }
 
     try {
-      const widget = (this as { widgetRef?: { saveChartToServer?: Function } }).widgetRef
+      const widget = (this as unknown as { widgetRef?: { saveChartToServer?: Function } }).widgetRef
       if (!widget?.saveChartToServer) return
 
       await new Promise<void>((resolve, reject) => {
@@ -172,27 +169,24 @@ class TradeseaChart extends BaseChart {
 
   handleSymbolChange = (symbol: string) => {
     debugPracticeChartSymbol('TradeseaChart.handleSymbolChange', { symbol }, { force: true })
-    const props = this.props as TradingViewChartProps & {
-      tradeseaTradeHandler?: TradeseaTradeHandler
-    }
-    props.tradeseaTradeHandler?.handleSymbolChange(symbol)
+    const props = this.props as TradingViewChartProps
+    const symbolHandler = props.tradeseaTradeHandler as TradeseaTradeHandler | PracticeTradeHandler | undefined
+    symbolHandler?.handleSymbolChange(symbol)
     if (this.props.onSymbolChange) {
       this.props.onSymbolChange(symbol)
     }
   }
 
   handleChartReady = async () => {
-    const widget = (this as { widgetRef?: unknown }).widgetRef
-    const props = this.props as TradingViewChartProps & {
-      tradeseaTradeHandler?: TradeseaTradeHandler
-    }
+    const widget = (this as unknown as { widgetRef?: unknown }).widgetRef
+    const props = this.props as TradingViewChartProps
 
     if (widget) {
       setupChartKeyboardShortcuts(widget)
       setTimeout(
         () =>
           setupChartContainerKeyboardListener(
-            this as {
+            this as unknown as {
               containerRef: RefObject<HTMLDivElement>
               _keyboardListenerCleanup?: (() => void) | null
             }
@@ -201,7 +195,10 @@ class TradeseaChart extends BaseChart {
       )
     }
 
-    const handler = props.tradeseaTradeHandler
+    const handler = props.tradeseaTradeHandler as unknown as
+      | TradeseaTradeHandler
+      | PracticeTradeHandler
+      | undefined
     if (handler && widget) {
       // Wire to the datafeed this widget subscribed with (may differ from propFirm.chartServices after reconnect).
       if (this.datafeed) {
@@ -209,27 +206,29 @@ class TradeseaChart extends BaseChart {
       }
       handler.onReady(widget, this.datafeed ?? undefined)
       if (handler instanceof PracticeTradeHandler) {
+        const practiceHandler = handler
         registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
-            void handler.logButtonPress('Buy', { quantity })
+            void practiceHandler.logButtonPress('Buy', { quantity })
           },
           onMarketSell: (quantity: number) => {
-            void handler.logButtonPress('Sell', { quantity })
+            void practiceHandler.logButtonPress('Sell', { quantity })
           },
           onLimitBuy: (quantity: number, limitPrice: number) => {
-            void handler.placeLimitOrder('buy', quantity, limitPrice)
+            void practiceHandler.placeLimitOrder('buy', quantity, limitPrice)
           },
           onStopSell: (quantity: number, stopPrice: number) => {
-            void handler.placeLimitOrder('sell', quantity, stopPrice)
+            void practiceHandler.placeLimitOrder('sell', quantity, stopPrice)
           },
         })
       } else {
+        const liveHandler = handler as TradeseaTradeHandler
         registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
-            void handler.logButtonPress('Buy', { quantity })
+            void liveHandler.logButtonPress('Buy', { quantity })
           },
           onMarketSell: (quantity: number) => {
-            void handler.logButtonPress('Sell', { quantity })
+            void liveHandler.logButtonPress('Sell', { quantity })
           },
         })
       }
@@ -256,7 +255,7 @@ class TradeseaChart extends BaseChart {
   /** After load_last_chart, align app symbol with whatever TradingView restored. */
   private emitActiveChartSymbol(label = 'emit'): void {
     try {
-      const widget = (this as {
+      const widget = (this as unknown as {
         widgetRef?: {
           activeChart?: () => {
             symbol?: () => string
@@ -292,12 +291,12 @@ class TradeseaChart extends BaseChart {
 
   render() {
     const props = this.props as TradingViewChartProps & {
-      containerId?: string
       style?: CSSProperties
       className?: string
     }
     const { style, className, containerId = 'tv_chart_container' } = props
-    const containerRef = (this as { containerRef: RefObject<HTMLDivElement> }).containerRef
+    const containerRef = (this as unknown as { containerRef: RefObject<HTMLDivElement> })
+      .containerRef
 
     return (
       <div

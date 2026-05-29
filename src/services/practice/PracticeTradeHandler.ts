@@ -281,7 +281,7 @@ export class PracticeTradeHandler {
       /* ignore */
     }
     this.onAccountUpdated?.()
-    this.onUnrealizedPnLUpdate?.()
+    this.onUnrealizedPnLUpdate?.(this.upl)
     this.checkBlownWhileTrading()
     this.checkPassedWhileTrading()
   }

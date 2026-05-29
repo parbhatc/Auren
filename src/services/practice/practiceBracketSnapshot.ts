@@ -4,6 +4,7 @@ export const BRACKET_REPLAY_GRACE_SEC = 3
 export type PracticeBracketSnapshot = {
   barTimeSec: number
   barTimeMs: number
+  barTimeLabel?: string
   open: number
   high: number
   low: number

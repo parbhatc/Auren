@@ -298,15 +298,16 @@ export async function createPracticeAccount(
 
 export async function updatePracticeAccount(
   id: string,
-  patch: Partial<PracticeAccount> & { rules?: Partial<PracticeAccountRules> }
+  patch: Omit<Partial<PracticeAccount>, 'rules'> & { rules?: Partial<PracticeAccountRules> }
 ): Promise<PracticeAccount | undefined> {
   if (patch.rules) {
     const res = await practiceAPI.updateAccount(id, { rules: patch.rules })
     await refreshPracticeFromApi()
     return res.account
   }
+  const { rules: _rulesPatch, ...accountPatch } = patch
   accountsCache = getPracticeAccounts().map((a) =>
-    a.id === id ? { ...a, ...patch, updatedAt: new Date().toISOString() } : a
+    a.id === id ? { ...a, ...accountPatch, updatedAt: new Date().toISOString() } : a
   )
   notifyPracticeDataChanged()
   return getPracticeAccountById(id)

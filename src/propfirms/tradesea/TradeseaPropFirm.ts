@@ -1110,26 +1110,16 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
     return React.createElement(TradeseaChart, {
-
       key: this.practiceSimAccountId || this.selectedAccountId || 'tradesea-chart',
-
       symbol: chartSymbolProp,
-
       timeframe,
-
       isDark,
-
       accountId: this.selectedAccountId || undefined,
-
       practiceAccountId: this.practiceSimAccountId || undefined,
-
       tradeseaServices: this.chartServices,
-
       tradeseaTradeHandler: this.getHandler() ?? undefined,
-
       onSymbolChange: (chartSym: string) => this.syncChartSymbolFromTv(chartSym),
-
-    })
+    } as React.ComponentProps<typeof TradeseaChart>)
 
   }
 
@@ -1160,6 +1150,9 @@ export class TradeseaPropFirm extends PropFirmBase {
     initialBalance?: number
     symbolData?: Record<string, { tickSize: number; tickValue: number; totalFees?: number }>
     tradeseaDashboard?: unknown
+    durationAnalysisData?: Array<{ label: string; rate?: number; count?: number }>
+    winRateAnalysisData?: Array<{ label: string; rate: number }>
+    tradeseaCalendarDays?: unknown
   } | null> {
     if (this.practiceSimAccountId) {
       return getPracticeStatsData(this.practiceSimAccountId, dateRange)
@@ -1209,7 +1202,12 @@ export class TradeseaPropFirm extends PropFirmBase {
       if (dashboardRes.s !== 'success') {
         console.warn('[TradeseaPropFirm] TradeLens dashboard failed:', dashboardRes.error)
       }
-      if (isCalendarMode && calendarRes.s !== 'success' && calendarRes.s !== 'skipped') {
+      if (
+        isCalendarMode &&
+        calendarRes.s !== 'success' &&
+        calendarRes.s !== 'skipped' &&
+        'error' in calendarRes
+      ) {
         console.warn('[TradeseaPropFirm] TradeLens calendar failed:', calendarRes.error)
       }
       if (shouldFetchTrades && tradesMerged.s !== 'success' && tradesMerged.s !== 'skipped') {

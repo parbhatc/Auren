@@ -323,6 +323,13 @@ export interface StatsRendererState {
     parseTradeTimestamp: (timestamp: any) => Date | null
     formatDuration: (seconds: number) => string
     initialBalance?: number
+    durationAnalysisData?: Array<{ label: string; rate?: number; count?: number }>
+    winRateAnalysisData?: Array<{ label: string; rate: number }>
+    tradeseaCalendarDays?: unknown
+    tradeseaDashboard?: unknown
+    symbolData?: Record<string, unknown>
+    practiceAccount?: unknown
+    practiceRulesStatus?: unknown
   } | null
 }
 

@@ -31,6 +31,8 @@ export interface TradeseaTradelensDashboard {
 export interface TradeseaTradelensDayBucket {
   date?: string
   trades?: TradeseaTradelensTrade[]
+  netPnl?: number
+  totalTrades?: number
 }
 
 export interface TradeseaTradelensTrade {

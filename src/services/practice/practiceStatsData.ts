@@ -216,10 +216,20 @@ export async function getPracticeStatsData(
 ) {
 
   const res = await practiceAPI.getStats(practiceAccountId)
+  type PracticeStatsPayload = {
+    account?: import('../../constants/practice').PracticeAccount
+    trades?: import('../../api/practice.api').PracticeTradeRecord[]
+    totalPnl?: number
+    rulesStatus?: unknown
+  }
+  const payload: PracticeStatsPayload =
+    res && typeof res === 'object' && 'account' in res
+      ? (res as PracticeStatsPayload)
+      : ((res as { stats?: PracticeStatsPayload })?.stats ?? (res as PracticeStatsPayload))
 
-  const account = res?.account
+  const account = payload.account
 
-  const tradeRows = res?.trades
+  const tradeRows = payload.trades
 
 
 
@@ -254,7 +264,7 @@ export async function getPracticeStatsData(
 
   const realizedFromBalance =
 
-    account != null ? account.balance - startingBalance : Number(res?.totalPnl ?? 0)
+    account != null ? account.balance - startingBalance : Number(payload.totalPnl ?? 0)
 
 
 
@@ -325,7 +335,7 @@ export async function getPracticeStatsData(
 
     practiceAccount: account,
 
-    practiceRulesStatus: res?.rulesStatus,
+    practiceRulesStatus: payload.rulesStatus,
 
   }
 

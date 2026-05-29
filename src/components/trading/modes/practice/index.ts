@@ -5,8 +5,9 @@ export { default as NewsPage } from '../../Practice/NewsPage'
 export { default as TradePadRedirectPage } from '../../shared/pad/TradePadRedirectPage'
 
 /** @deprecated aliases */
-export { HubPage as PracticeHubPage, HubPage as PracticeHub }
-export { TradePage as PracticeTradePage }
-export { StatsPage as PracticeStatsPage }
-export { NewsPage as PracticeNewsPage }
-export { TradePadRedirectPage as PracticeTradePadPage }
+export { default as PracticeHubPage } from '../../Practice/Hub'
+export { default as PracticeHub } from '../../Practice/Hub'
+export { default as PracticeTradePage } from '../../Practice/TradePage'
+export { default as PracticeStatsPage } from '../../Practice/StatsPage'
+export { default as PracticeNewsPage } from '../../Practice/NewsPage'
+export { default as PracticeTradePadPage } from '../../shared/pad/TradePadRedirectPage'

@@ -20,6 +20,10 @@ export interface RegisterData {
   confirmPassword: string
 }
 
+export interface RequestPasswordResetData {
+  email: string
+}
+
 export interface ForgotPasswordData {
   email: string
   code: string

@@ -72,7 +72,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private lastBarTimeByKey = new Map<string, number>()
   private lastBarByKey = new Map<string, Bar>()
   private offCandles: (() => void) | null = null
-  private tradeHandler: TradeseaTradeHandler | null = null
+  private tradeHandler: TradeseaTradeHandler | import('../practice/PracticeTradeHandler').PracticeTradeHandler | null = null
   private resKeyToChartSymbol = new Map<string, string>()
   private instrumentIndex = new Map<string, TradeseaInstrumentRow>()
   private symbolsLoadPromise: Promise<void> | null = null
@@ -266,7 +266,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return this.delayed
   }
 
-  setTradeHandler(handler: TradeseaTradeHandler | null): void {
+  setTradeHandler(handler: TradeseaTradeHandler | import('../practice/PracticeTradeHandler').PracticeTradeHandler | null): void {
     this.tradeHandler = handler
     debugTradeseaUpl('datafeed:tradeHandler', {
       force: true,

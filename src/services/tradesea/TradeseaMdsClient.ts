@@ -519,11 +519,13 @@ export class TradeseaMdsClient {
   }
 
   on<K extends keyof MdsEventMap>(event: K, handler: (payload: MdsEventMap[K]) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = new Set()
+    let set = this.listeners[event] as Set<(payload: MdsEventMap[K]) => void> | undefined
+    if (!set) {
+      set = new Set()
+      this.listeners[event] = set as (typeof this.listeners)[K]
     }
-    this.listeners[event]!.add(handler as (payload: MdsEventMap[K]) => void)
-    return () => this.listeners[event]?.delete(handler as (payload: MdsEventMap[K]) => void)
+    set.add(handler)
+    return () => set!.delete(handler)
   }
 
   private emit<K extends keyof MdsEventMap>(event: K, payload: MdsEventMap[K]) {

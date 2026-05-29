@@ -61,11 +61,13 @@ function TradePanelTabBar({
   hideDetach?: boolean
   hideQuickTab?: boolean
 }) {
-  const tabs: { id: TradePanelTab; label: string }[] = [
-    { id: 'quick', label: 'Quick' },
-    { id: 'dom', label: 'DOM' },
-    { id: 'ticket', label: 'Ticket' },
-  ].filter((t) => !(hideQuickTab && t.id === 'quick'))
+  const tabs = (
+    [
+      { id: 'quick', label: 'Quick' },
+      { id: 'dom', label: 'DOM' },
+      { id: 'ticket', label: 'Ticket' },
+    ] as const
+  ).filter((t) => !(hideQuickTab && t.id === 'quick')) as { id: TradePanelTab; label: string }[]
 
   const colClass =
     tabs.length === 2 ? 'grid-cols-2' : tabs.length === 1 ? 'grid-cols-1' : 'grid-cols-3'
