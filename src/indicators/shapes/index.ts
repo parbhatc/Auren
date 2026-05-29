@@ -1,2 +1,0 @@
-export { ShapesAPI } from './ShapesAPI'
-

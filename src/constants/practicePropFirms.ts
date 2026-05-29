@@ -6,9 +6,14 @@
 
 export type PracticeMarketDataSlotPolicy = 'exclusive' | 'concurrent'
 
+/** How practice hub resolves “market data connected” for this firm. */
+export type PracticeMarketDataConnectionKind = 'broker-accounts' | 'credential-login'
+
 export interface PracticePropFirmMarketDataConfig {
   id: string
   displayName: string
+  /** Hub connection check + account field UI. */
+  marketDataConnection: PracticeMarketDataConnectionKind
   /** exclusive = only one MDS connection; concurrent = multiple connections OK. */
   marketDataSlotPolicy: PracticeMarketDataSlotPolicy
   /** Server can proxy upstream MDS while the chart client is away. */
@@ -21,9 +26,18 @@ export const PRACTICE_PROP_FIRM_CONFIGS: readonly PracticePropFirmMarketDataConf
   {
     id: 'tradesea',
     displayName: 'Tradesea',
+    marketDataConnection: 'broker-accounts',
     marketDataSlotPolicy: 'exclusive',
     supportsOfflineBracketWatcher: true,
     defaultOfflineModePositions: true,
+  },
+  {
+    id: 'rithmic',
+    displayName: 'Rithmic',
+    marketDataConnection: 'credential-login',
+    marketDataSlotPolicy: 'concurrent',
+    supportsOfflineBracketWatcher: false,
+    defaultOfflineModePositions: false,
   },
 ] as const
 

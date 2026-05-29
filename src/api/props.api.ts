@@ -98,33 +98,8 @@ export const propsAPI = {
    * @param credentials - Credentials to test (username, password)
    */
   testConnection: async (type: string, credentials: { username: string; password: string }): Promise<PropsSettingsResponse> => {
-    if (type === 'tradesea') {
-      try {
-        const { tradeseaAPI } = await import('./tradesea.api')
-        const status = await tradeseaAPI.getConnectionStatus()
-        if (status.connected) {
-          const { t } = await import('../utils/translator')
-          return {
-            success: true,
-            message: t('props.connectionSuccessful'),
-          }
-        }
-        return {
-          success: false,
-          message: 'Market data is not connected. Use email OTP or paste tokens in Market data settings.',
-        }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          message: error instanceof Error ? error.message : 'Connection test failed',
-        }
-      }
-    }
-
-    return {
-      success: false,
-      message: 'Test connection is only supported for the market data provider',
-    }
+    const { testPropFirmMarketConnection } = await import('../propfirms/testConnection')
+    return testPropFirmMarketConnection(type, credentials)
   },
 }
 

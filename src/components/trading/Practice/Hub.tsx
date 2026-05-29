@@ -13,14 +13,25 @@ import {
   refreshPracticeFromApi,
   resetAllPracticeAccounts,
   resetPracticeAccount,
+  applyActiveFirmToMarketDataSettings,
   savePracticeMarketDataSettings,
+  updateFirmMarketDataSelection,
   type PracticeAccount,
   type PracticeAccountMode,
   type PracticeAccountRules,
 } from '../../../constants/practice'
 import { getDefaultPracticeRules, type PracticeAccountSize } from '../../../services/practice/practicePlans'
 import { practiceAPI } from '../../../api/practice.api'
-import { tradeseaAPI, TradeseaAccount } from '../../../api/tradesea.api'
+import { tradeseaAPI } from '../../../api/tradesea.api'
+import type { BrokerAccountOption } from '../../../propfirms/marketData/types'
+import type { PropFirmCredentials } from '../../../types/props'
+import {
+  firmPersistsMarketAccountId,
+  getCredentialsForFirm,
+  getDefaultPropFirmId,
+  loadCredentialLoginCredentials,
+  resolveMarketDataConnection,
+} from '../../../propfirms'
 import { t } from '../../../utils/translator'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
@@ -50,11 +61,14 @@ export default function Hub() {
   const { isDark, toggleTheme } = useTheme()
 
   const [accounts, setAccounts] = useState<PracticeAccount[]>([])
-  const [propFirmId, setPropFirmId] = useState('tradesea')
+  const [propFirmId, setPropFirmId] = useState(getDefaultPropFirmId())
   const [marketAccountId, setMarketAccountId] = useState('')
   const [offlineModePositions, setOfflineModePositions] = useState(true)
-  const [tradeseaAccounts, setTradeseaAccounts] = useState<TradeseaAccount[]>([])
-  const [tradeseaSessionExpired, setTradeseaSessionExpired] = useState(false)
+  const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccountOption[]>([])
+  const [brokerSessionExpired, setBrokerSessionExpired] = useState(false)
+  const [credentialsByFirm, setCredentialsByFirm] = useState<
+    Record<string, PropFirmCredentials | null>
+  >({})
   const [loadingMd, setLoadingMd] = useState(false)
   const [loadingHub, setLoadingHub] = useState(true)
   const [error, setError] = useState('')
@@ -84,11 +98,17 @@ export default function Hub() {
     navigate(ROUTES.LOGIN)
   }
 
+  const loadFirmCredentials = useCallback(async () => {
+    const creds = await loadCredentialLoginCredentials()
+    setCredentialsByFirm(creds)
+  }, [])
+
   const syncFromCache = useCallback(() => {
     const md = getPracticeMarketDataSettings()
+    const firmId = md.propFirmId || getDefaultPropFirmId()
     setAccounts(getPracticeAccounts())
-    setPropFirmId(md.propFirmId || 'tradesea')
-    setMarketAccountId(md.accountId)
+    setPropFirmId(firmId)
+    setMarketAccountId(firmPersistsMarketAccountId(firmId) ? md.accountId : '')
     setOfflineModePositions(resolveOfflineModePositions(md))
   }, [])
 
@@ -97,107 +117,146 @@ export default function Hub() {
     syncFromCache()
   }, [syncFromCache])
 
-  const refreshTradeseaSession = useCallback(async () => {
-    setLoadingMd(true)
-    setError('')
-    try {
-      const refreshed = await tradeseaAPI.refreshSession()
-      if (!refreshed.connected) {
-        setTradeseaSessionExpired(true)
-        setError(refreshed.message || t('practice.refreshSessionFailed'))
-        return
-      }
-      setSuccess(t('practice.sessionRefreshed'))
-      const result = await tradeseaAPI.getAccounts()
-      if (result.connected) {
-        setTradeseaSessionExpired(false)
-        setTradeseaAccounts(result.accounts || [])
-        return
-      }
-      setTradeseaSessionExpired(Boolean(result.sessionExpired))
-      setTradeseaAccounts([])
-      setError(result.message || t('practice.refreshSessionFailed'))
-    } catch (err: unknown) {
-      setTradeseaSessionExpired(true)
-      setError(err instanceof Error ? err.message : t('practice.refreshSessionFailed'))
-    } finally {
-      setLoadingMd(false)
+  const loadBrokerAccounts = useCallback(async (firmId?: string) => {
+    const firm = firmId ?? propFirmId
+    if (!firmPersistsMarketAccountId(firm)) {
+      setBrokerAccounts([])
+      setBrokerSessionExpired(false)
+      return
     }
-  }, [])
 
-  const loadTradesea = useCallback(async () => {
     setLoadingMd(true)
     setError('')
     try {
-      let result = await tradeseaAPI.getAccounts()
-      if (!result.connected && result.sessionExpired) {
-        const refreshed = await tradeseaAPI.refreshSession()
-        if (refreshed.connected) {
-          result = await tradeseaAPI.getAccounts()
+      if (firm === 'tradesea') {
+        let result = await tradeseaAPI.getAccounts()
+        if (!result.connected && result.sessionExpired) {
+          const refreshed = await tradeseaAPI.refreshSession()
+          if (refreshed.connected) {
+            result = await tradeseaAPI.getAccounts()
+          }
         }
+        if (!result.connected) {
+          setBrokerAccounts([])
+          setBrokerSessionExpired(Boolean(result.sessionExpired))
+          setError(result.message || t('practice.notConnected'))
+          return
+        }
+        setBrokerSessionExpired(false)
+        setBrokerAccounts(
+          (result.accounts || []).map((a) => ({ id: a.id, label: a.label }))
+        )
       }
-      if (!result.connected) {
-        setTradeseaAccounts([])
-        setTradeseaSessionExpired(Boolean(result.sessionExpired))
-        setError(result.message || t('practice.notConnected'))
-        return
-      }
-      setTradeseaSessionExpired(false)
-      setTradeseaAccounts(result.accounts || [])
     } catch (err: unknown) {
-      setTradeseaAccounts([])
-      setTradeseaSessionExpired(true)
+      setBrokerAccounts([])
+      setBrokerSessionExpired(true)
       setError(err instanceof Error ? err.message : t('practice.loadAccountsFailed'))
     } finally {
       setLoadingMd(false)
     }
-  }, [])
+  }, [propFirmId, loadFirmCredentials])
+
+  const refreshBrokerSession = useCallback(async () => {
+    if (propFirmId === 'tradesea') {
+      setLoadingMd(true)
+      setError('')
+      try {
+        const refreshed = await tradeseaAPI.refreshSession()
+        if (!refreshed.connected) {
+          setBrokerSessionExpired(true)
+          setError(refreshed.message || t('practice.refreshSessionFailed'))
+          return
+        }
+        setSuccess(t('practice.sessionRefreshed'))
+        await loadBrokerAccounts('tradesea')
+      } catch (err: unknown) {
+        setBrokerSessionExpired(true)
+        setError(err instanceof Error ? err.message : t('practice.refreshSessionFailed'))
+      } finally {
+        setLoadingMd(false)
+      }
+      return
+    }
+    await loadBrokerAccounts(propFirmId)
+  }, [propFirmId, loadBrokerAccounts])
 
   useEffect(() => {
     void (async () => {
       setLoadingHub(true)
       await reload()
-      await loadTradesea()
+      const md = getPracticeMarketDataSettings()
+      await Promise.all([loadBrokerAccounts(md.propFirmId), loadFirmCredentials()])
       setLoadingHub(false)
     })()
-    const onChange = () => syncFromCache()
+    const onChange = () => {
+      syncFromCache()
+      void loadFirmCredentials()
+    }
     window.addEventListener('practiceAccountsChanged', onChange)
     window.addEventListener('practiceSettingsChanged', onChange)
+    window.addEventListener('refreshPropFirms', onChange)
     return () => {
       window.removeEventListener('practiceAccountsChanged', onChange)
       window.removeEventListener('practiceSettingsChanged', onChange)
+      window.removeEventListener('refreshPropFirms', onChange)
     }
-  }, [reload, loadTradesea, syncFromCache])
+  }, [reload, loadBrokerAccounts, loadFirmCredentials, syncFromCache])
+
+  useEffect(() => {
+    if (activeTab !== 'market') return
+    void loadBrokerAccounts(propFirmId)
+  }, [activeTab, propFirmId, loadBrokerAccounts])
 
   useEffect(() => {
     setCustomRules(getDefaultPracticeRules(newSize, newMode))
   }, [newSize, newMode])
 
-  const marketAccountLabel = useMemo(() => {
-    const fromList = tradeseaAccounts.find((a) => a.id === marketAccountId)?.label
-    const md = getPracticeMarketDataSettings()
-    return fromList || md.accountLabel
-  }, [tradeseaAccounts, marketAccountId])
+  const marketConnection = useMemo(
+    () =>
+      resolveMarketDataConnection({
+        firmId: propFirmId,
+        marketAccountId,
+        brokerAccounts,
+        brokerSessionExpired,
+        firmCredentials: getCredentialsForFirm(propFirmId, credentialsByFirm),
+      }),
+    [propFirmId, marketAccountId, brokerAccounts, brokerSessionExpired, credentialsByFirm]
+  )
 
-  const marketConnected = Boolean(marketAccountId) && !tradeseaSessionExpired && tradeseaAccounts.length > 0
+  const marketConnected = marketConnection.connected
+  const marketAccountLabel = marketConnection.statusLabel
 
   const persistMarketData = async (opts: {
     propFirmId?: string
     accountId?: string
     offlineModePositions?: boolean
   }) => {
+    let md = getPracticeMarketDataSettings()
+    const switchingFirm = opts.propFirmId != null && opts.propFirmId !== propFirmId
     const nextFirmId = opts.propFirmId ?? propFirmId
-    const accountId = opts.accountId ?? marketAccountId
-    const account = tradeseaAccounts.find((a) => a.id === accountId)
-    const md = getPracticeMarketDataSettings()
+
+    if (switchingFirm) {
+      md = applyActiveFirmToMarketDataSettings(md, nextFirmId)
+      setPropFirmId(nextFirmId)
+      void loadFirmCredentials()
+      void loadBrokerAccounts(nextFirmId)
+    }
+
+    const usesBrokerAccount = firmPersistsMarketAccountId(nextFirmId)
+    const accountId = usesBrokerAccount
+      ? (opts.accountId ?? (switchingFirm ? md.accountId : marketAccountId))
+      : ''
+    const account = usesBrokerAccount
+      ? brokerAccounts.find((a) => a.id === accountId)
+      : undefined
     const firm = getPracticePropFirmConfig(nextFirmId)
     const savedOffline =
       opts.offlineModePositions ??
-      (opts.propFirmId != null ? firm.defaultOfflineModePositions : offlineModePositions)
+      (switchingFirm ? md.offlineModePositions : offlineModePositions)
     const offline = resolveOfflineModePositions({
       propFirmId: nextFirmId,
       accountId,
-      accountLabel: account?.label ?? md.accountLabel,
+      accountLabel: usesBrokerAccount ? (account?.label ?? md.accountLabel) : '',
       offlineModePositions: savedOffline,
     })
     if (offlineModePositions && !offline) {
@@ -207,24 +266,25 @@ export default function Hub() {
         /* ignore */
       }
     }
-    if (opts.propFirmId != null && opts.propFirmId !== propFirmId) {
-      setPropFirmId(nextFirmId)
-    }
-    await savePracticeMarketDataSettings({
-      propFirmId: nextFirmId,
+
+    md = updateFirmMarketDataSelection(md, nextFirmId, {
       accountId,
-      accountLabel: account?.label ?? md.accountLabel,
+      accountLabel: usesBrokerAccount ? (account?.label ?? md.accountLabel) : '',
       offlineModePositions: firm.supportsOfflineBracketWatcher ? savedOffline : false,
     })
-    if (opts.accountId !== undefined) setMarketAccountId(accountId)
+
+    await savePracticeMarketDataSettings(md)
+    if (opts.accountId !== undefined || switchingFirm || !usesBrokerAccount) {
+      setMarketAccountId(accountId)
+    }
     setOfflineModePositions(offline)
     setSuccess(t('practice.hub.marketDataSaved'))
     syncFromCache()
   }
 
   const runCreate = async (rules: PracticeAccountRules) => {
-    if (!marketAccountId) {
-      setError(t('practice.page.noAccountSelected'))
+    if (!marketConnected) {
+      setError(t('practice.notConnected'))
       return
     }
     await createPracticeAccount(newMode, newSize, rules)
@@ -249,9 +309,11 @@ export default function Hub() {
         syncFromCache()
       } else if (confirm === 'delete' && confirmTargetId) {
         await deletePracticeAccount(confirmTargetId)
+        setSuccess(t('practice.hub.accountDeleted'))
         syncFromCache()
       } else if (confirm === 'resetAll') {
         await resetAllPracticeAccounts()
+        setSuccess(t('practice.hub.allAccountsReset'))
         syncFromCache()
       }
       setConfirm(null)
@@ -263,40 +325,40 @@ export default function Hub() {
     }
   }
 
-  const closeConfirm = () => {
-    if (confirmLoading) return
-    setConfirm(null)
-    setConfirmTargetId(null)
-  }
-
-  const confirmAccount = accounts.find((a) => a.id === confirmTargetId)
-  const confirmAccountTitle = confirmAccount ? getPracticeAccountDisplayTitle(confirmAccount) : ''
+  const confirmAccountTitle =
+    confirm === 'create'
+      ? t('practice.hub.confirmCreateTitle')
+      : confirm === 'reset'
+        ? getPracticeAccountDisplayTitle(accounts.find((a) => a.id === confirmTargetId))
+        : confirm === 'delete'
+          ? getPracticeAccountDisplayTitle(accounts.find((a) => a.id === confirmTargetId))
+          : ''
 
   return (
-    <div
-      className={appPageBackground(isDark)}
-    >
+    <div className={`min-h-screen ${appPageBackground(isDark)}`}>
       <HubNav
         isDark={isDark}
-        toggleTheme={toggleTheme}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        toggleTheme={toggleTheme}
         onLogout={handleLogout}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {activeTab === 'accounts' && (
           <section className="mb-8">
-            <p
-              className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full mb-4 ${
-                isDark ? 'bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/20' : 'bg-violet-100 text-violet-700'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              {t('practice.hub.badge')}
-            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+              <span
+                className={`text-xs font-semibold uppercase tracking-wider ${
+                  isDark ? 'text-violet-400/90' : 'text-violet-600'
+                }`}
+              >
+                {t('practice.hub.badge')}
+              </span>
+            </div>
             <h1
-              className={`text-2xl sm:text-3xl font-bold tracking-tight max-w-2xl ${
+              className={`text-2xl sm:text-3xl font-bold tracking-tight ${
                 isDark ? 'text-white' : 'text-slate-900'
               }`}
             >
@@ -341,12 +403,12 @@ export default function Hub() {
                       newMode={newMode}
                       newSize={newSize}
                       customRules={customRules}
-                      marketAccountId={marketAccountId}
+                      marketAccountId={firmPersistsMarketAccountId(propFirmId) ? marketAccountId : ''}
                       onModeChange={setNewMode}
                       onSizeChange={setNewSize}
                       onCreateClick={() => setConfirm('create')}
                     />
-                    {!marketAccountId && (
+                    {!marketConnected && (
                       <p
                         className={`mt-3 text-xs rounded-lg px-3 py-2 border ${
                           isDark
@@ -354,7 +416,7 @@ export default function Hub() {
                             : 'border-amber-200 bg-amber-50 text-amber-800'
                         }`}
                       >
-                        {t('practice.hub.nav.connectMarketHint')}
+                        {t('practice.notConnected')}
                       </p>
                     )}
                   </div>
@@ -385,21 +447,19 @@ export default function Hub() {
                   isDark={isDark}
                   propFirmId={propFirmId}
                   marketAccountId={marketAccountId}
+                  marketConnected={marketConnected}
+                  marketStatusLabel={marketAccountLabel}
                   offlineModePositions={offlineModePositions}
-                  tradeseaAccounts={tradeseaAccounts}
-                  tradeseaSessionExpired={tradeseaSessionExpired}
+                  brokerAccounts={brokerAccounts}
+                  brokerSessionExpired={brokerSessionExpired}
                   loadingMd={loadingMd}
                   onPropFirmChange={(id) => {
-                    void persistMarketData({
-                      propFirmId: id,
-                      accountId: '',
-                      offlineModePositions: getPracticePropFirmConfig(id).defaultOfflineModePositions,
-                    })
+                    void persistMarketData({ propFirmId: id })
                   }}
                   onMarketAccountChange={(id) => void persistMarketData({ accountId: id })}
                   onOfflineModeChange={(enabled) => void persistMarketData({ offlineModePositions: enabled })}
-                  onRefreshAccounts={() => void loadTradesea()}
-                  onRefreshSession={() => void refreshTradeseaSession()}
+                  onRefreshAccounts={() => void loadBrokerAccounts()}
+                  onRefreshSession={() => void refreshBrokerSession()}
                 />
               </CenteredPanel>
             )}
@@ -417,27 +477,23 @@ export default function Hub() {
         customRules={customRules}
         confirmAccountTitle={confirmAccountTitle}
         confirmLoading={confirmLoading}
+        onCancel={() => {
+          setConfirm(null)
+          setConfirmTargetId(null)
+        }}
         onConfirm={(rules) => void runConfirmAction(rules)}
-        onCancel={closeConfirm}
         onRulesChange={setCustomRules}
       />
 
-      {detailAccount && (
+      {detailAccount ? (
         <AccountDetailModal
           account={detailAccount}
           isDark={isDark}
           onClose={() => setDetailAccount(null)}
-          onTrade={() => {
-            const id = detailAccount.id
-            setDetailAccount(null)
-            navigate(`${ROUTES.PRACTICE_TRADE}/${id}`)
-          }}
-          onGoToStats={(id) => {
-            setDetailAccount(null)
-            navigate(practiceTradeStatsPath(id))
-          }}
+          onTrade={() => navigate(`${ROUTES.PRACTICE_TRADE}/${detailAccount.id}`)}
+          onGoToStats={(id) => navigate(practiceTradeStatsPath(id))}
         />
-      )}
+      ) : null}
     </div>
   )
 }

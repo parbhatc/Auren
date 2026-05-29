@@ -6,7 +6,7 @@ import {
   type PracticeAccount,
 } from '../../constants/practice'
 import { getPracticePlanFromAccount } from './practicePlans'
-import { TradeseaPropFirm } from '../propfirms/TradeseaPropFirm'
+import { TradeseaPropFirm } from '../../propfirms/tradesea'
 import { TradeseaDatafeed, type TradeseaMarketBook } from '../tradesea/TradeseaDatafeed'
 import { PracticeTradeCache } from './PracticeTradeCache'
 import { calcTradeseaTickPnL } from '../tradesea/tradeseaPnL'

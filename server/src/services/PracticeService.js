@@ -82,14 +82,20 @@ class PracticeService {
       propFirmId,
       settings.offlineModePositions
     )
+    const firmSelections =
+      settings.byFirm && typeof settings.byFirm === 'object'
+        ? JSON.stringify(settings.byFirm)
+        : '{}'
+
     await Database.run(
-      `INSERT INTO practice_market_data (user_id, prop_firm_id, account_id, account_label, offline_mode_positions, updated_at)
-       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO practice_market_data (user_id, prop_firm_id, account_id, account_label, offline_mode_positions, firm_selections, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(user_id) DO UPDATE SET
          prop_firm_id = excluded.prop_firm_id,
          account_id = excluded.account_id,
          account_label = excluded.account_label,
          offline_mode_positions = excluded.offline_mode_positions,
+         firm_selections = excluded.firm_selections,
          updated_at = CURRENT_TIMESTAMP`,
       [
         userId,
@@ -97,6 +103,7 @@ class PracticeService {
         settings.accountId || '',
         settings.accountLabel || '',
         offlineMode,
+        firmSelections,
       ]
     )
     await Database.run(

@@ -1,6 +1,6 @@
 import { aurenToast } from '../../utils/aurenToast'
 import { tradeseaAPI } from '../../api/tradesea.api'
-import { TradeseaPropFirm } from '../propfirms/TradeseaPropFirm'
+import { TradeseaPropFirm } from '../../propfirms/tradesea'
 import {
   formatTradeseaExecutionTooltip,
   parseTradeseaExecutions,

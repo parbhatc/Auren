@@ -1,4 +1,4 @@
-import type { PropFirmDefinition } from '../types'
+import type { PropFirmDefinition } from '../types/definition'
 import {
   PRACTICE_PROP_FIRM_CONFIGS,
 } from '../../constants/practicePropFirms'

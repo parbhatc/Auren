@@ -10,6 +10,11 @@ import {
 } from '../services/practice/practicePlans'
 import { computeDrawdownFloor, evaluatePracticeRules } from '../services/practice/practiceRules'
 import {
+  getFirmMarketDataSelection,
+  migratePracticeMarketDataSettings,
+} from './practiceMarketDataByFirm'
+import type { PracticeMarketDataSettings } from './practiceMarketDataTypes'
+import {
   PRACTICE_PROP_FIRM_CONFIGS,
   getPracticePropFirmConfig,
   normalizePracticePropFirmId,
@@ -76,13 +81,16 @@ export type PracticePropFirmId = PracticePropFirmConfigId
 
 export type PracticeAccountStatus = 'active' | 'passed' | 'blown'
 
-export interface PracticeMarketDataSettings {
-  propFirmId: string
-  accountId: string
-  accountLabel: string
-  /** When true, server holds the MDS slot while away and tracks SL/TP on open bracket positions. */
-  offlineModePositions?: boolean
-}
+export type {
+  PracticeFirmMarketDataSelection,
+  PracticeMarketDataSettings,
+} from './practiceMarketDataTypes'
+export {
+  applyActiveFirmToMarketDataSettings,
+  getFirmMarketDataSelection,
+  migratePracticeMarketDataSettings,
+  updateFirmMarketDataSelection,
+} from './practiceMarketDataByFirm'
 
 export interface PracticeDayPnL {
   date: string
@@ -221,20 +229,32 @@ export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
       accountLabel: '',
     }
   const propFirmId = normalizePracticePropFirmId(raw.propFirmId)
-  return {
+  const migrated = migratePracticeMarketDataSettings({
     ...raw,
     propFirmId,
     offlineModePositions: resolveOfflineModePositions({ ...raw, propFirmId }),
+  })
+  const selection = getFirmMarketDataSelection(migrated, propFirmId)
+  return {
+    ...migrated,
+    propFirmId,
+    accountId: selection.accountId,
+    accountLabel: selection.accountLabel,
+    offlineModePositions: resolveOfflineModePositions({
+      ...migrated,
+      propFirmId,
+      offlineModePositions: selection.offlineModePositions ?? migrated.offlineModePositions,
+    }),
   }
 }
 
 export async function savePracticeMarketDataSettings(
   settings: PracticeMarketDataSettings
 ): Promise<void> {
-  const normalized = {
+  const normalized = migratePracticeMarketDataSettings({
     ...settings,
     propFirmId: normalizePracticePropFirmId(settings.propFirmId),
-  }
+  })
   marketDataCache = normalized
   localStorage.setItem(PRACTICE_STORAGE_KEYS.MARKET_DATA, JSON.stringify(normalized))
   try {

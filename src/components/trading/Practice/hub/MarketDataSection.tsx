@@ -8,7 +8,13 @@ import {
   practiceFirmSupportsOfflineBracketWatcher,
 } from '../../../../constants/practice'
 import { ROUTES } from '../../../../constants/routes'
-import { TradeseaAccount } from '../../../../api/tradesea.api'
+import {
+  firmUsesBrokerAccounts,
+  firmUsesCredentialLogin,
+  isDisconnectedBannerActive,
+  isSessionExpiredBannerActive,
+} from '../../../../propfirms'
+import type { BrokerAccountOption } from '../../../../propfirms/marketData/types'
 import { t } from '../../../../utils/translator'
 import {
   alertBannerClass,
@@ -22,9 +28,11 @@ export default function MarketDataSection({
   isDark,
   propFirmId,
   marketAccountId,
+  marketConnected,
+  marketStatusLabel,
   offlineModePositions,
-  tradeseaAccounts,
-  tradeseaSessionExpired,
+  brokerAccounts,
+  brokerSessionExpired,
   loadingMd,
   onPropFirmChange,
   onMarketAccountChange,
@@ -35,9 +43,11 @@ export default function MarketDataSection({
   isDark: boolean
   propFirmId: string
   marketAccountId: string
+  marketConnected: boolean
+  marketStatusLabel: string
   offlineModePositions: boolean
-  tradeseaAccounts: TradeseaAccount[]
-  tradeseaSessionExpired: boolean
+  brokerAccounts: BrokerAccountOption[]
+  brokerSessionExpired: boolean
   loadingMd: boolean
   onPropFirmChange: (id: string) => void
   onMarketAccountChange: (accountId: string) => void
@@ -51,20 +61,31 @@ export default function MarketDataSection({
   const firm = getPracticePropFirmConfig(propFirmId)
   const showOfflineSection = practiceFirmShowsOfflineModeSection(propFirmId)
   const supportsOfflineWatcher = practiceFirmSupportsOfflineBracketWatcher(propFirmId)
+  const usesBrokerAccounts = firmUsesBrokerAccounts(propFirmId)
+  const usesCredentialLogin = firmUsesCredentialLogin(propFirmId)
   const firmLabel = firm.displayName
+  const showSessionExpiredBanner = isSessionExpiredBannerActive(propFirmId, brokerSessionExpired)
+  const showDisconnectedBanner = isDisconnectedBannerActive(
+    propFirmId,
+    {
+      connected: marketConnected,
+      statusLabel: marketStatusLabel,
+    },
+    brokerSessionExpired
+  )
 
   useEffect(() => {
-    if (!tradeseaSessionExpired || loadingMd) return
+    if (!showSessionExpiredBanner || loadingMd) return
     if (autoRefreshAttempted.current) return
     autoRefreshAttempted.current = true
     void onRefreshSession()
-  }, [tradeseaSessionExpired, loadingMd, onRefreshSession])
+  }, [showSessionExpiredBanner, loadingMd, onRefreshSession])
 
   useEffect(() => {
-    if (!tradeseaSessionExpired) {
+    if (!showSessionExpiredBanner) {
       autoRefreshAttempted.current = false
     }
-  }, [tradeseaSessionExpired])
+  }, [showSessionExpiredBanner])
 
   const cardClass = supportsOfflineWatcher
     ? offlineModePositions
@@ -139,36 +160,67 @@ export default function MarketDataSection({
           </select>
         </PanelField>
         <PanelField label={t('practice.accountLabel')} isDark={isDark}>
-          <div className="flex gap-2">
-            <select
-              value={marketAccountId}
-              onChange={(e) => onMarketAccountChange(e.target.value)}
-              className={`${selectClass} flex-1 min-w-0`}
-              disabled={propFirmId !== 'tradesea'}
+          {usesBrokerAccounts ? (
+            <div className="flex gap-2">
+              <select
+                value={marketAccountId}
+                onChange={(e) => onMarketAccountChange(e.target.value)}
+                className={`${selectClass} flex-1 min-w-0`}
+              >
+                <option value="">{t('practice.selectAccount')}</option>
+                {brokerAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={onRefreshAccounts}
+                disabled={loadingMd}
+                className={`shrink-0 p-2.5 rounded-xl border transition-colors ${
+                  isDark
+                    ? 'border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                    : 'border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                } disabled:opacity-40 disabled:pointer-events-none`}
+                title={t('practice.refreshAccounts')}
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingMd ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          ) : usesCredentialLogin ? (
+            <div
+              className={`rounded-xl border px-3 py-2.5 ${
+                marketConnected
+                  ? isDark
+                    ? 'border-emerald-500/35 bg-emerald-500/10'
+                    : 'border-emerald-200 bg-emerald-50'
+                  : isDark
+                    ? 'border-amber-500/35 bg-amber-500/10'
+                    : 'border-amber-200 bg-amber-50'
+              }`}
             >
-              <option value="">{t('practice.selectAccount')}</option>
-              {tradeseaAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={onRefreshAccounts}
-              disabled={loadingMd || propFirmId !== 'tradesea'}
-              className={`shrink-0 p-2.5 rounded-xl border transition-colors ${
-                isDark
-                  ? 'border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
-                  : 'border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              } disabled:opacity-40 disabled:pointer-events-none`}
-              title={t('practice.refreshAccounts')}
-            >
-              <RefreshCw className={`w-4 h-4 ${loadingMd ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          {propFirmId !== 'tradesea' && (
-            <p className={`mt-2 text-xs ${hintClass}`}>
+              <p
+                className={`text-sm font-medium ${
+                  marketConnected
+                    ? isDark
+                      ? 'text-emerald-300'
+                      : 'text-emerald-800'
+                    : isDark
+                      ? 'text-amber-200'
+                      : 'text-amber-900'
+                }`}
+              >
+                {marketConnected
+                  ? t('practice.hub.nav.connected')
+                  : t('practice.hub.nav.disconnected')}
+              </p>
+              {marketConnected && marketStatusLabel ? (
+                <p className={`mt-1 text-xs ${hintClass}`}>{marketStatusLabel}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className={`text-xs ${hintClass}`}>
               {t('practice.hub.marketDataComingSoon', { firm: firmLabel }, `${firmLabel} market data setup is coming soon.`)}
             </p>
           )}
@@ -252,7 +304,20 @@ export default function MarketDataSection({
         </div>
       )}
 
-      {tradeseaSessionExpired && propFirmId === 'tradesea' && (
+      {showDisconnectedBanner && (
+        <div className={`mt-5 ${alertBannerClass(isDark, 'amber')}`}>
+          <p className="text-sm leading-relaxed">{t('practice.notConnected')}</p>
+          <button
+            type="button"
+            onClick={() => navigate(`${ROUTES.PRACTICE}?tab=settings&section=market`)}
+            className={`${primaryButtonClass()} mt-3`}
+          >
+            {t('settings.marketDataTab')}
+          </button>
+        </div>
+      )}
+
+      {showSessionExpiredBanner && (
         <div className={`mt-5 ${alertBannerClass(isDark, 'amber')}`}>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <p className="text-sm flex-1 leading-relaxed">
@@ -270,7 +335,7 @@ export default function MarketDataSection({
               </button>
               <button
                 type="button"
-                onClick={() => navigate(ROUTES.PROPS_SETTINGS)}
+                onClick={() => navigate(`${ROUTES.PRACTICE}?tab=settings&section=market`)}
                 className={primaryButtonClass()}
               >
                 {t('settings.marketDataTab')}

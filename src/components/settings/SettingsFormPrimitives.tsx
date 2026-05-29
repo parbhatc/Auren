@@ -17,20 +17,27 @@ export function SettingsSection({
   isDark,
   title,
   hint,
+  nested,
   children,
 }: {
   isDark: boolean
   title?: string
   hint?: string
+  /** Less padding when nested inside another settings section */
+  nested?: boolean
   children: ReactNode
 }) {
   return (
-    <section className="px-5 sm:px-6 py-5">
-      {title ? (
-        <div className="mb-4">
-          <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{title}</h3>
+    <section className={nested ? 'py-4' : 'px-5 sm:px-6 py-5'}>
+      {title || hint ? (
+        <div className={title || hint ? 'mb-4' : ''}>
+          {title ? (
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{title}</h3>
+          ) : null}
           {hint ? (
-            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{hint}</p>
+            <p className={`text-xs ${title ? 'mt-0.5' : ''} ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+              {hint}
+            </p>
           ) : null}
         </div>
       ) : null}

@@ -3,6 +3,9 @@ import type { LibrarySymbolInfo } from '../types/chart'
 /** Toast / guard message when futures session is closed. */
 export const MARKET_CLOSED_MESSAGE = 'Market closed'
 
+/** TradingView session for CME Globex electronic hours (17:00 CT → 16:00 CT next day, Mon–Fri). */
+export const CME_GLOBEX_TRADINGVIEW_SESSION = '1700-1600'
+
 const TV_WEEKDAY: Record<string, number> = {
   Sun: 1,
   Mon: 2,
@@ -98,6 +101,18 @@ function isCmeFuturesSymbol(info: LibrarySymbolInfo): boolean {
   if (type !== 'futures' && type !== 'future') return false
   const exchange = String(info.listed_exchange || info.exchange || '').toUpperCase()
   return /CME|CBOT|NYMEX|COMEX|GLOBEX/.test(exchange)
+}
+
+export function tradingViewSessionForExchange(exchange?: string, type?: string): string {
+  const normalizedType = String(type || '').toLowerCase()
+  if (normalizedType && normalizedType !== 'futures' && normalizedType !== 'future') {
+    return '24x7'
+  }
+  const normalizedExchange = String(exchange || '').toUpperCase()
+  if (/CME|CBOT|NYMEX|COMEX|GLOBEX/.test(normalizedExchange)) {
+    return CME_GLOBEX_TRADINGVIEW_SESSION
+  }
+  return '24x7'
 }
 
 export function resolveSymbolSession(info: LibrarySymbolInfo): { session: string; timezone: string } {

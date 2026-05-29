@@ -4,6 +4,7 @@ import RoleLoader from './config/RoleLoader.js'
 import EconomicNewsScheduler from './services/EconomicNewsScheduler.js'
 import tradeseaTradesWebSocket from './websocket/TradeseaTradesWebSocket.js'
 import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
+import rithmicMdsWebSocket from './websocket/RithmicMdsWebSocket.js'
 import webSocketManager from './websocket/WebSocketManager.js'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
@@ -89,6 +90,7 @@ class Server {
 
       tradeseaTradesWebSocket.initialize(this.server)
       tradeseaMdsWebSocket.initialize(this.server)
+      rithmicMdsWebSocket.initialize(this.server)
 
       webSocketManager.initialize(this.server, [])
 

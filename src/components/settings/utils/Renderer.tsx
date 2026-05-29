@@ -4,7 +4,7 @@ import { UtilsSettingsProps } from '../../../types'
 import SettingsPageLayout from '../../layout/SettingsPageLayout'
 import { panelCardClass, selectInputClass, settingsInsetClass } from '../../../styles/aurenTheme'
 import { t } from '../../../utils/translator'
-import { SUPPORTED_TRADINGVIEW_TIMEZONES } from '../../../constants/tradingviewTimezones'
+import { SUPPORTED_TRADINGVIEW_TIMEZONES } from 'tradingview-chart/constants/tradingviewTimezones'
 
 /**
  * Utils Settings renderer component

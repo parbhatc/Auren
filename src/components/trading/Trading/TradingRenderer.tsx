@@ -15,7 +15,7 @@ import { getSavedLayout } from '../../../utils/tradingLayoutStorage'
 import { renderLayout, renderPracticeTradeLayout } from '../../../utils/layoutRenderer'
 import { getAccountColorClasses, FormattedAccount, saveSelectedAccountId } from '../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../constants/trade'
-import { propFirmRegistry } from '../../../services/propfirms'
+import { propFirmRegistry } from '../../../propfirms'
 import { TradeHeader } from './TradeHeader'
 import TradePanel from '../shared/pad/TradePanel'
 import { PracticeTradeHandler } from '../../../services/practice/PracticeTradeHandler'
@@ -843,7 +843,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   (activeFirm?.chartSymbol as string | undefined) ||
                   selectedSymbol
                 const chartSymbolLabel =
-                  tsDatafeed?.resolveStreamInstrument(`CME:${padRoot}`) ?? `CME:${padRoot}`
+                  tsDatafeed?.resolveStreamInstrument?.(`CME:${padRoot}`) ?? `CME:${padRoot}`
                 const practiceMaxQty = this.getPracticeMaxQty() ?? 10
                 const resolvePracticeBook = () => {
                   if (tradeHandler && 'getActiveMarketBook' in tradeHandler) {
@@ -913,11 +913,11 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     }
                     return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null
                   },
-                  subscribeMarketBook: tsDatafeed
-                    ? (onUpdate: () => void) => tsDatafeed.subscribeMarketBook(onUpdate)
+                  subscribeMarketBook: tsDatafeed?.subscribeMarketBook
+                    ? (onUpdate: () => void) => tsDatafeed.subscribeMarketBook!(onUpdate)
                     : undefined,
-                  ensureMarketBook: tsDatafeed
-                    ? () => tsDatafeed.ensureMarketBookSubscription(chartSymbolLabel)
+                  ensureMarketBook: tsDatafeed?.ensureMarketBookSubscription
+                    ? () => tsDatafeed.ensureMarketBookSubscription!(chartSymbolLabel)
                     : undefined,
                   getChartPositionUpl:
                     tradeHandler instanceof PracticeTradeHandler

@@ -2,12 +2,17 @@
  * Practice chart (delayed MDS + UDF; unified user-data WebSocket).
  */
 import { CSSProperties, RefObject } from 'react'
-import BaseChart from '../../components/common/BaseChart'
-import { setContextMenuCallbacks } from '../../components/common/ChartContextMenu'
+import BaseChart from 'tradingview-chart/components/common/BaseChart'
+import { registerTradeContextActions } from '../../components/common/aurenTradeContextMenu'
+import {
+  setupChartContainerKeyboardListener,
+  setupChartKeyboardShortcuts,
+} from '../../components/common/chartKeyboardShortcuts'
 import { TradingViewChartProps } from '../../types/chart'
 import { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { PracticeTradeHandler } from '../practice/PracticeTradeHandler'
 import { TradeseaDatafeed } from './TradeseaDatafeed'
+import type { RithmicHistoryDatafeed } from '../rithmic/RithmicHistoryDatafeed'
 import { TradeseaMdsClient } from './TradeseaMdsClient'
 import { TradeseaTradesClient } from './TradeseaTradesClient'
 import { getTradeseaConnectionGroupId } from './tradeseaDeviceFingerprint'
@@ -22,15 +27,15 @@ import { debugPracticeChartSymbol } from './practiceChartSymbolDebug'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 
 export type TradeseaChartServices = {
-  mds: TradeseaMdsClient
-  trades: TradeseaTradesClient
-  datafeed: TradeseaDatafeed
-  streamConfig: TradeseaStreamConfig
+  mds?: TradeseaMdsClient
+  trades?: TradeseaTradesClient
+  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed
+  streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }
 
 class TradeseaChart extends BaseChart {
-  datafeed: TradeseaDatafeed | null = null
+  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed | null = null
   services: TradeseaChartServices | null = null
   /** Practice + load_last_chart: do not emit symbol until TV restores layout. */
   private practiceRestoreLayout = false
@@ -82,11 +87,20 @@ class TradeseaChart extends BaseChart {
       // Practice: restore drawings/studies/layout per sim account. Live: avoid cross-account schema warnings.
       this.config.load_last_chart = isPracticeChart
       if (isPracticeChart && !String(props.symbol || '').trim()) {
-        const useDelayedMd = shouldUseDelayedMdsSymbols(services.streamConfig)
-        this.config.symbol = resolveMdsSubscribeTicker(
-          DEFAULT_PRACTICE_CHART_SYMBOL,
-          useDelayedMd
-        )
+        if (services.mds) {
+          const useDelayedMd = shouldUseDelayedMdsSymbols(
+            services.streamConfig as TradeseaStreamConfig
+          )
+          this.config.symbol = resolveMdsSubscribeTicker(
+            DEFAULT_PRACTICE_CHART_SYMBOL,
+            useDelayedMd
+          )
+        } else {
+          this.config.symbol = DEFAULT_PRACTICE_CHART_SYMBOL
+        }
+      }
+      if (isPracticeChart && this.config.load_last_chart) {
+        delete (this.config as { symbol?: string }).symbol
       }
     }
     debugPracticeChartSymbol('TradeseaChart.init', {
@@ -98,6 +112,36 @@ class TradeseaChart extends BaseChart {
     }, { force: true })
     this.addEnabledFeature('seconds_resolution')
     this.addEnabledFeature('tick_resolution')
+  }
+
+  componentDidUpdate(prevProps: TradingViewChartProps) {
+    const props = this.props as TradingViewChartProps & { practiceAccountId?: string }
+    const practiceAccountId = props.practiceAccountId
+    const practiceRestoreLayout = Boolean(practiceAccountId && this.config?.load_last_chart)
+    const symbolChanged = prevProps.symbol !== props.symbol && !practiceRestoreLayout
+
+    if (practiceAccountId && prevProps.symbol !== props.symbol) {
+      debugPracticeChartSymbol(
+        'TradeseaChart.componentDidUpdate',
+        {
+          prevSymbol: prevProps.symbol,
+          nextSymbol: props.symbol,
+          practiceRestoreLayout,
+          symbolChanged,
+        },
+        { force: true }
+      )
+    }
+
+    if (
+      symbolChanged ||
+      prevProps.timeframe !== props.timeframe ||
+      prevProps.isDark !== props.isDark ||
+      JSON.stringify(prevProps.widgetConfig) !== JSON.stringify(props.widgetConfig)
+    ) {
+      this.cleanup()
+      this.loadChart()
+    }
   }
 
   handleAutoSaveNeeded = async () => {
@@ -144,6 +188,20 @@ class TradeseaChart extends BaseChart {
       tradeseaTradeHandler?: TradeseaTradeHandler
     }
 
+    if (widget) {
+      setupChartKeyboardShortcuts(widget)
+      setTimeout(
+        () =>
+          setupChartContainerKeyboardListener(
+            this as {
+              containerRef: RefObject<HTMLDivElement>
+              _keyboardListenerCleanup?: (() => void) | null
+            }
+          ),
+        500
+      )
+    }
+
     const handler = props.tradeseaTradeHandler
     if (handler && widget) {
       // Wire to the datafeed this widget subscribed with (may differ from propFirm.chartServices after reconnect).
@@ -152,7 +210,7 @@ class TradeseaChart extends BaseChart {
       }
       handler.onReady(widget, this.datafeed ?? undefined)
       if (handler instanceof PracticeTradeHandler) {
-        setContextMenuCallbacks({
+        registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
             void handler.logButtonPress('Buy', { quantity })
           },
@@ -167,7 +225,7 @@ class TradeseaChart extends BaseChart {
           },
         })
       } else {
-        setContextMenuCallbacks({
+        registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
             void handler.logButtonPress('Buy', { quantity })
           },
@@ -187,8 +245,11 @@ class TradeseaChart extends BaseChart {
   }
 
   private resolveDefaultChartTvSymbol(): string {
+    if (!this.services?.mds) {
+      return DEFAULT_PRACTICE_CHART_SYMBOL
+    }
     const useDelayedMd = shouldUseDelayedMdsSymbols(
-      this.services?.streamConfig ?? { delayed: this.datafeed?.isDelayedMarketData?.() ?? true }
+      this.services.streamConfig as TradeseaStreamConfig
     )
     return resolveMdsSubscribeTicker(DEFAULT_PRACTICE_CHART_SYMBOL, useDelayedMd)
   }
@@ -323,10 +384,10 @@ export async function prepareTradeseaChartServices(
 }
 
 export function teardownTradeseaChartServices(services: TradeseaChartServices | null): void {
-  if (!services) return
+  if (!services?.mds) return
   services.datafeed.setChartResetCallback(null)
   services.mds.disconnect()
-  services.trades.disconnect()
+  services.trades?.disconnect()
 }
 
 export default TradeseaChart

@@ -1,9 +1,16 @@
+import axios from 'axios'
 import { Component } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ROUTES } from '../../constants/routes'
 import { authAPI } from '../../api/auth.api'
 import Loading from './Loading'
 import { ProtectedRouteProps, ProtectedRouteState } from '../../types/common'
+
+function isAuthFailure(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  const status = error.response?.status
+  return status === 401 || status === 403
+}
 
 /**
  * Protected Route component
@@ -45,9 +52,13 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
       await authAPI.validateToken(token)
       this.setState({ isAuthenticated: true })
     } catch (error) {
-      // Token is invalid or expired
-      localStorage.removeItem('token')
-      this.setState({ isAuthenticated: false })
+      if (isAuthFailure(error)) {
+        localStorage.removeItem('token')
+        this.setState({ isAuthenticated: false })
+        return
+      }
+      // Server down / 5xx — keep session; don't treat as logged out
+      this.setState({ isAuthenticated: true })
     }
   }
 

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { useTheme } from '../../../hooks/useTheme'
-import { propFirmRegistry } from '../../../services/propfirms'
-import { TradeseaPropFirm } from '../../../services/propfirms/TradeseaPropFirm'
+import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
 import {
   getPracticeAccountById,
   refreshPracticeFromApi,

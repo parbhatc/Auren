@@ -9,6 +9,13 @@ export const PRACTICE_PROP_FIRM_CONFIGS = [
     supportsOfflineBracketWatcher: true,
     defaultOfflineModePositions: true,
   },
+  {
+    id: 'rithmic',
+    displayName: 'Rithmic',
+    marketDataSlotPolicy: 'concurrent',
+    supportsOfflineBracketWatcher: false,
+    defaultOfflineModePositions: false,
+  },
 ]
 
 const REMOVED_PROP_FIRM_IDS = new Set(['topstep'])
@@ -31,6 +38,16 @@ export function practiceFirmHasExclusiveMdsSlot(propFirmId) {
 
 export function practiceFirmSupportsOfflineBracketWatcher(propFirmId) {
   return getPracticePropFirmConfig(propFirmId).supportsOfflineBracketWatcher
+}
+
+function parseFirmSelections(raw) {
+  if (!raw || typeof raw !== 'string') return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
 }
 
 export function resolveOfflineModePositionsFromDb(row) {
@@ -58,11 +75,14 @@ export function resolveOfflineModePositionsFromDb(row) {
     offlineModePositions = false
   }
 
+  const byFirm = parseFirmSelections(row.firm_selections)
+
   return {
     propFirmId,
     accountId: row.account_id || '',
     accountLabel: row.account_label || '',
     offlineModePositions,
+    ...(Object.keys(byFirm).length > 0 ? { byFirm } : {}),
   }
 }
 

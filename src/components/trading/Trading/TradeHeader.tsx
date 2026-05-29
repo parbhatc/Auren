@@ -9,6 +9,7 @@ import AccountStatusBar from '../shared/header/AccountStatusBar'
 import LockoutCard from '../shared/header/LockoutCard'
 import HeaderTradingSettings from '../shared/header/HeaderTradingSettings'
 import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
+import type { RithmicMdsClient } from '../../../services/rithmic/RithmicMdsClient'
 
 export function TradeHeader({
   isDark,
@@ -44,7 +45,7 @@ export function TradeHeader({
   rpl?: number
   upl?: number
   hasOpenPosition?: boolean
-  mdsClient?: TradeseaMdsClient | null
+  mdsClient?: TradeseaMdsClient | RithmicMdsClient | null
   onReconnectMds?: () => void
   /** BAL / RP&L / UP&L strip — chart trade page only */
   showStatsBar?: boolean

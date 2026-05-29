@@ -2,8 +2,7 @@ import { Component, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
 import { getThemeColors } from '../../../constants/theme'
-import { propFirmRegistry } from '../../../services/propfirms'
-import { TradeseaPropFirm } from '../../../services/propfirms/TradeseaPropFirm'
+import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import { RefreshCw } from 'lucide-react'
 import TradingRenderer from '../Trading/TradingRenderer'
@@ -12,9 +11,12 @@ import {
   getPracticeAccountById,
   getPracticeAccountDisplayTitle,
   getPracticeMarketDataSettings,
+  normalizePracticePropFirmId,
   refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../../constants/practice'
+import { firmUsesBrokerAccounts, firmUsesCredentialLogin } from '../../../propfirms/MarketDataConnection'
+import { ensureRithmicPracticeMarketDataReady } from '../../../propfirms/rithmic/marketData'
 import {
   computeDrawdownFloor,
   evaluatePracticeRules,
@@ -69,7 +71,8 @@ function TradePageInner() {
     }
 
     const md = getPracticeMarketDataSettings()
-    if (!md.accountId) {
+    const marketFirmId = normalizePracticePropFirmId(md.propFirmId)
+    if (firmUsesBrokerAccounts(marketFirmId) && !md.accountId) {
       setValidationError(t('practice.page.noAccountSelected'))
       return
     }
@@ -83,14 +86,29 @@ function TradePageInner() {
     setValidationError(null)
 
     try {
-      localStorage.setItem('activePropFirm', 'tradesea')
-      tradeseaFirm.setPracticeMode(true, md.accountId, md.accountLabel, id)
+      const firmId = marketFirmId
+      localStorage.setItem('activePropFirm', firmId)
 
-      const validationResult = await tradeseaFirm.validate()
-      if (!validationResult.success) {
-        setValidationError(validationResult.message || t('practice.page.loadFailed'))
-        return
+      let marketAccountId = md.accountId
+      let marketAccountLabel = md.accountLabel
+
+      if (firmUsesCredentialLogin(firmId)) {
+        const ready = await ensureRithmicPracticeMarketDataReady()
+        if (!ready.ok) {
+          setValidationError(ready.message || t('practice.page.loadFailed'))
+          return
+        }
+        marketAccountId = ready.accountId
+        marketAccountLabel = ready.label
+      } else {
+        const validationResult = await tradeseaFirm.validate()
+        if (!validationResult.success) {
+          setValidationError(validationResult.message || t('practice.page.loadFailed'))
+          return
+        }
       }
+
+      tradeseaFirm.setPracticeMode(true, marketAccountId, marketAccountLabel, id)
 
       await tradeseaFirm.onValidateSuccess()
       if (tradeseaFirm.practiceTradeHandler) {

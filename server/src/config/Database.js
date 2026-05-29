@@ -366,6 +366,14 @@ class Database {
     }
 
     try {
+      await run(
+        `ALTER TABLE practice_market_data ADD COLUMN firm_selections TEXT NOT NULL DEFAULT '{}'`
+      )
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
       await run(`ALTER TABLE practice_accounts ADD COLUMN lockout_until TEXT`)
     } catch (err) {
       // Column already exists

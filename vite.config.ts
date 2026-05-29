@@ -1,9 +1,18 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      'tradingview-chart': path.resolve(rootDir, 'node_modules/tradingview-chart/src'),
+    },
+  },
   server: {
     port: 3000,
     host: true, // Allow external connections (0.0.0.0)

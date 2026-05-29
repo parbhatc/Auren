@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
 import { propsAPI } from '../../../api/props.api'
+import { hydratePropFirmsList } from '../../../propfirms'
 import { authAPI } from '../../../api/auth.api'
 import { PropFirm, PropFirmFormData, PropFirmType } from '../../../types/props'
 import Renderer from './Renderer'
@@ -64,23 +65,9 @@ export default function Wrapper({ embedded, onBack }: PropsSettingsWrapperProps 
       setError('')
       // Fetch all prop firms first
       const response = await propsAPI.getPropFirms()
-      let propFirmsList: PropFirm[] = response.propFirms || []
-      
-      // Fetch market data credentials if configured
-      const tradeseaFirm = propFirmsList.find(f => f.type === 'tradesea')
-      if (tradeseaFirm) {
-        try {
-          const firmResponse = await propsAPI.getPropFirm('tradesea')
-          if (firmResponse.success && firmResponse.propFirm) {
-            propFirmsList = propFirmsList.map(f =>
-              f.type === 'tradesea' ? firmResponse.propFirm! : f
-            )
-          }
-        } catch {
-          // If fetching credentials fails, use the firm without credentials
-        }
-      }
-
+      const propFirmsList = await hydratePropFirmsList(response.propFirms || [], (type) =>
+        propsAPI.getPropFirm(type)
+      )
       setPropFirms(propFirmsList)
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load prop firm settings')
