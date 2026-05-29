@@ -12,18 +12,7 @@ import { propsAPI } from '../../api/props.api'
 
 import { tradeseaAPI, TradeseaAccount } from '../../api/tradesea.api'
 
-import { getPracticeSettings, getPracticeMarketDataSettings, normalizePracticePropFirmId } from '../../constants/practice'
-import { ensureRithmicPracticeMarketDataReady } from '../rithmic/marketData'
-import {
-  prepareRithmicPreviewChartServices,
-  teardownRithmicPreviewChartServices,
-  type RithmicPreviewChartServices,
-} from '../../services/rithmic/RithmicHistoryDatafeed'
-import { RithmicMdsClient } from '../../services/rithmic/RithmicMdsClient'
-
-function isPracticeRithmicChart(): boolean {
-  return normalizePracticePropFirmId(getPracticeMarketDataSettings().propFirmId) === 'rithmic'
-}
+import { getPracticeSettings, getPracticeMarketDataSettings } from '../../constants/practice'
 import { getTradeTradeseaAccount, saveTradeTradeseaAccount } from '../../constants/trade'
 
 import { FormattedAccount } from '../../utils/marketAccountDisplay'
@@ -204,12 +193,11 @@ export class TradeseaPropFirm extends PropFirmBase {
     })
   }
 
-  chartServices: TradeseaChartServices | RithmicPreviewChartServices | null = null
+  chartServices: TradeseaChartServices | null = null
 
   /** Single shared instances — avoids duplicate WebSockets on parallel connect */
   mdsClient = new TradeseaMdsClient()
 
-  rithmicMdsClient = new RithmicMdsClient()
 
   tradesClient = new TradeseaTradesClient()
 
@@ -567,33 +555,23 @@ export class TradeseaPropFirm extends PropFirmBase {
 
     this.accountsLoading = true
     try {
-      if (isPracticeRithmicChart()) {
-        const ready = await ensureRithmicPracticeMarketDataReady()
-        if (!ready.ok) {
-          throw new Error(ready.message || 'Rithmic market data is not connected.')
-        }
-        marketId = marketId || ready.accountId
-        this.accounts = [{ id: marketId, label: ready.label } as TradeseaAccount]
-        this.selectedAccountId = marketId
-      } else {
-        if (!marketId) {
-          const error: Error & { type?: string } = new Error(
-            'No market data account selected. Choose one on the Practice hub.'
-          )
-          error.type = 'no_accounts'
-          throw error
-        }
-        const result = await tradeseaAPI.getAccounts()
-        if (!result.connected) {
-          throw new Error(result.message || 'Market data not connected')
-        }
-        const market = result.accounts?.find((a) => a.id === marketId)
-        if (!market) {
-          throw new Error('Market data account not found. Update it on the Practice hub.')
-        }
-        this.accounts = [market]
-        this.selectedAccountId = market.id
+      if (!marketId) {
+        const error: Error & { type?: string } = new Error(
+          'No market data account selected. Choose one on the Practice hub.'
+        )
+        error.type = 'no_accounts'
+        throw error
       }
+      const result = await tradeseaAPI.getAccounts()
+      if (!result.connected) {
+        throw new Error(result.message || 'Market data not connected')
+      }
+      const market = result.accounts?.find((a) => a.id === marketId)
+      if (!market) {
+        throw new Error('Market data account not found. Update it on the Practice hub.')
+      }
+      this.accounts = [market]
+      this.selectedAccountId = market.id
       const displayName = getPracticeAccountDisplayTitle(sim)
       this.formattedAccounts = [
         {
@@ -609,12 +587,7 @@ export class TradeseaPropFirm extends PropFirmBase {
       ]
       this.accountsFetched = true
       this.practiceTradeHandler =
-        sim.status === 'active' && !isPracticeRithmicChart()
-          ? new PracticeTradeHandler(this, sim.id)
-          : null
-      if (isPracticeRithmicChart()) {
-        this.tradeHandler = null
-      }
+        sim.status === 'active' ? new PracticeTradeHandler(this, sim.id) : null
       await this.onSelectedAccountChanged(options)
       this.onDataReady?.()
     } finally {
@@ -710,42 +683,24 @@ export class TradeseaPropFirm extends PropFirmBase {
         this.chartServices && this.chartServices.accountId !== this.selectedAccountId
 
       if (switchingAccount) {
-        if (this.chartServices && 'mds' in this.chartServices && this.chartServices.mds) {
-          if ('trades' in this.chartServices) {
-            teardownTradeseaChartServices(this.chartServices)
-          } else {
-            teardownRithmicPreviewChartServices(this.chartServices as RithmicPreviewChartServices)
-          }
+        if (this.chartServices) {
+          teardownTradeseaChartServices(this.chartServices)
         }
         this.chartServices = null
       }
 
-      if (this.practiceMode && isPracticeRithmicChart()) {
-        this.chartServices = prepareRithmicPreviewChartServices(this.selectedAccountId, {
-          mds: this.rithmicMdsClient,
-          bootstrapSymbol: this.chartSymbol || 'NQ',
+      this.chartServices = await prepareTradeseaChartServices(
+        this.selectedAccountId,
+        {
+          mds: this.mdsClient,
+          trades: this.tradesClient,
+          accountId: this.chartServices?.accountId,
+          datafeed: this.chartServices?.datafeed,
+          bootstrapSymbol: this.chartSymbol || (this.practiceMode ? 'NQ' : undefined),
           bootstrapResolution: this.chartResolution,
-        })
-      } else {
-        this.chartServices = await prepareTradeseaChartServices(
-          this.selectedAccountId,
-          {
-            mds: this.mdsClient,
-            trades: this.tradesClient,
-            accountId:
-              this.chartServices && 'mds' in this.chartServices
-                ? this.chartServices.accountId
-                : undefined,
-            datafeed:
-              this.chartServices && 'mds' in this.chartServices
-                ? this.chartServices.datafeed
-                : undefined,
-            bootstrapSymbol: this.chartSymbol || (this.practiceMode ? 'NQ' : undefined),
-            bootstrapResolution: this.chartResolution,
-          },
-          { connectTrades: !this.practiceMode }
-        )
-      }
+        },
+        { connectTrades: !this.practiceMode }
+      )
       debugPracticeChartSymbol('TradeseaPropFirm.connectStreams', {
         practiceMode: this.practiceMode,
         bootstrapSymbol: this.chartSymbol,
@@ -1020,27 +975,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
   private applyMdsBootstrapForChartSymbol(): void {
     const bootstrapKey = `${this.chartSymbol}__${this.chartResolution}`
-    if (isPracticeRithmicChart()) {
-      const svc = this.chartServices as RithmicPreviewChartServices | null
-      if (!svc?.mds || bootstrapKey === this.lastBootstrapKey) {
-        return
-      }
-      this.lastBootstrapKey = bootstrapKey
-      const root = this.chartSymbol || 'MNQ'
-      svc.mds.subscribe(`CME:${root}`, this.chartResolution)
-      svc.datafeed.refreshMdsSubscriptions?.()
-      debugPracticeChartSymbol('TradeseaPropFirm.applyRithmicMdsBootstrap', {
-        chartSymbol: this.chartSymbol,
-        bootstrapKey,
-      }, { force: true })
-      return
-    }
-    if (
-      !this.chartServices ||
-      !('mds' in this.chartServices) ||
-      !this.chartServices.mds ||
-      bootstrapKey === this.lastBootstrapKey
-    ) {
+    if (!this.chartServices?.mds || bootstrapKey === this.lastBootstrapKey) {
       return
     }
     this.lastBootstrapKey = bootstrapKey
@@ -1201,9 +1136,6 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
   getHandler(): TradeseaTradeHandler | PracticeTradeHandler | null {
-    if (this.practiceMode && isPracticeRithmicChart()) {
-      return null
-    }
     if (this.practiceMode && this.practiceTradeHandler) {
       return this.practiceTradeHandler
     }

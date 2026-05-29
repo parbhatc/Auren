@@ -15,8 +15,7 @@ import {
   refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../../constants/practice'
-import { firmUsesBrokerAccounts, firmUsesCredentialLogin } from '../../../propfirms/MarketDataConnection'
-import { ensureRithmicPracticeMarketDataReady } from '../../../propfirms/rithmic/marketData'
+import { firmUsesBrokerAccounts } from '../../../propfirms/MarketDataConnection'
 import {
   computeDrawdownFloor,
   evaluatePracticeRules,
@@ -92,20 +91,10 @@ function TradePageInner() {
       let marketAccountId = md.accountId
       let marketAccountLabel = md.accountLabel
 
-      if (firmUsesCredentialLogin(firmId)) {
-        const ready = await ensureRithmicPracticeMarketDataReady()
-        if (!ready.ok) {
-          setValidationError(ready.message || t('practice.page.loadFailed'))
-          return
-        }
-        marketAccountId = ready.accountId
-        marketAccountLabel = ready.label
-      } else {
-        const validationResult = await tradeseaFirm.validate()
-        if (!validationResult.success) {
-          setValidationError(validationResult.message || t('practice.page.loadFailed'))
-          return
-        }
+      const validationResult = await tradeseaFirm.validate()
+      if (!validationResult.success) {
+        setValidationError(validationResult.message || t('practice.page.loadFailed'))
+        return
       }
 
       tradeseaFirm.setPracticeMode(true, marketAccountId, marketAccountLabel, id)

@@ -105,10 +105,21 @@ export function defaultDailyLossLimit(rules: PracticeAccountRules): number | nul
   return null
 }
 
-function getSessionDayPnl(dayPnL: PracticeDayPnL[] | undefined, sessionKey: string): number {
+/** Realized P/L for the current futures session (resets 6:00 PM ET). */
+export function getSessionDayPnl(
+  dayPnL: PracticeDayPnL[] | undefined,
+  sessionKey: string
+): number {
   if (!dayPnL?.length) return 0
   const row = dayPnL.find((d) => d.date === sessionKey)
   return row ? Number(row.pnl) || 0 : 0
+}
+
+export function getPracticeSessionRealizedPnl(
+  dayPnL: PracticeDayPnL[] | undefined,
+  now = new Date()
+): number {
+  return getSessionDayPnl(dayPnL, getPracticeSessionDayKey(now))
 }
 
 export function lockoutExpired(until: string | null | undefined): boolean {
