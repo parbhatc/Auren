@@ -38,7 +38,7 @@ export const getApiBaseUrl = (): string => {
   
   // Construct API URL
   // If port is standard (80/443), omit it from URL
-  if (apiPort === '80' && protocol === ' http:') {
+  if (apiPort === '80' && protocol === 'http:') {
     return `${protocol}//${hostname}/api`
   } else if (apiPort === '443' && protocol === 'https:') {
     return `${protocol}//${hostname}/api`
@@ -58,21 +58,28 @@ const API_BASE_URL = getApiBaseUrl()
  * In development mode, ensures WebSocket connects to port 3001 (backend) instead of 3000 (frontend)
  */
 export const getWebSocketUrl = (path: string = ''): string => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const apiUrl = getApiBaseUrl()
-  
-  // Handle relative paths (development mode with Vite proxy)
+
+  // Relative API base (e.g. VITE_API_URL=/api behind Nginx): WS on same host:port as the page
   if (apiUrl.startsWith('/')) {
-    // In development, WebSocket needs absolute URL pointing to backend port 3001
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const hostname = window.location.hostname
-    return `${protocol}//${hostname}:3001${path.startsWith('/') ? path : '/' + path}`
+    const { hostname, port } = window.location
+
+    // Vite dev: frontend :3000, backend :3001 (WS not under /api proxy path)
+    if (import.meta.env.DEV) {
+      return `${protocol}//${hostname}:3001${normalizedPath}`
+    }
+
+    const portSuffix =
+      port && port !== '80' && port !== '443' ? `:${port}` : ''
+    return `${protocol}//${hostname}${portSuffix}${normalizedPath}`
   }
-  
-  // Handle absolute URLs (production or when VITE_API_URL is set)
+
+  // Absolute API URL (e.g. https://example.com/api)
   const wsUrl = apiUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-  // Remove /api suffix if present, then add the path
   const baseUrl = wsUrl.replace(/\/api$/, '')
-  return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`
+  return `${baseUrl}${normalizedPath}`
 }
 
 export const getApiPort = (): string => {
