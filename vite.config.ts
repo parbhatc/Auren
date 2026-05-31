@@ -30,6 +30,16 @@ export default defineConfig({
           })
         }
       },
+      '/tradesea-mds-ws': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/tradesea-trades-ws': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
       '/tradesea-instruments': {
         target: 'https://api-instruments-delayed.tradesea.ai',
         changeOrigin: true,

@@ -2,84 +2,35 @@ import axios, { AxiosInstance } from 'axios'
 
 /**
  * Get API base URL
- * Uses environment variable if set, otherwise infers from current location
- * For production, VITE_API_URL should always be set via environment variable
+ * Dev and production both use `/api` (Vite proxy locally, Nginx on VPS).
+ * Override with VITE_API_URL only when the API is on a different origin.
  */
 export const getApiBaseUrl = (): string => {
-  // Use environment variable if set (required for production)
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL
   }
-
-  // In development mode (Vite dev server), use relative path which will be proxied
-  // Vite proxy is configured in vite.config.ts to forward /api to http://localhost:3001
-  if (import.meta.env.DEV) {
-    return '/api'
-  }
-
-  // Infer API URL from current location for production
-  // This works when frontend and API are on same domain
-  const hostname = window.location.hostname
-  const protocol = window.location.protocol
-  const currentPort = window.location.port
-  
-  // If we have a port, try to infer API port (common pattern: frontend port + 1)
-  // Otherwise, use standard ports (80 for http, 443 for https)
-  let apiPort = currentPort
-  
-  // For development: if frontend is on 2000 or 3000, API is typically on 3001
-  // For production: API is typically on same port or standard ports
-  if (currentPort && (currentPort === '2000' || currentPort === '3000')) {
-    apiPort = '3001'
-  } else if (!currentPort) {
-    // No port specified - use standard ports
-    apiPort = protocol === 'https:' ? '443' : '80'
-  }
-  
-  // Construct API URL
-  // If port is standard (80/443), omit it from URL
-  if (apiPort === '80' && protocol === 'http:') {
-    return `${protocol}//${hostname}/api`
-  } else if (apiPort === '443' && protocol === 'https:') {
-    return `${protocol}//${hostname}/api`
-  } else {
-    return `${protocol}//${hostname}:${apiPort}/api`
-  }
+  return '/api'
 }
 
 const API_BASE_URL = getApiBaseUrl()
 
 /**
- * Extract port number from API base URL
- */
-/**
- * Get WebSocket URL from API base URL
- * Converts http:// to ws:// and https:// to wss://
- * In development mode, ensures WebSocket connects to port 3001 (backend) instead of 3000 (frontend)
+ * WebSocket URL for Tradesea MDS / trades streams.
+ * Production: same host + port as the page (Nginx proxies /tradesea-*-ws → :3001).
+ * Dev: backend on :3001 (WS paths are not under /api).
  */
 export const getWebSocketUrl = (path: string = ''): string => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  const apiUrl = getApiBaseUrl()
+  const { hostname, port, protocol } = window.location
+  const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
 
-  // Relative API base (e.g. VITE_API_URL=/api behind Nginx): WS on same host:port as the page
-  if (apiUrl.startsWith('/')) {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const { hostname, port } = window.location
-
-    // Vite dev: frontend :3000, backend :3001 (WS not under /api proxy path)
-    if (import.meta.env.DEV) {
-      return `${protocol}//${hostname}:3001${normalizedPath}`
-    }
-
-    const portSuffix =
-      port && port !== '80' && port !== '443' ? `:${port}` : ''
-    return `${protocol}//${hostname}${portSuffix}${normalizedPath}`
+  if (import.meta.env.DEV) {
+    return `${wsProtocol}//${hostname}:3001${normalizedPath}`
   }
 
-  // Absolute API URL (e.g. https://example.com/api)
-  const wsUrl = apiUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-  const baseUrl = wsUrl.replace(/\/api$/, '')
-  return `${baseUrl}${normalizedPath}`
+  const portSuffix =
+    port && port !== '80' && port !== '443' ? `:${port}` : ''
+  return `${wsProtocol}//${hostname}${portSuffix}${normalizedPath}`
 }
 
 export const getApiPort = (): string => {
