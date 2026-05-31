@@ -602,7 +602,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 (this.getTradeHandler() as PracticeTradeHandler | undefined)?.hasAnyOpenPosition?.() ??
                 Boolean(this.getTradeHandler()?.tradeCache?.getPosition?.(selectedSymbol))
               }
-              mdsClient={activeFirm?.chartServices?.mds}
+              mdsClient={
+                (activeFirm as { mdsClient?: typeof activeFirm.chartServices.mds })?.mdsClient ??
+                activeFirm?.chartServices?.mds
+              }
               onReconnectMds={() => {
                 const firm = activeFirm as { reconnectMarketData?: () => void } | undefined
                 if (firm?.reconnectMarketData) {

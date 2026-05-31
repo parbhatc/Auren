@@ -43,7 +43,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
   const [menuOpen, setMenuOpen] = useState(false)
   const [autoReconnect, setAutoReconnect] = useState(() => mds?.isAutoReconnectEnabled() ?? true)
   const [reconnectOnLimit, setReconnectOnLimit] = useState(
-    () => mds?.isReconnectOnLimitEnabled() ?? false
+    () => mds?.isReconnectOnLimitEnabled() ?? true
   )
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -51,7 +51,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
     if (!mds) {
       setState('disconnected')
       setAutoReconnect(true)
-      setReconnectOnLimit(false)
+      setReconnectOnLimit(true)
       return
     }
     setState(mds.getConnectionState())

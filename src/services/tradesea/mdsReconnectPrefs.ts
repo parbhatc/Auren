@@ -20,15 +20,15 @@ export function writeMdsAutoReconnect(enabled: boolean): void {
   }
 }
 
-/** Default off — limit-exceeded (1011) reconnect requires this and auto-reconnect. */
+/** Default on — retry when Tradesea returns connection-limit (1011). */
 export function readMdsReconnectOnLimit(): boolean {
   try {
     const raw = localStorage.getItem(LIMIT_STORAGE_KEY)
-    if (raw === '1' || raw === 'true') return true
+    if (raw === '0' || raw === 'false') return false
   } catch {
     /* ignore */
   }
-  return false
+  return true
 }
 
 export function writeMdsReconnectOnLimit(enabled: boolean): void {
