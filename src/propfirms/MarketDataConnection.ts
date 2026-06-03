@@ -5,7 +5,10 @@ import {
   PRACTICE_PROP_FIRM_CONFIGS,
   type PracticePropFirmMarketDataConfig,
 } from '../constants/practicePropFirms'
-import { resolveCredentialLoginMarketConnection } from './rithmic/marketData'
+import {
+  resolveCredentialLoginMarketConnection,
+  resolveRithmicMarketConnection,
+} from './rithmic/marketData'
 import {
   isBrokerSessionExpiredForFirm,
   resolveBrokerAccountsMarketConnection,
@@ -39,8 +42,10 @@ export function firmUsesCredentialLogin(firmId?: string | null): boolean {
   return getMarketDataConnectionKind(firmId) === 'credential-login'
 }
 
+/** Firms that save a selected market-data account on the practice hub. */
 export function firmPersistsMarketAccountId(firmId?: string | null): boolean {
-  return firmUsesBrokerAccounts(firmId)
+  const id = normalizePracticePropFirmId(firmId)
+  return firmUsesBrokerAccounts(id) || id === 'rithmic'
 }
 
 export function listCredentialLoginFirmIds(): string[] {
@@ -63,6 +68,9 @@ export function resolveMarketDataConnection(ctx: MarketDataConnectionContext): M
     return resolveBrokerAccountsMarketConnection({ ...ctx, firmId })
   }
   if (kind === 'credential-login') {
+    if (firmId === 'rithmic') {
+      return resolveRithmicMarketConnection({ ...ctx, firmId })
+    }
     return resolveCredentialLoginMarketConnection({ ...ctx, firmId })
   }
   return { connected: false }
@@ -80,10 +88,9 @@ export function isSessionExpiredBannerActive(
   firmId: string,
   brokerSessionExpired: boolean
 ): boolean {
-  return isBrokerSessionExpiredForFirm(
-    getMarketDataConnectionKind(firmId) ?? '',
-    brokerSessionExpired
-  )
+  if (!brokerSessionExpired) return false
+  if (firmPersistsMarketAccountId(firmId)) return true
+  return isBrokerSessionExpiredForFirm(getMarketDataConnectionKind(firmId) ?? '', brokerSessionExpired)
 }
 
 export function isDisconnectedBannerActive(
@@ -92,8 +99,8 @@ export function isDisconnectedBannerActive(
   brokerSessionExpired = false
 ): boolean {
   if (!connection.connected) {
+    if (firmPersistsMarketAccountId(firmId) && !brokerSessionExpired) return true
     if (firmUsesCredentialLogin(firmId)) return true
-    if (firmUsesBrokerAccounts(firmId) && !brokerSessionExpired) return true
   }
   return false
 }

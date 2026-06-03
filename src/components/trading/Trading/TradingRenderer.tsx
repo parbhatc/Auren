@@ -603,8 +603,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 Boolean(this.getTradeHandler()?.tradeCache?.getPosition?.(selectedSymbol))
               }
               mdsClient={
-                (activeFirm as { mdsClient?: typeof activeFirm.chartServices.mds })?.mdsClient ??
-                activeFirm?.chartServices?.mds
+                activeFirm?.chartServices?.mds ??
+                (activeFirm as { mdsClient?: typeof activeFirm.chartServices.mds })?.mdsClient
               }
               onReconnectMds={() => {
                 const firm = activeFirm as { reconnectMarketData?: () => void } | undefined

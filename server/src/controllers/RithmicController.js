@@ -157,6 +157,11 @@ class RithmicController {
       const from = req.query.from != null ? Number(req.query.from) : undefined
       const to = req.query.to != null ? Number(req.query.to) : undefined
       const countback = req.query.countback != null ? Number(req.query.countback) : undefined
+      const include_forming =
+        req.query.include_forming === '1' ||
+        req.query.include_forming === 'true' ||
+        req.query.firstDataRequest === '1' ||
+        req.query.firstDataRequest === 'true'
 
       const data = await fetchRithmicChartHistory(req.user.id, {
         symbol,
@@ -165,6 +170,7 @@ class RithmicController {
         from,
         to,
         countback,
+        include_forming,
       })
 
       return res.status(HTTP_STATUS.OK).json({ success: true, ...data })

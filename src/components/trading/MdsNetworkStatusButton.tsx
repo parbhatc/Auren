@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw, Wifi, WifiOff, Loader2 } from 'lucide-react'
-import type { TradeseaMdsClient, MdsConnectionState } from '../../services/tradesea/TradeseaMdsClient'
+import type { MdsConnectionState } from '../../services/tradesea/TradeseaMdsClient'
+import type { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClient'
 import type { RithmicMdsClient } from '../../services/rithmic/RithmicMdsClient'
+import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
 import {
   readMdsAutoReconnect,
   readMdsReconnectOnLimit,
@@ -44,7 +46,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
   const [menuOpen, setMenuOpen] = useState(false)
   const [autoReconnect, setAutoReconnect] = useState(() => mds?.isAutoReconnectEnabled() ?? true)
   const [reconnectOnLimit, setReconnectOnLimit] = useState(
-    () => mds?.isReconnectOnLimitEnabled() ?? true
+    () => mds?.isReconnectOnLimitEnabled() ?? false
   )
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -52,7 +54,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
     if (!mds) {
       setState('disconnected')
       setAutoReconnect(true)
-      setReconnectOnLimit(true)
+      setReconnectOnLimit(false)
       return
     }
     setState(mds.getConnectionState())
@@ -66,11 +68,12 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
     }
     setAutoReconnect(mds.isAutoReconnectEnabled())
     setReconnectOnLimit(mds.isReconnectOnLimitEnabled())
-    const offConnection = mds.on('connection', (s) => setState(s))
-    const offOpen = mds.on('open', () => setState('connected'))
-    const offClose = mds.on('close', () => setState('disconnected'))
-    const offAuto = mds.on('autoReconnect', (enabled) => setAutoReconnect(enabled))
-    const offLimit = mds.on('reconnectOnLimit', (enabled) => setReconnectOnLimit(enabled))
+    const statusMds = asMdsStatusClient(mds as MdsStatusClient)
+    const offConnection = statusMds.on('connection', (s) => setState(s))
+    const offOpen = statusMds.on('open', () => setState(mds.getConnectionState()))
+    const offClose = statusMds.on('close', () => setState('disconnected'))
+    const offAuto = statusMds.on('autoReconnect', (enabled) => setAutoReconnect(enabled))
+    const offLimit = statusMds.on('reconnectOnLimit', (enabled) => setReconnectOnLimit(enabled))
     return () => {
       offConnection()
       offOpen()

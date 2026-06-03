@@ -94,7 +94,7 @@ function TradePageInner() {
 
       if (firmUsesCredentialLogin(firmId)) {
         const ready = await ensureRithmicPracticeMarketDataReady()
-        if (!ready.ok) {
+        if (ready.ok === false) {
           setValidationError(ready.message || t('practice.page.loadFailed'))
           return
         }

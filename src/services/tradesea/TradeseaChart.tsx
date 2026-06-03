@@ -55,9 +55,12 @@ class TradeseaChart extends BaseChart {
 
   protected init(): void {
     super.init()
-    const props = this.props as TradingViewChartProps
+    const props = this.props as TradingViewChartProps & {
+      tradeseaServices?: TradeseaChartServices | null
+      practiceAccountId?: string
+    }
 
-    const services = props.tradeseaServices as TradeseaChartServices | null | undefined
+    const services = props.tradeseaServices
     if (!services) return
 
     const practiceAccountId = String(props.practiceAccountId || '').trim()
@@ -170,9 +173,10 @@ class TradeseaChart extends BaseChart {
 
   handleSymbolChange = (symbol: string) => {
     debugPracticeChartSymbol('TradeseaChart.handleSymbolChange', { symbol }, { force: true })
-    const props = this.props as TradingViewChartProps
-    const symbolHandler = props.tradeseaTradeHandler as TradeseaTradeHandler | PracticeTradeHandler | undefined
-    symbolHandler?.handleSymbolChange(symbol)
+    const props = this.props as TradingViewChartProps & {
+      tradeseaTradeHandler?: TradeseaTradeHandler
+    }
+    props.tradeseaTradeHandler?.handleSymbolChange(symbol)
     if (this.props.onSymbolChange) {
       this.props.onSymbolChange(symbol)
     }
@@ -180,7 +184,9 @@ class TradeseaChart extends BaseChart {
 
   handleChartReady = async () => {
     const widget = (this as unknown as { widgetRef?: unknown }).widgetRef
-    const props = this.props as TradingViewChartProps
+    const props = this.props as TradingViewChartProps & {
+      tradeseaTradeHandler?: TradeseaTradeHandler | PracticeTradeHandler
+    }
 
     if (widget) {
       setupChartKeyboardShortcuts(widget)
@@ -196,10 +202,7 @@ class TradeseaChart extends BaseChart {
       )
     }
 
-    const handler = props.tradeseaTradeHandler as unknown as
-      | TradeseaTradeHandler
-      | PracticeTradeHandler
-      | undefined
+    const handler = props.tradeseaTradeHandler
     if (handler && widget) {
       // Wire to the datafeed this widget subscribed with (may differ from propFirm.chartServices after reconnect).
       if (this.datafeed) {
@@ -207,29 +210,27 @@ class TradeseaChart extends BaseChart {
       }
       handler.onReady(widget, this.datafeed ?? undefined)
       if (handler instanceof PracticeTradeHandler) {
-        const practiceHandler = handler
         registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
-            void practiceHandler.logButtonPress('Buy', { quantity })
+            void handler.logButtonPress('Buy', { quantity })
           },
           onMarketSell: (quantity: number) => {
-            void practiceHandler.logButtonPress('Sell', { quantity })
+            void handler.logButtonPress('Sell', { quantity })
           },
           onLimitBuy: (quantity: number, limitPrice: number) => {
-            void practiceHandler.placeLimitOrder('buy', quantity, limitPrice)
+            void handler.placeLimitOrder('buy', quantity, limitPrice)
           },
           onStopSell: (quantity: number, stopPrice: number) => {
-            void practiceHandler.placeLimitOrder('sell', quantity, stopPrice)
+            void handler.placeLimitOrder('sell', quantity, stopPrice)
           },
         })
       } else {
-        const liveHandler = handler as TradeseaTradeHandler
         registerTradeContextActions({
           onMarketBuy: (quantity: number) => {
-            void liveHandler.logButtonPress('Buy', { quantity })
+            void handler.logButtonPress('Buy', { quantity })
           },
           onMarketSell: (quantity: number) => {
-            void liveHandler.logButtonPress('Sell', { quantity })
+            void handler.logButtonPress('Sell', { quantity })
           },
         })
       }
@@ -292,12 +293,12 @@ class TradeseaChart extends BaseChart {
 
   render() {
     const props = this.props as TradingViewChartProps & {
+      containerId?: string
       style?: CSSProperties
       className?: string
     }
     const { style, className, containerId = 'tv_chart_container' } = props
-    const containerRef = (this as unknown as { containerRef: RefObject<HTMLDivElement> })
-      .containerRef
+    const containerRef = (this as unknown as { containerRef: RefObject<HTMLDivElement> }).containerRef
 
     return (
       <div

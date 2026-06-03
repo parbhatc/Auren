@@ -7,7 +7,8 @@ import {
 } from '../../constants/practice'
 import { getPracticePlanFromAccount } from './practicePlans'
 import { TradeseaPropFirm } from '../../propfirms/tradesea'
-import { TradeseaDatafeed, type TradeseaMarketBook } from '../tradesea/TradeseaDatafeed'
+import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import { practiceBookBidAsk, type PracticeChartDatafeed, type PracticeMarketBook } from './practiceDatafeed'
 import { PracticeTradeCache } from './PracticeTradeCache'
 import { calcTradeseaTickPnL } from '../tradesea/tradeseaPnL'
 import type { DomPositionContext } from '../tradesea/tradeseaPnL'
@@ -274,8 +275,8 @@ export class PracticeTradeHandler {
     this.checkPassedWhileTrading()
   }
 
-  attachToDatafeed(chartDatafeed?: TradeseaDatafeed | null): void {
-    const df = chartDatafeed ?? this.propFirm.chartServices?.datafeed ?? null
+  attachToDatafeed(chartDatafeed?: PracticeChartDatafeed | null): void {
+    const df = chartDatafeed ?? (this.propFirm.chartServices?.datafeed as PracticeChartDatafeed | undefined) ?? null
     df?.setTradeHandler(this as never)
   }
 
@@ -547,8 +548,8 @@ export class PracticeTradeHandler {
     }
   }
 
-  getActiveMarketBook(): TradeseaMarketBook | null {
-    const datafeed = this.propFirm.chartServices?.datafeed
+  getActiveMarketBook(): PracticeMarketBook | null {
+    const datafeed = this.propFirm.chartServices?.datafeed as PracticeChartDatafeed | undefined
     if (!datafeed?.getMarketBookForChart) return null
     return datafeed.getMarketBookForChart(this.getChartSymbol())
   }
@@ -584,14 +585,15 @@ export class PracticeTradeHandler {
       this.normalizeSymbolKey(cacheKey) === this.normalizeSymbolKey(chartSym)
 
     const book = datafeed?.getMarketBookForChart?.(stream)
+    const { bestBid, bestAsk, last: bookLastRaw } = practiceBookBidAsk(book)
     const bookLast =
-      book?.last != null && Number.isFinite(book.last) ? book.last : null
+      bookLastRaw != null && Number.isFinite(bookLastRaw) ? bookLastRaw : null
     const mid =
-      book?.bestBid != null &&
-      book?.bestAsk != null &&
-      Number.isFinite(book.bestBid) &&
-      Number.isFinite(book.bestAsk)
-        ? (book.bestBid + book.bestAsk) / 2
+      bestBid != null &&
+      bestAsk != null &&
+      Number.isFinite(bestBid) &&
+      Number.isFinite(bestAsk)
+        ? (bestBid + bestAsk) / 2
         : null
 
     if (sameAsActiveChart && barClose != null) {
@@ -603,7 +605,7 @@ export class PracticeTradeHandler {
     if (bookLast != null) return bookLast
     if (mid != null) return mid
     if (sameAsActiveChart && barClose != null) return barClose
-    return book?.bestBid ?? book?.bestAsk ?? null
+    return bestBid ?? bestAsk ?? null
   }
 
   /** Reject MDS LTP that disagrees with the chart bar (e.g. scaled / stale). */

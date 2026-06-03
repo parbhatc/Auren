@@ -39,6 +39,9 @@ import TradeseaChart, {
 } from '../../services/tradesea/TradeseaChart'
 
 import { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClient'
+import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
+import { TradeseaDatafeed } from '../../services/tradesea/TradeseaDatafeed'
+import type { TradingViewChartProps } from '../../types/chart'
 
 import { TradeseaTradesClient } from '../../services/tradesea/TradeseaTradesClient'
 import { TradeseaTradeHandler } from '../../services/tradesea/TradeseaTradeHandler'
@@ -569,7 +572,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     try {
       if (isPracticeRithmicChart()) {
         const ready = await ensureRithmicPracticeMarketDataReady()
-        if (!ready.ok) {
+        if (ready.ok === false) {
           throw new Error(ready.message || 'Rithmic market data is not connected.')
         }
         marketId = marketId || ready.accountId
@@ -737,8 +740,8 @@ export class TradeseaPropFirm extends PropFirmBase {
                 ? this.chartServices.accountId
                 : undefined,
             datafeed:
-              this.chartServices && 'mds' in this.chartServices
-                ? this.chartServices.datafeed
+              this.chartServices && 'trades' in this.chartServices
+                ? (this.chartServices.datafeed as TradeseaDatafeed)
                 : undefined,
             bootstrapSymbol: this.chartSymbol || (this.practiceMode ? 'NQ' : undefined),
             bootstrapResolution: this.chartResolution,
@@ -1011,7 +1014,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     if (!svc?.mds) return
     this.lastBootstrapKey = ''
     const df = svc.datafeed
-    const offOpen = svc.mds.on('open', () => {
+    const offOpen = asMdsStatusClient(svc.mds as MdsStatusClient).on('open', () => {
       offOpen()
       df?.refreshMdsSubscriptions?.()
     })
@@ -1044,9 +1047,10 @@ export class TradeseaPropFirm extends PropFirmBase {
       return
     }
     this.lastBootstrapKey = bootstrapKey
-    const useDelayedMd = shouldUseDelayedMdsSymbols(this.chartServices.streamConfig)
+    const tradeseaSvc = this.chartServices as TradeseaChartServices
+    const useDelayedMd = shouldUseDelayedMdsSymbols(tradeseaSvc.streamConfig)
     const ticker = resolveMdsSubscribeTicker(this.chartSymbol, useDelayedMd)
-    this.chartServices.mds.setBootstrap(
+    tradeseaSvc.mds.setBootstrap(
       {
         symbols: [ticker],
         resolution: this.chartResolution,
@@ -1184,7 +1188,7 @@ export class TradeseaPropFirm extends PropFirmBase {
       tradeseaServices: this.chartServices,
       tradeseaTradeHandler: this.getHandler() ?? undefined,
       onSymbolChange: (chartSym: string) => this.syncChartSymbolFromTv(chartSym),
-    } as React.ComponentProps<typeof TradeseaChart>)
+    } as TradingViewChartProps)
 
   }
 
@@ -1270,13 +1274,9 @@ export class TradeseaPropFirm extends PropFirmBase {
       if (dashboardRes.s !== 'success') {
         console.warn('[TradeseaPropFirm] TradeLens dashboard failed:', dashboardRes.error)
       }
-      if (
-        isCalendarMode &&
-        calendarRes.s !== 'success' &&
-        calendarRes.s !== 'skipped' &&
-        'error' in calendarRes
-      ) {
-        console.warn('[TradeseaPropFirm] TradeLens calendar failed:', calendarRes.error)
+      if (isCalendarMode && calendarRes.s !== 'success' && calendarRes.s !== 'skipped') {
+        const calErr = calendarRes as { error?: string }
+        console.warn('[TradeseaPropFirm] TradeLens calendar failed:', calErr.error)
       }
       if (shouldFetchTrades && tradesMerged.s !== 'success' && tradesMerged.s !== 'skipped') {
         console.warn('[TradeseaPropFirm] TradeLens trades failed:', tradesMerged.error)
@@ -1439,10 +1439,15 @@ export class TradeseaPropFirm extends PropFirmBase {
     }
 
     if (this.chartServices && 'mds' in this.chartServices && this.chartServices.mds) {
-      teardownTradeseaChartServices(this.chartServices)
+      if ('trades' in this.chartServices) {
+        teardownTradeseaChartServices(this.chartServices)
+      } else {
+        teardownRithmicPreviewChartServices(this.chartServices as RithmicPreviewChartServices)
+      }
     }
     this.chartServices = null
     this.mdsClient.disconnect()
+    this.rithmicMdsClient.disconnect()
     this.tradesClient.disconnect()
     this.lastBootstrapKey = ''
     this.streamsReady = false

@@ -1,7 +1,7 @@
 import type { PracticeAccount, PracticeAccountSize } from '../../constants/practice'
 import { resolvePracticePlanLimits } from './practicePlans'
 import { resolvePracticeProductSymbol } from './practiceSymbol'
-import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import type { PracticeChartDatafeed } from './practiceDatafeed'
 
 /** Micro futures (MNQ, MES, …) vs standard minis (NQ, ES, …). */
 export function isMicroPracticeSymbol(symbol: string): boolean {
@@ -26,7 +26,7 @@ export function validatePracticePositionSize(
   account: PracticeAccount,
   chartSymbol: string,
   requestedAbsContracts: number,
-  datafeed?: TradeseaDatafeed | null
+  datafeed?: PracticeChartDatafeed | null
 ): string | null {
   const product = resolvePracticeProductSymbol(chartSymbol, datafeed)
   const max = getMaxContractsForSymbol(account.size, product, account.rules)

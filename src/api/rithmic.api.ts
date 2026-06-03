@@ -89,6 +89,8 @@ export type RithmicHistoryParams = {
   to?: number
   /** Bar count when `from` is omitted */
   countback?: number
+  /** Include the open-bucket (forming) bar in replay — true on chart first load. */
+  include_forming?: boolean
 }
 
 export type RithmicAccountsPacketTrace = {

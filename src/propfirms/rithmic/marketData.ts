@@ -52,6 +52,31 @@ export function resolveCredentialLoginMarketConnection(
   }
 }
 
+/** Rithmic hub: credentials + order-plant account selected (like Tradesea account picker). */
+export function resolveRithmicMarketConnection(
+  ctx: MarketDataConnectionContext
+): MarketDataConnectionState {
+  const credentials = ctx.firmCredentials
+  const credsOk = Boolean(credentials?.loginPassed === true && credentials?.username?.trim())
+  if (!credsOk) {
+    return { connected: false }
+  }
+
+  const accountId = String(ctx.marketAccountId || '').trim()
+  const fromList = ctx.brokerAccounts?.find((a) => a.id === accountId)?.label
+
+  const connected =
+    Boolean(accountId) &&
+    !ctx.brokerSessionExpired &&
+    (ctx.brokerAccounts?.length ?? 0) > 0 &&
+    Boolean(fromList || accountId)
+
+  return {
+    connected,
+    statusLabel: connected ? fromList || accountId : credentialLoginStatusLabel(credentials),
+  }
+}
+
 export function credentialLoginStatusLabel(credentials?: PropFirmCredentials | null): string {
   if (!credentials?.username?.trim()) return ''
   const parts = [credentials.systemName, credentials.gatewayName].filter(Boolean) as string[]
@@ -63,7 +88,7 @@ export type RithmicPracticeMarketDataReady =
   | { ok: true; accountId: string; label: string }
   | { ok: false; message: string }
 
-/** Practice trade / chart: credentials only — no order-plant /accounts call. */
+/** Practice trade / chart: saved Rithmic credentials + hub account selection. */
 export async function ensureRithmicPracticeMarketDataReady(): Promise<RithmicPracticeMarketDataReady> {
   const { t } = await import('../../utils/translator')
   const { propsAPI } = await import('../../api/props.api')
@@ -77,12 +102,7 @@ export async function ensureRithmicPracticeMarketDataReady(): Promise<RithmicPra
     credentials = null
   }
 
-  const state = resolveCredentialLoginMarketConnection({
-    firmId: 'rithmic',
-    firmCredentials: credentials,
-  })
-
-  if (!state.connected) {
+  if (!credentials?.loginPassed || !credentials.username?.trim()) {
     return {
       ok: false,
       message: t('practice.notConnected'),
@@ -90,10 +110,14 @@ export async function ensureRithmicPracticeMarketDataReady(): Promise<RithmicPra
   }
 
   const md = getPracticeMarketDataSettings()
-  const accountId =
-    md.accountId?.trim() ||
-    credentials?.username?.trim() ||
-    'rithmic'
+  const accountId = md.accountId?.trim()
+  if (!accountId) {
+    return {
+      ok: false,
+      message: t('practice.selectAccount'),
+    }
+  }
+
   const label =
     md.accountLabel?.trim() ||
     credentialLoginStatusLabel(credentials) ||

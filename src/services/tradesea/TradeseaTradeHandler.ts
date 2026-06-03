@@ -13,6 +13,7 @@ import {
 } from './tradeseaPnL'
 import { findPositionsForInstrument, instrumentsMatch } from './tradeseaPositions'
 import { TradeseaDatafeed, type TradeseaMarketBook } from './TradeseaDatafeed'
+import type { PracticeChartDatafeed, PracticeMarketBook } from '../practice/practiceDatafeed'
 import { TradeseaTradeCache } from './TradeseaTradeCache'
 import { normalizeTradeseaTradeInstrument } from './tradeseaInstrument'
 import { debugTradeseaUpl } from './tradeseaDebug'
@@ -267,8 +268,8 @@ export class TradeseaTradeHandler {
     return this.tradeCache
   }
 
-  getActiveMarketBook(chartSymbol?: string): TradeseaMarketBook | null {
-    const datafeed = this.propFirm.chartServices?.datafeed
+  getActiveMarketBook(chartSymbol?: string): PracticeMarketBook | null {
+    const datafeed = this.propFirm.chartServices?.datafeed as PracticeChartDatafeed | undefined
     if (!datafeed?.getMarketBookForChart) return null
     return datafeed.getMarketBookForChart(this.getChartSymbol(chartSymbol))
   }

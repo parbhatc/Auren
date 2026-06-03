@@ -9,7 +9,7 @@ import {
 } from '../../../../constants/practice'
 import { ROUTES } from '../../../../constants/routes'
 import {
-  firmUsesBrokerAccounts,
+  firmPersistsMarketAccountId,
   firmUsesCredentialLogin,
   isDisconnectedBannerActive,
   isSessionExpiredBannerActive,
@@ -61,8 +61,8 @@ export default function MarketDataSection({
   const firm = getPracticePropFirmConfig(propFirmId)
   const showOfflineSection = practiceFirmShowsOfflineModeSection(propFirmId)
   const supportsOfflineWatcher = practiceFirmSupportsOfflineBracketWatcher(propFirmId)
-  const usesBrokerAccounts = firmUsesBrokerAccounts(propFirmId)
-  const usesCredentialLogin = firmUsesCredentialLogin(propFirmId)
+  const usesAccountPicker = firmPersistsMarketAccountId(propFirmId)
+  const usesCredentialLoginOnly = firmUsesCredentialLogin(propFirmId) && !usesAccountPicker
   const firmLabel = firm.displayName
   const showSessionExpiredBanner = isSessionExpiredBannerActive(propFirmId, brokerSessionExpired)
   const showDisconnectedBanner = isDisconnectedBannerActive(
@@ -160,7 +160,7 @@ export default function MarketDataSection({
           </select>
         </PanelField>
         <PanelField label={t('practice.accountLabel')} isDark={isDark}>
-          {usesBrokerAccounts ? (
+          {usesAccountPicker ? (
             <div className="flex gap-2">
               <select
                 value={marketAccountId}
@@ -188,7 +188,7 @@ export default function MarketDataSection({
                 <RefreshCw className={`w-4 h-4 ${loadingMd ? 'animate-spin' : ''}`} />
               </button>
             </div>
-          ) : usesCredentialLogin ? (
+          ) : usesCredentialLoginOnly ? (
             <div
               className={`rounded-xl border px-3 py-2.5 ${
                 marketConnected

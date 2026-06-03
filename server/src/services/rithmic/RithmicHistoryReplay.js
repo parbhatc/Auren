@@ -9,6 +9,7 @@ import {
   ReplayTimeOrder,
   resolveHistoryQuery,
   normalizeBar,
+  splitHistoryForForming,
 } from 'rithmic-api'
 
 const WEB_APP = {
@@ -48,6 +49,7 @@ export async function replayHistoryBars({
   symbol,
   exchange,
   timeoutMs = 120_000,
+  include_forming = false,
   ...queryOpts
 }) {
   await init()
@@ -129,6 +131,11 @@ export async function replayHistoryBars({
       if (bars.length > targetCount) {
         bars = bars.slice(-targetCount)
       }
+    }
+
+    if (!include_forming && bars.length) {
+      const { closed } = splitHistoryForForming(bars, q.periodSeconds)
+      bars = closed
     }
 
     return bars

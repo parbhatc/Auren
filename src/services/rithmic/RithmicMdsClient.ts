@@ -98,9 +98,9 @@ export class RithmicMdsClient {
   private autoReconnectEnabled = readMdsAutoReconnect()
   private reconnectOnLimitEnabled = readMdsReconnectOnLimit()
   private lastSentSubscribeKey = ''
-  private listeners: Partial<{
-    [K in keyof RithmicMdsEventMap]: Set<(payload: RithmicMdsEventMap[K]) => void>
-  }> = {}
+  private listeners: {
+    [K in keyof RithmicMdsEventMap]?: Set<(payload: RithmicMdsEventMap[K]) => void>
+  } = {}
 
   getConnectionState(): MdsConnectionState {
     if (!this.ws) {
@@ -173,7 +173,8 @@ export class RithmicMdsClient {
     ws.onopen = () => {
       if (this.ws !== ws) return
       this.startPing(ws)
-      this.setConnectionState('connected')
+      // Stay connecting until server acks live Rithmic subscription (ChartSession can take a few seconds).
+      this.setConnectionState('connecting')
       this.emit('open', undefined as RithmicMdsEventMap['open'])
       this.flushBootstrapSubscribe()
     }
@@ -256,11 +257,13 @@ export class RithmicMdsClient {
     event: K,
     handler: (payload: RithmicMdsEventMap[K]) => void
   ): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = new Set()
+    let set = this.listeners[event] as Set<(payload: RithmicMdsEventMap[K]) => void> | undefined
+    if (!set) {
+      set = new Set()
+      this.listeners[event] = set as (typeof this.listeners)[K]
     }
-    this.listeners[event]!.add(handler as (payload: RithmicMdsEventMap[K]) => void)
-    return () => this.listeners[event]?.delete(handler as (payload: RithmicMdsEventMap[K]) => void)
+    set.add(handler)
+    return () => set!.delete(handler)
   }
 
   private scheduleReconnect(): void {
@@ -321,9 +324,13 @@ export class RithmicMdsClient {
       case 'error':
         this.lastSentSubscribeKey = ''
         console.warn('[RithmicMdsClient]', (msg as { message?: string }).message || 'error')
+        this.setConnectionState('disconnected')
         if (this.bootstrap && this.isConnected()) {
           setTimeout(() => this.flushBootstrapSubscribe(), 500)
         }
+        break
+      case 'subscribed':
+        this.setConnectionState('connected')
         break
       default:
         break

@@ -1,4 +1,4 @@
-import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import type { PracticeChartDatafeed } from './practiceDatafeed'
 import { resolvePracticeProductSymbol } from './practiceSymbol'
 
 export type PracticeBracketLevels = {
@@ -17,7 +17,7 @@ function fmtUsd(price: number): string {
 
 export function practiceOrderProductSymbol(
   chartSymbol: string,
-  datafeed?: TradeseaDatafeed | null
+  datafeed?: PracticeChartDatafeed | null
 ): string {
   return resolvePracticeProductSymbol(chartSymbol, datafeed).toUpperCase()
 }

@@ -7,7 +7,7 @@ import { logRithmicHistory } from './rithmicChartDebug.js'
 
 /**
  * @param {string} userId
- * @param {{ symbol: string, exchange: string, resolution?: string|number, from?: number, to?: number, countback?: number }} query
+ * @param {{ symbol: string, exchange: string, resolution?: string|number, from?: number, to?: number, countback?: number, include_forming?: boolean }} query
  */
 export async function fetchRithmicChartHistory(userId, query) {
   return withRithmicUserLock(userId, async () => {
@@ -31,6 +31,7 @@ export async function fetchRithmicChartHistory(userId, query) {
       from: query.from,
       to: query.to,
       countback: query.countback,
+      include_forming: query.include_forming === true,
     })
 
     logRithmicHistory(`${exchange}:${chartSymbol}`, bars)

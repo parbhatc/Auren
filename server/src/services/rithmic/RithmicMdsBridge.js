@@ -177,6 +177,12 @@ export class RithmicMdsBridge {
       this.liveActive = false
       await this.stopLive()
       if (this.closed) return
+      console.error('[RithmicMds] subscribe failed', {
+        userId: this.userId,
+        symbol: chartSymbol,
+        resolution,
+        message: String(err?.message || err),
+      })
       safeSend(this.clientWs, {
         type: 'error',
         message: String(err?.message || err),

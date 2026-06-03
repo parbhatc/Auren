@@ -453,8 +453,33 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
     return () => this.marketBookListeners.delete(listener)
   }
 
-  getMarketBookForChart(_chartSymbol: string): RithmicMarketBook | null {
-    return this.marketBook
+  getMarketBookForChart(_chartSymbol: string): {
+    bid: number | null
+    ask: number | null
+    bidSize: number | null
+    askSize: number | null
+    last: number | null
+    sessionHigh: number | null
+    sessionLow: number | null
+    sessionClose: number | null
+    settlement: number | null
+    bestBid: number | null
+    bestAsk: number | null
+  } | null {
+    if (!this.marketBook) return null
+    return {
+      ...this.marketBook,
+      bestBid: this.marketBook.bid,
+      bestAsk: this.marketBook.ask,
+    }
+  }
+
+  isMarketOpenForChart(_chartSymbol: string, _now?: Date): boolean {
+    return true
+  }
+
+  whenSymbolsReady(): Promise<void> {
+    return this.ensureSymbolsLoaded().then(() => undefined)
   }
 
   isDelayedMarketData(): boolean {
@@ -570,7 +595,15 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
     )
 
     void rithmicAPI
-      .getHistory({ symbol, exchange, resolution, from, to, countback })
+      .getHistory({
+        symbol,
+        exchange,
+        resolution,
+        from,
+        to,
+        countback,
+        include_forming: periodParams.firstDataRequest === true,
+      })
       .then((data) => {
         if (data.s === 'no_data' || !data.t?.length) {
           onResult([], { noData: true })

@@ -146,10 +146,13 @@ class RithmicMdsWebSocket extends WebSocketBase {
 
 
 
-    clientWs.on('close', () => {
-
+    clientWs.on('close', (code, reason) => {
+      console.log('[RithmicMds] client disconnected', {
+        userId,
+        code,
+        reason: String(reason || ''),
+      })
       void shutdown()
-
     })
 
 
