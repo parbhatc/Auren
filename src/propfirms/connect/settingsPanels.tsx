@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import type { PropFirm } from '../../types/props'
 import type { PropFirmConnectCallbacks } from '../types/common'
 import { PRACTICE_PROP_FIRM_CONFIGS } from '../../constants/practicePropFirms'
+import { RithmicConnectPanel } from '../rithmic'
 import { TradeseaConnectPanel } from '../tradesea'
 import { t } from '../../utils/translator'
 
@@ -21,6 +22,11 @@ const PANEL_BY_FIRM_ID: Record<string, PanelEntry> = {
     ConnectPanel: TradeseaConnectPanel,
     descriptionKey: 'props.tradesea.otpDescription',
     canClear: (firm) => Boolean(firm?.token),
+  },
+  rithmic: {
+    ConnectPanel: RithmicConnectPanel,
+    descriptionKey: 'props.rithmic.description',
+    canClear: (firm) => Boolean(firm?.credentials?.username?.trim()),
   },
 }
 

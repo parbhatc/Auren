@@ -9,9 +9,16 @@ export const PRACTICE_PROP_FIRM_CONFIGS = [
     supportsOfflineBracketWatcher: true,
     defaultOfflineModePositions: true,
   },
+  {
+    id: 'rithmic',
+    displayName: 'Rithmic',
+    marketDataSlotPolicy: 'concurrent',
+    supportsOfflineBracketWatcher: false,
+    defaultOfflineModePositions: false,
+  },
 ]
 
-const REMOVED_PROP_FIRM_IDS = new Set(['topstep', 'rithmic'])
+const REMOVED_PROP_FIRM_IDS = new Set(['topstep'])
 
 const CONFIG_BY_ID = new Map(PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c]))
 

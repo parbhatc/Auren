@@ -12,6 +12,7 @@ import { TradingViewChartProps } from '../../types/chart'
 import { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { PracticeTradeHandler } from '../practice/PracticeTradeHandler'
 import { TradeseaDatafeed } from './TradeseaDatafeed'
+import type { RithmicHistoryDatafeed } from '../rithmic/RithmicHistoryDatafeed'
 import { TradeseaMdsClient } from './TradeseaMdsClient'
 import { TradeseaTradesClient } from './TradeseaTradesClient'
 import { getTradeseaConnectionGroupId } from './tradeseaDeviceFingerprint'
@@ -28,13 +29,13 @@ import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 export type TradeseaChartServices = {
   mds?: TradeseaMdsClient
   trades?: TradeseaTradesClient
-  datafeed: TradeseaDatafeed
+  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed
   streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }
 
 class TradeseaChart extends BaseChart {
-  datafeed: TradeseaDatafeed | null = null
+  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed | null = null
   services: TradeseaChartServices | null = null
   /** Practice + load_last_chart: do not emit symbol until TV restores layout. */
   private practiceRestoreLayout = false

@@ -26,11 +26,7 @@ import {
   type PracticePendingOrder,
 } from './practicePendingOrders'
 import { evaluatePracticeRules } from './practiceRules'
-import {
-  evaluatePracticeLockout,
-  getPracticeSessionDayKey,
-  getPracticeSessionRealizedPnl,
-} from './practiceLockout'
+import { evaluatePracticeLockout } from './practiceLockout'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { getPracticeMarketDataSettings } from '../../constants/practice'
@@ -44,8 +40,6 @@ export class PracticeTradeHandler {
   private blownEnforcing = false
   private blownModalShown = false
   private passedModalShown = false
-  /** Tracks 6 PM ET session boundary for RP&L reset. */
-  private lastSessionDayKey: string | null = null
   /** Suppress per-fill toasts while force-closing on blow. */
   suppressCloseToasts = false
   onUnrealizedPnLUpdate?: (upl: number) => void
@@ -102,14 +96,8 @@ export class PracticeTradeHandler {
     if (!account) {
       return { balance: 0, rpl: 0, upl: 0 }
     }
-
-    const sessionKey = getPracticeSessionDayKey()
-    if (this.lastSessionDayKey && this.lastSessionDayKey !== sessionKey) {
-      void refreshPracticeFromApi()
-    }
-    this.lastSessionDayKey = sessionKey
-
-    const rpl = getPracticeSessionRealizedPnl(account.dayPnL)
+    const start = getPracticePlanFromAccount(account).startingBalance
+    const rpl = account.balance - start
     return {
       balance: account.balance + this.upl,
       mll: undefined,

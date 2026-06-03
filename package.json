@@ -19,6 +19,7 @@
     "react-hook-form": "^7.68.0",
     "react-router-dom": "^7.10.1",
     "react-toastify": "^11.0.5",
+    "rithmic-api": "github:parbhatc/RithmicAPI",
     "tradingview-chart": "github:parbhatc/TradingviewChart"
   },
   "devDependencies": {

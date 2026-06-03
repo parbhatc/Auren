@@ -1,9 +1,11 @@
+import { propsAPI } from '../api/props.api'
 import {
   getPracticePropFirmConfig,
   normalizePracticePropFirmId,
   PRACTICE_PROP_FIRM_CONFIGS,
   type PracticePropFirmMarketDataConfig,
 } from '../constants/practicePropFirms'
+import { resolveCredentialLoginMarketConnection } from './rithmic/marketData'
 import {
   isBrokerSessionExpiredForFirm,
   resolveBrokerAccountsMarketConnection,
@@ -33,8 +35,8 @@ export function firmUsesBrokerAccounts(firmId?: string | null): boolean {
   return getMarketDataConnectionKind(firmId) === 'broker-accounts'
 }
 
-export function firmUsesCredentialLogin(_firmId?: string | null): boolean {
-  return false
+export function firmUsesCredentialLogin(firmId?: string | null): boolean {
+  return getMarketDataConnectionKind(firmId) === 'credential-login'
 }
 
 export function firmPersistsMarketAccountId(firmId?: string | null): boolean {
@@ -42,7 +44,9 @@ export function firmPersistsMarketAccountId(firmId?: string | null): boolean {
 }
 
 export function listCredentialLoginFirmIds(): string[] {
-  return []
+  return PRACTICE_PROP_FIRM_CONFIGS.filter((c) => c.marketDataConnection === 'credential-login').map(
+    (c) => c.id
+  )
 }
 
 export function listBrokerAccountFirmIds(): string[] {
@@ -57,6 +61,9 @@ export function resolveMarketDataConnection(ctx: MarketDataConnectionContext): M
 
   if (kind === 'broker-accounts') {
     return resolveBrokerAccountsMarketConnection({ ...ctx, firmId })
+  }
+  if (kind === 'credential-login') {
+    return resolveCredentialLoginMarketConnection({ ...ctx, firmId })
   }
   return { connected: false }
 }
@@ -85,16 +92,28 @@ export function isDisconnectedBannerActive(
   brokerSessionExpired = false
 ): boolean {
   if (!connection.connected) {
+    if (firmUsesCredentialLogin(firmId)) return true
     if (firmUsesBrokerAccounts(firmId) && !brokerSessionExpired) return true
   }
   return false
 }
 
-/** Load saved credentials for credential-login firms (none configured). */
+/** Load saved credentials for all credential-login firms (for hub status). */
 export async function loadCredentialLoginCredentials(): Promise<
   Record<string, import('../types/props').PropFirmCredentials | null>
 > {
-  return {}
+  const ids = listCredentialLoginFirmIds()
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const response = await propsAPI.getPropFirm(id)
+        return [id, response.propFirm?.credentials ?? null] as const
+      } catch {
+        return [id, null] as const
+      }
+    })
+  )
+  return Object.fromEntries(entries)
 }
 
 export function getCredentialsForFirm(

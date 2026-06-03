@@ -2,7 +2,7 @@
  * Prop Firm Types
  */
 
-export type PropFirmType = 'tradesea' | 'custom'
+export type PropFirmType = 'tradesea' | 'rithmic' | 'custom'
 
 export interface PropFirm {
   id: string
@@ -27,6 +27,16 @@ export interface PropFirmCredentials {
   creditcal?: string
   sessionId?: string
   sessionIdAuth?: string
+  /** Rithmic — last successful login session metadata */
+  systemName?: string
+  gatewayName?: string
+  gatewayUri?: string | null
+  loginPassed?: boolean
+  uniqueUserId?: string
+  fcmId?: string
+  ibId?: string
+  infraType?: number
+  rpCode?: string
   [key: string]: any // Allow for custom credentials
 }
 

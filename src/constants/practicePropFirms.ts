@@ -31,6 +31,14 @@ export const PRACTICE_PROP_FIRM_CONFIGS: readonly PracticePropFirmMarketDataConf
     supportsOfflineBracketWatcher: true,
     defaultOfflineModePositions: true,
   },
+  {
+    id: 'rithmic',
+    displayName: 'Rithmic',
+    marketDataConnection: 'credential-login',
+    marketDataSlotPolicy: 'concurrent',
+    supportsOfflineBracketWatcher: false,
+    defaultOfflineModePositions: false,
+  },
 ] as const
 
 export type PracticePropFirmConfigId = (typeof PRACTICE_PROP_FIRM_CONFIGS)[number]['id']
@@ -39,7 +47,7 @@ const CONFIG_BY_ID = new Map(
   PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c] as const)
 )
 
-const REMOVED_PROP_FIRM_IDS = new Set(['topstep', 'rithmic'])
+const REMOVED_PROP_FIRM_IDS = new Set(['topstep'])
 
 /** Map legacy/unknown prop firm ids to a supported firm. */
 export function normalizePracticePropFirmId(

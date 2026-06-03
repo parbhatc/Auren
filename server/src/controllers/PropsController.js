@@ -173,7 +173,7 @@ class PropsController {
       }
 
       // Validate prop firm type
-      const validTypes = ['tradesea', 'custom']
+      const validTypes = ['tradesea', 'rithmic', 'custom']
       if (!validTypes.includes(type)) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
@@ -184,6 +184,7 @@ class PropsController {
       // Get display name
       const displayNames = {
         tradesea: 'Tradesea',
+        rithmic: 'Rithmic',
         custom: 'Custom',
       }
 
