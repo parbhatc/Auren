@@ -2,33 +2,33 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { betterweightChartStatic } from './vite.bwcStatic'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
+const bwcRoot = path.resolve(rootDir, '../BetterweightChart')
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      'tradingview-chart': path.resolve(rootDir, 'node_modules/tradingview-chart/src'),
-    },
-  },
+  plugins: [react(), betterweightChartStatic(bwcRoot)],
   server: {
     port: 3000,
-    host: true, // Allow external connections (0.0.0.0)
-    strictPort: false, // Allow port to be changed if 3000 is in use
-    hmr: false, // Disable Hot Module Replacement (auto refresh)
+    host: true,
+    strictPort: false,
+    hmr: false,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
         ws: true,
-        configure: (proxy, _options) => {
-          proxy.on('error', (err, _req, _res) => {
-            // Silent error handling
-          })
-        }
+        configure: (proxy) => {
+          proxy.on('error', () => {})
+        },
+      },
+      '/news': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (p) => `/api${p}`,
       },
       '/tradesea-mds-ws': {
         target: 'http://localhost:3001',
@@ -44,9 +44,9 @@ export default defineConfig({
         target: 'https://api-instruments-delayed.tradesea.ai',
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/tradesea-instruments/, ''),
+        rewrite: (p) => p.replace(/^\/tradesea-instruments/, ''),
       },
-    }
+    },
   },
   build: {
     outDir: 'dist',
@@ -54,13 +54,16 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
     rollupOptions: {
+      external: (id) =>
+        id.startsWith('/chart/') ||
+        id.startsWith('/testing/') ||
+        id.startsWith('/js/'),
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'chart-vendor': ['@microsoft/signalr']
-        }
-      }
-    }
-  }
+          'chart-vendor': ['@microsoft/signalr'],
+        },
+      },
+    },
+  },
 })
-

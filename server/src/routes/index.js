@@ -5,6 +5,7 @@ import PermissionRoutes from './PermissionRoutes.js'
 import UserRoutes from './UserRoutes.js'
 import PropsRoutes from './PropsRoutes.js'
 import EconomicNewsRoutes from './EconomicNewsRoutes.js'
+import NewsRoutes from './NewsRoutes.js'
 import TradingJournalRoutes from './TradingJournalRoutes.js'
 import TradingViewRoutes from './TradingViewRoutes.js'
 import TradeseaRoutes from './TradeseaRoutes.js'
@@ -64,6 +65,10 @@ class Routes {
     // Economic News routes
     const economicNewsRoutes = new EconomicNewsRoutes()
     this.router.use('/economic-news', economicNewsRoutes.getRouter())
+
+    // BetterweightChart news feed (ForexFactory calendar for Levels indicator)
+    const newsRoutes = new NewsRoutes()
+    this.router.use('/news', newsRoutes.getRouter())
 
     // Trading Journal routes
     const tradingJournalRoutes = new TradingJournalRoutes()

@@ -4,7 +4,7 @@ import { UtilsSettingsProps } from '../../../types'
 import SettingsPageLayout from '../../layout/SettingsPageLayout'
 import { panelCardClass, selectInputClass, settingsInsetClass } from '../../../styles/aurenTheme'
 import { t } from '../../../utils/translator'
-import { SUPPORTED_TRADINGVIEW_TIMEZONES } from 'tradingview-chart/constants/tradingviewTimezones'
+import { SUPPORTED_CHART_TIMEZONES } from '../../../constants/chartTimezones'
 
 /**
  * Utils Settings renderer component
@@ -23,7 +23,7 @@ class Renderer extends Component<UtilsSettingsProps> {
     if (savedTimezone) {
       const timezone = savedTimezone === 'UTC' ? 'Etc/UTC' : savedTimezone
 
-      if (SUPPORTED_TRADINGVIEW_TIMEZONES.includes(timezone as (typeof SUPPORTED_TRADINGVIEW_TIMEZONES)[number])) {
+      if (SUPPORTED_CHART_TIMEZONES.includes(timezone as (typeof SUPPORTED_CHART_TIMEZONES)[number])) {
         this.setState({ timezone })
         if (timezone !== savedTimezone) {
           localStorage.setItem('user_timezone', timezone)
@@ -112,7 +112,7 @@ class Renderer extends Component<UtilsSettingsProps> {
   }
 
   getTimezones = () => {
-    return SUPPORTED_TRADINGVIEW_TIMEZONES.map((tz) => ({
+    return SUPPORTED_CHART_TIMEZONES.map((tz) => ({
       value: tz,
       label: this.formatTimezoneLabel(tz),
     }))

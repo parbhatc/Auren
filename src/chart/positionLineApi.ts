@@ -35,7 +35,7 @@ export async function createWorkingOrderLine(opts: WorkingOrderLineOptions) {
     entryPrice: opts.price,
     contracts: opts.side === 'buy' ? opts.quantity : -opts.quantity,
     lineType: 'position',
-    chart: opts.chart,
+    chart: opts.chart as any,
     datafeed: opts.datafeed,
   })
 

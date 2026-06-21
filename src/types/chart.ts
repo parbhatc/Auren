@@ -1,11 +1,103 @@
 /**
- * TradingView chart types — re-exported from tradingview-chart package, plus Auren extensions.
+ * Chart types for Auren (BetterweightChart + practice datafeeds).
  */
-export * from 'tradingview-chart/types/chart'
-import type { TradingViewChartProps as TradingViewChartPropsBase } from 'tradingview-chart/types/chart'
 
-export type TradingViewChartProps = TradingViewChartPropsBase & {
+export type ResolutionString = string
+
+export type Bar = {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume?: number
+  tickVolume?: number
+}
+
+export type SubscribeBarsCallback = (bar: Bar) => void
+
+export type LibrarySymbolInfo = {
+  name: string
+  ticker?: string
+  symbol?: string
+  description?: string
+  type?: string
+  session?: string
+  timezone?: string
+  exchange?: string
+  listed_exchange?: string
+  format?: string
+  pricescale?: number
+  minmov?: number
+  minmove2?: number
+  fractional?: boolean
+  has_intraday?: boolean
+  has_seconds?: boolean
+  has_ticks?: boolean
+  supported_resolutions?: ResolutionString[]
+  seconds_multipliers?: string[]
+  intraday_multipliers?: string[]
+  data_status?: string
+  [key: string]: unknown
+}
+
+export interface IDatafeedChartApi {
+  onReady(callback: (configuration: unknown) => void): void
+  searchSymbols(
+    userInput: string,
+    exchange: string,
+    symbolType: string,
+    onResult: (symbols: unknown[]) => void
+  ): void
+  resolveSymbol(
+    symbolName: string,
+    onResolve: (info: LibrarySymbolInfo) => void,
+    onError: (reason: string) => void
+  ): void
+  getBars(
+    symbolInfo: LibrarySymbolInfo,
+    resolution: ResolutionString,
+    periodParams: {
+      from: number
+      to: number
+      firstDataRequest?: boolean
+      countBack?: number
+    },
+    onResult: (bars: Bar[], meta: { noData: boolean }) => void,
+    onError: (reason: string) => void
+  ): void
+  subscribeBars(
+    symbolInfo: LibrarySymbolInfo,
+    resolution: ResolutionString,
+    onTick: SubscribeBarsCallback,
+    listenerGuid: string
+  ): void
+  unsubscribeBars(listenerGuid: string): void
+}
+
+export type ChartPositionLineProps = {
+  symbol: string
+  chart: any
+  datafeed?: any
+  entryPrice: number
+  price: number
+  contracts: number
+  lineType: 'position' | 'stop_loss' | 'take_profit'
+  side?: string
+  orderId?: number | string | null
+  onMove?: (price: number) => void
+  onCancel?: () => void
+  onUpdate?: (...args: unknown[]) => void
+  onMoving?: (...args: unknown[]) => void
+}
+
+export type AurenChartProps = {
+  symbol?: string
+  timeframe?: string
+  isDark?: boolean
   containerId?: string
+  className?: string
+  style?: import('react').CSSProperties
   accountId?: string
   practiceAccountId?: string
   tradeseaServices?: Record<string, unknown> | null
@@ -15,4 +107,10 @@ export type TradingViewChartProps = TradingViewChartPropsBase & {
     logButtonPress?(label: string, details?: Record<string, unknown>): void | Promise<void>
     placeLimitOrder?(side: string, quantity: number, price: number): void | Promise<void>
   }
+  onSymbolChange?: (symbol: string) => void
+  onChartReady?: () => void | Promise<void>
+  onAutoSaveNeeded?: () => void | Promise<void>
 }
+
+/** @deprecated Use AurenChartProps */
+export type TradingViewChartProps = AurenChartProps

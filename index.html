@@ -11,12 +11,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="color-scheme" content="dark light" />
     <title>Auren</title>
-    <!-- Load TradingView Charting Library -->
-    <script src="/charting_library/charting_library.standalone.js"></script>
+    <link rel="stylesheet" href="/css/app.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "lightweight-charts": "/vendor/lightweight-charts.mjs"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

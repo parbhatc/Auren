@@ -12,15 +12,16 @@
     "axios": "^1.13.2",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
+    "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.559.0",
+    "luxon": "^3.7.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-grid-layout": "^1.4.4",
     "react-hook-form": "^7.68.0",
     "react-router-dom": "^7.10.1",
     "react-toastify": "^11.0.5",
-    "rithmic-api": "github:parbhatc/RithmicAPI",
-    "tradingview-chart": "github:parbhatc/TradingviewChart"
+    "rithmic-api": "github:parbhatc/RithmicAPI"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

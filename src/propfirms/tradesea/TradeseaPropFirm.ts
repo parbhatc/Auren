@@ -28,20 +28,16 @@ import { getTradeTradeseaAccount, saveTradeTradeseaAccount } from '../../constan
 
 import { FormattedAccount } from '../../utils/marketAccountDisplay'
 
-import TradeseaChart, {
-
+import AurenChart, {
   prepareTradeseaChartServices,
-
   teardownTradeseaChartServices,
-
-  TradeseaChartServices,
-
-} from '../../services/tradesea/TradeseaChart'
+  type TradeseaChartServices,
+} from '../../services/chart/AurenChart'
 
 import { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClient'
 import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
 import { TradeseaDatafeed } from '../../services/tradesea/TradeseaDatafeed'
-import type { TradingViewChartProps } from '../../types/chart'
+import type { AurenChartProps } from '../../types/chart'
 
 import { TradeseaTradesClient } from '../../services/tradesea/TradeseaTradesClient'
 import { TradeseaTradeHandler } from '../../services/tradesea/TradeseaTradeHandler'
@@ -1178,8 +1174,8 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
 
-    return React.createElement(TradeseaChart, {
-      key: this.practiceSimAccountId || this.selectedAccountId || 'tradesea-chart',
+    return React.createElement(AurenChart, {
+      key: this.practiceSimAccountId || this.selectedAccountId || 'auren-chart',
       symbol: chartSymbolProp,
       timeframe,
       isDark,
@@ -1188,7 +1184,7 @@ export class TradeseaPropFirm extends PropFirmBase {
       tradeseaServices: this.chartServices,
       tradeseaTradeHandler: this.getHandler() ?? undefined,
       onSymbolChange: (chartSym: string) => this.syncChartSymbolFromTv(chartSym),
-    } as TradingViewChartProps)
+    } as AurenChartProps)
 
   }
 

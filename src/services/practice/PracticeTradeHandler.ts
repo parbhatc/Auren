@@ -110,7 +110,13 @@ export class PracticeTradeHandler {
   onReady(widget: unknown, chartDatafeed?: TradeseaDatafeed | null): void {
     this.widget = widget
     const chart = (widget as { chart?: () => unknown })?.chart?.()
-    if (!chart) return
+    if (!chart) {
+      console.warn('[PracticeTradeHandler] chart API missing on widget — order lines disabled')
+      return
+    }
+    if (typeof (chart as { createOrderLine?: unknown }).createOrderLine !== 'function') {
+      console.warn('[PracticeTradeHandler] widget.chart().createOrderLine missing — update BetterweightChart to 4c1b6d8+')
+    }
 
     this.tradeCache = new PracticeTradeCache(this, chart, this.practiceAccountId)
     const df = chartDatafeed ?? this.propFirm.chartServices?.datafeed ?? null

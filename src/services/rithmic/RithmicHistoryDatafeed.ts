@@ -25,7 +25,6 @@ import {
 import type { RithmicMdsUpdatePayload } from './rithmicMdsFormat'
 import {
   logRithmicBar,
-  logRithmicCandlePatch,
   logRithmicHistory,
   logRithmicLatestClose,
   logRithmicLatestHighLow,
@@ -74,11 +73,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
   private marketBookListeners = new Set<() => void>()
   private lastBarTimeByKey = new Map<string, number>()
   private lastBarByKey = new Map<string, Bar>()
-  /** Latest session high/low/close from MDS (may arrive before subscribeBars). */
-  private sessionBySymbol = new Map<
-    string,
-    { high: number | null; low: number | null; close: number | null }
-  >()
 
   constructor(private readonly mds: RithmicMdsClient | null = null) {
     void this.ensureSymbolIndex()
@@ -132,43 +126,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
 
   private barOpenTimeMs(tradeTimeMs: number, periodMs: number): number {
     return Math.floor(tradeTimeMs / periodMs) * periodMs
-  }
-
-  private rememberSession(
-    chartSymbol: string,
-    patch: { high?: number | null; low?: number | null; close?: number | null },
-  ): void {
-    const prev = this.sessionBySymbol.get(chartSymbol) ?? {
-      high: null,
-      low: null,
-      close: null,
-    }
-    this.sessionBySymbol.set(chartSymbol, {
-      high: patch.high !== undefined ? patch.high : prev.high,
-      low: patch.low !== undefined ? patch.low : prev.low,
-      close: patch.close !== undefined ? patch.close : prev.close,
-    })
-  }
-
-  /** Widen forming-bar OHLC with cached session high/low (does not override close from trades). */
-  private applySessionRangeToBar(chartSymbol: string, bar: Bar): Bar {
-    const s = this.sessionBySymbol.get(chartSymbol)
-    if (!s) return bar
-    let { high, low } = bar
-    if (s.high != null && Number.isFinite(s.high)) high = Math.max(high, s.high)
-    if (s.low != null && Number.isFinite(s.low)) low = Math.min(low, s.low)
-    return high === bar.high && low === bar.low ? bar : { ...bar, high, low }
-  }
-
-  private logBarPatch(chartSymbol: string, bar: Bar, from: string): void {
-    logRithmicCandlePatch(chartSymbol, {
-      time: bar.time,
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close,
-      from,
-    })
   }
 
   private dispatchLiveBar(key: string, bar: Bar, resolution: string): void {
@@ -235,90 +192,8 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
         }
       }
 
-      bar = this.applySessionRangeToBar(chartSymbol, bar)
-      this.logBarPatch(chartSymbol, bar, 'update')
       this.dispatchLiveBar(key, bar, resolution)
     }
-  }
-
-  /** Apply cached session high/low/close to the current-period forming bar. */
-  private patchFormingBarFromSession(
-    chartSymbol: string,
-    patch: { high?: number; low?: number; close?: number },
-    source: 'latest_high_low' | 'latest_close' | 'session_cache',
-  ): void {
-    const hasHigh = patch.high != null && Number.isFinite(patch.high)
-    const hasLow = patch.low != null && Number.isFinite(patch.low)
-    const hasClose = patch.close != null && Number.isFinite(patch.close)
-    if (!hasHigh && !hasLow && !hasClose) return
-
-    this.rememberSession(chartSymbol, {
-      high: hasHigh ? patch.high! : undefined,
-      low: hasLow ? patch.low! : undefined,
-      close: hasClose ? patch.close! : undefined,
-    })
-
-    for (const [key, subs] of this.keyToSubs.entries()) {
-      if (!subs.size) continue
-      if (!key.startsWith(`${chartSymbol}__`)) continue
-
-      const resolution = key.split('__')[1] || '1'
-      const periodMs = this.barPeriodMs(resolution)
-      const bucketMs = this.barOpenTimeMs(Date.now(), periodMs)
-      const prev = this.lastBarByKey.get(key)
-
-      const refPrice = hasClose
-        ? patch.close!
-        : hasHigh && hasLow
-          ? (patch.high! + patch.low!) / 2
-          : patch.high ?? patch.low ?? prev?.close
-
-      if (refPrice == null || !Number.isFinite(refPrice)) continue
-
-      let bar: Bar
-      if (!prev || bucketMs > prev.time) {
-        const open = prev?.close ?? refPrice
-        bar = {
-          time: bucketMs,
-          open,
-          high: hasHigh ? patch.high! : Math.max(open, refPrice),
-          low: hasLow ? patch.low! : Math.min(open, refPrice),
-          close: hasClose ? patch.close! : open,
-          volume: 0,
-          tickVolume: 0,
-        }
-      } else if (bucketMs < prev.time) {
-        continue
-      } else {
-        bar = {
-          time: prev.time,
-          open: prev.open,
-          high: hasHigh ? patch.high! : prev.high,
-          low: hasLow ? patch.low! : prev.low,
-          close: hasClose ? patch.close! : prev.close,
-          volume: prev.volume ?? 0,
-          tickVolume: prev.tickVolume ?? 0,
-        }
-      }
-
-      bar = this.applySessionRangeToBar(chartSymbol, bar)
-      this.logBarPatch(chartSymbol, bar, source)
-      this.dispatchLiveBar(key, bar, resolution)
-    }
-  }
-
-  private flushSessionToFormingBars(chartSymbol: string): void {
-    const s = this.sessionBySymbol.get(chartSymbol)
-    if (!s) return
-    this.patchFormingBarFromSession(
-      chartSymbol,
-      {
-        high: s.high ?? undefined,
-        low: s.low ?? undefined,
-        close: s.close ?? undefined,
-      },
-      'session_cache',
-    )
   }
 
   getLastBarForChart(chart: { symbol?: () => string; resolution?: () => string }): Bar | null {
@@ -361,7 +236,7 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
       const subs = this.keyToSubs.get(key)
       if (!subs?.size) return
       const vol = Number(msg.v ?? 0)
-      let bar: Bar = {
+      const bar: Bar = {
         time: this.normalizeBarTimeMs(Number(msg.time)),
         open: Number(msg.o),
         high: Number(msg.h),
@@ -370,7 +245,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
         volume: vol,
         tickVolume: vol,
       }
-      bar = this.applySessionRangeToBar(msg.symbol, bar)
       logRithmicBar(msg.symbol, {
         time: bar.time,
         close: bar.close,
@@ -400,11 +274,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
         sessionHigh: row.high ?? this.marketBook?.sessionHigh ?? null,
         sessionLow: row.low ?? this.marketBook?.sessionLow ?? null,
       })
-      this.patchFormingBarFromSession(
-        row.symbol,
-        { high: row.high, low: row.low },
-        'latest_high_low',
-      )
     })
     this.offLatestClose = this.mds.on('latest_close', (row) => {
       const close =
@@ -424,9 +293,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
         sessionClose: close ?? this.marketBook?.sessionClose ?? null,
         settlement: row.settlement ?? this.marketBook?.settlement ?? null,
       })
-      if (close != null) {
-        this.patchFormingBarFromSession(row.symbol, { close }, 'latest_close')
-      }
     })
     this.offUpdate = this.mds.on('update', (update) => {
       if (update.price == null) return
@@ -666,7 +532,6 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
       this.activeSubKey = key
       this.mds.subscribe(chartSymbol, String(resolution))
     }
-    this.flushSessionToFormingBars(chartSymbol)
   }
 
   unsubscribeBars(listenerGuid: string): void {

@@ -509,7 +509,11 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     return (
       <div
-        className={`h-screen max-h-screen overflow-hidden transition-all duration-700 ease-in-out flex ${
+        className={`transition-all duration-700 ease-in-out flex ${
+          practiceMode
+            ? 'min-h-dvh h-dvh max-h-dvh overflow-hidden'
+            : 'h-screen max-h-screen overflow-hidden'
+        } ${
           practiceMode
             ? isDark
               ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
@@ -974,7 +978,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 const mobileTradePrefs = getMobileTradePrefs(practiceAccountId)
 
                 return (
-                  <div className="relative flex flex-1 min-h-0 min-w-0 h-full w-full">
+                  <div className="relative flex flex-1 flex-col min-h-0 min-w-0 w-full h-full">
                     {renderPracticeTradeLayout(
                       chartElement,
                       padDetached ? null : <TradePanel {...padProps} />,

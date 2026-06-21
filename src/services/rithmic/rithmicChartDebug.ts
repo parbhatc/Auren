@@ -78,18 +78,6 @@ export function logRithmicBar(
   )
 }
 
-export function logRithmicCandlePatch(
-  sym: string,
-  detail: { time: number; open?: number; high?: number; low?: number; close: number; from: string },
-): void {
-  if (!isRithmicChartDebug()) return
-  const ohlc =
-    detail.high != null || detail.low != null
-      ? `  O ${fmtPrice(detail.open)}  H ${fmtPrice(detail.high)}  L ${fmtPrice(detail.low)}  C ${fmtPrice(detail.close)}`
-      : `  close ${fmtPrice(detail.close)}`
-  console.log(`[Rithmic] ${sym}  Candle patch (${detail.from})  ${fmtRithmicTime(detail.time)}${ohlc}`)
-}
-
 export function logRithmicHistory(
   sym: string,
   bars: { time: number; close: number }[],
