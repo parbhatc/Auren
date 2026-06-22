@@ -2,7 +2,7 @@
  * Prop Firm Types
  */
 
-export type PropFirmType = 'tradesea' | 'rithmic' | 'custom'
+export type PropFirmType = 'tradesea' | 'custom'
 
 export interface PropFirm {
   id: string

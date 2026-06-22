@@ -22,7 +22,6 @@ import {
 } from '../../../constants/practice'
 import { getDefaultPracticeRules, type PracticeAccountSize } from '../../../services/practice/practicePlans'
 import { practiceAPI } from '../../../api/practice.api'
-import { rithmicAPI } from '../../../api/rithmic.api'
 import { tradeseaAPI } from '../../../api/tradesea.api'
 import type { BrokerAccountOption } from '../../../propfirms/marketData/types'
 import type { PropFirmCredentials } from '../../../types/props'
@@ -137,18 +136,6 @@ export default function Hub() {
             result = await tradeseaAPI.getAccounts()
           }
         }
-        if (!result.connected) {
-          setBrokerAccounts([])
-          setBrokerSessionExpired(Boolean(result.sessionExpired))
-          setError(result.message || t('practice.notConnected'))
-          return
-        }
-        setBrokerSessionExpired(false)
-        setBrokerAccounts(
-          (result.accounts || []).map((a) => ({ id: a.id, label: a.label }))
-        )
-      } else if (firm === 'rithmic') {
-        const result = await rithmicAPI.getAccounts()
         if (!result.connected) {
           setBrokerAccounts([])
           setBrokerSessionExpired(Boolean(result.sessionExpired))

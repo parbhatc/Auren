@@ -20,8 +20,7 @@
     "react-grid-layout": "^1.4.4",
     "react-hook-form": "^7.68.0",
     "react-router-dom": "^7.10.1",
-    "react-toastify": "^11.0.5",
-    "rithmic-api": "github:parbhatc/RithmicAPI#8500f7a7d212bc30f21f52c09ab8ef5b2d8bf7a5"
+    "react-toastify": "^11.0.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

@@ -1,7 +1,6 @@
 import { CSSProperties, useEffect, useId, useRef } from 'react'
 import type { AurenChartProps } from '../../types/chart'
 import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
-import type { RithmicHistoryDatafeed } from '../rithmic/RithmicHistoryDatafeed'
 import {
   bwcHasExecutionShapes,
   bwcHasOrderLines,
@@ -27,7 +26,7 @@ type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
   mds?: unknown
   trades?: unknown
-  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed
+  datafeed: TradeseaDatafeed
   streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }

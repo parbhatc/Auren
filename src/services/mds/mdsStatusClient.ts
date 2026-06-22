@@ -1,6 +1,6 @@
 import type { MdsConnectionState } from '../tradesea/TradeseaMdsClient'
 
-/** Shared MDS status / reconnect controls (Tradesea + Rithmic). */
+/** Shared MDS status / reconnect controls (Tradesea). */
 export type MdsStatusClient = {
   getConnectionState(): MdsConnectionState
   isAutoReconnectEnabled(): boolean

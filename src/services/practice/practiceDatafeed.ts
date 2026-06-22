@@ -1,4 +1,4 @@
-/** Shared duck-typing for Tradesea + Rithmic practice chart datafeeds. */
+/** Shared duck-typing for Tradesea practice chart datafeeds. */
 export type PracticeChartDatafeed = {
   resolveProductSymbol?(chartSymbol: string): string
   resolveStreamInstrument?(chartLabel: string): string

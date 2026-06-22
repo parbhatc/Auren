@@ -74,15 +74,17 @@ function App() {
       } catch (error: any) {
         console.error('Error checking roles:', error)
 
-        const isConnectionError =
+        const status = error?.response?.status as number | undefined
+        const isServerUnreachable =
           error?.code === 'ERR_NETWORK' ||
           error?.code === 'ECONNREFUSED' ||
           error?.message?.includes('ERR_CONNECTION_REFUSED') ||
           error?.message?.includes('Network Error') ||
           error?.message?.includes('Failed to fetch') ||
-          (error?.response === undefined && error?.request !== undefined)
+          (error?.response === undefined && error?.request !== undefined) ||
+          (typeof status === 'number' && status >= 500)
 
-        if (isConnectionError) {
+        if (isServerUnreachable) {
           setServerError(true)
           setHasRoles(null)
         } else if (error?.response) {

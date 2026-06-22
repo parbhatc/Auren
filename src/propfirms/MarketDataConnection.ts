@@ -6,10 +6,6 @@ import {
   type PracticePropFirmMarketDataConfig,
 } from '../constants/practicePropFirms'
 import {
-  resolveCredentialLoginMarketConnection,
-  resolveRithmicMarketConnection,
-} from './rithmic/marketData'
-import {
   isBrokerSessionExpiredForFirm,
   resolveBrokerAccountsMarketConnection,
 } from './tradesea/marketData'
@@ -44,8 +40,7 @@ export function firmUsesCredentialLogin(firmId?: string | null): boolean {
 
 /** Firms that save a selected market-data account on the practice hub. */
 export function firmPersistsMarketAccountId(firmId?: string | null): boolean {
-  const id = normalizePracticePropFirmId(firmId)
-  return firmUsesBrokerAccounts(id) || id === 'rithmic'
+  return firmUsesBrokerAccounts(firmId)
 }
 
 export function listCredentialLoginFirmIds(): string[] {
@@ -66,12 +61,6 @@ export function resolveMarketDataConnection(ctx: MarketDataConnectionContext): M
 
   if (kind === 'broker-accounts') {
     return resolveBrokerAccountsMarketConnection({ ...ctx, firmId })
-  }
-  if (kind === 'credential-login') {
-    if (firmId === 'rithmic') {
-      return resolveRithmicMarketConnection({ ...ctx, firmId })
-    }
-    return resolveCredentialLoginMarketConnection({ ...ctx, firmId })
   }
   return { connected: false }
 }

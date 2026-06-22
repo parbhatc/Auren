@@ -2,7 +2,6 @@
  * Practice chart services (MDS + datafeed). Chart UI is AurenChart (BetterweightChart).
  */
 import { TradeseaDatafeed } from './TradeseaDatafeed'
-import type { RithmicHistoryDatafeed } from '../rithmic/RithmicHistoryDatafeed'
 import { TradeseaMdsClient } from './TradeseaMdsClient'
 import { TradeseaTradesClient } from './TradeseaTradesClient'
 import { getTradeseaConnectionGroupId } from './tradeseaDeviceFingerprint'
@@ -16,7 +15,7 @@ import {
 export type TradeseaChartServices = {
   mds?: TradeseaMdsClient
   trades?: TradeseaTradesClient
-  datafeed: TradeseaDatafeed | RithmicHistoryDatafeed
+  datafeed: TradeseaDatafeed
   streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }

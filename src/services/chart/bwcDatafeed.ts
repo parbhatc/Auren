@@ -1,8 +1,6 @@
 import type { Bar, IDatafeedChartApi, LibrarySymbolInfo, ResolutionString } from '../../types/chart'
 import { tradeseaResolutionToSeconds } from '../tradesea/tradeseaResolutions'
-import { resolutionToSeconds as rithmicResolutionToSeconds } from '../rithmic/rithmicResolutions'
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
-import type { RithmicHistoryDatafeed } from '../rithmic/RithmicHistoryDatafeed'
 
 type BwcResolution = { id: string; label: string; sec: number }
 
@@ -18,11 +16,8 @@ function resolutionLabel(id: string): string {
   return `${id}m`
 }
 
-function secForResolution(id: string, source: IDatafeedChartApi): number {
-  if ('isDelayedMarketData' in source) {
-    return tradeseaResolutionToSeconds(id)
-  }
-  return rithmicResolutionToSeconds(id)
+function secForResolution(id: string): number {
+  return tradeseaResolutionToSeconds(id)
 }
 
 function buildResolutions(source: IDatafeedChartApi, supported?: string[]): BwcResolution[] {
@@ -30,7 +25,7 @@ function buildResolutions(source: IDatafeedChartApi, supported?: string[]): BwcR
   return ids.map((id) => ({
     id,
     label: resolutionLabel(id),
-    sec: secForResolution(id, source),
+    sec: secForResolution(id),
   }))
 }
 
@@ -44,7 +39,7 @@ function promisify<T>(fn: (cb: (value: T) => void) => void): Promise<T> {
   })
 }
 
-/** BWC expects Unix seconds; Tradesea/Rithmic feeds use ms (TV-style). */
+/** BWC expects Unix seconds; Tradesea feeds use ms (TV-style). */
 function barTimeToSec(time: number): number {
   if (!Number.isFinite(time)) return Math.floor(Date.now() / 1000)
   return time > 1e12 ? Math.floor(time / 1000) : Math.floor(time)
@@ -54,10 +49,8 @@ function normalizeBarForBwc(bar: Bar): Bar {
   return { ...bar, time: barTimeToSec(bar.time) }
 }
 
-/**
- * Bridge Tradesea / Rithmic TV-style datafeeds to BetterweightChart createCustomDatafeed.
- */
-export function createBwcDatafeed(source: TradeseaDatafeed | RithmicHistoryDatafeed) {
+/** Bridge Tradesea TV-style datafeed to BetterweightChart createCustomDatafeed. */
+export function createBwcDatafeed(source: TradeseaDatafeed) {
   let cachedConfig: {
     resolutions: BwcResolution[]
     supported_resolutions: string[]
