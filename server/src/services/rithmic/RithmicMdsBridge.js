@@ -1,6 +1,17 @@
-import { ChartSession, MarketUpdatePreset, parseResolution } from 'rithmic-api'
+import { ChartSession, MarketUpdatePreset } from 'rithmic-api'
+import {
+  ensureLiveDataRithmicReady,
+  usesLiveDataRithmicSession,
+  withLiveDataRithmicLock,
+} from '../liveData/rithmicLiveDataSession.js'
+import {
+  attachRithmicLiveTickerListener,
+  matchesRithmicLiveTicker,
+  startRithmicLiveTicker,
+} from '../liveData/rithmicLiveTickerHub.js'
 import { getRithmicCredentials } from './RithmicCredentialsStore.js'
-import { resolveChartConnect, withRithmicUserLock } from './rithmicConnect.js'
+import { resolveChartConnect } from './rithmicConnect.js'
+import { resolveRithmicBarSubscription } from './rithmicBarSubscription.js'
 import {
   formatBarWire,
   formatLatestCloseWire,
@@ -16,12 +27,6 @@ import {
   logRithmicQuote,
   logRithmicTrade,
 } from './rithmicChartDebug.js'
-
-export function resolveRithmicBarSubscription(resolution) {
-  const parsed = parseResolution(resolution)
-  return { barType: parsed.barType, barPeriod: parsed.barTypePeriod }
-}
-
 function safeSend(ws, payload) {
   if (ws.readyState !== 1) return
   try {
@@ -48,6 +53,7 @@ export class RithmicMdsBridge {
     this.liveActive = false
     this.subscribeChain = Promise.resolve()
     this.pendingSubscribe = null
+    this.hubDetach = null
     this.handlers = {
       trade: null,
       quote: null,
@@ -112,27 +118,53 @@ export class RithmicMdsBridge {
     const { chartSymbol, symbol, exchange, resolution } = sub
 
     const same =
-      this.session &&
       this.liveActive &&
       this.chartSymbol === chartSymbol &&
-      this.resolution === resolution
+      this.resolution === resolution &&
+      (this.session || this.hubDetach)
 
     if (same) {
-      this.#emitSessionSnapshots()
+      if (this.session) {
+        this.#emitSessionSnapshots()
+      }
       safeSend(this.clientWs, { type: 'subscribed', symbol: chartSymbol, resolution })
       return
     }
 
-    try {
-      await withRithmicUserLock(this.userId, async () => {
-        if (this.closed) return
+    const credentials = await getRithmicCredentials(this.userId)
+    if (!credentials) {
+      safeSend(this.clientWs, {
+        type: 'error',
+        message: 'Rithmic market data is not connected.',
+      })
+      return
+    }
+
+    if (usesLiveDataRithmicSession(credentials) || matchesRithmicLiveTicker(chartSymbol, resolution)) {
+      try {
+        await this.#subscribeViaLiveDataHub(sub, credentials)
+      } catch (err) {
+        this.liveActive = false
         await this.stopLive()
         if (this.closed) return
+        console.error('[RithmicMds] live-data subscribe failed', {
+          userId: this.userId,
+          symbol: chartSymbol,
+          resolution,
+          message: String(err?.message || err),
+        })
+        safeSend(this.clientWs, {
+          type: 'error',
+          message: String(err?.message || err),
+        })
+      }
+      return
+    }
 
-        const credentials = await getRithmicCredentials(this.userId)
-        if (!credentials) {
-          throw new Error('Rithmic market data is not connected.')
-        }
+    try {
+      await withLiveDataRithmicLock(credentials, this.userId, async () => {
+        if (this.closed) return
+        await this.stopLive()
         if (this.closed) return
 
         const connect = await resolveChartConnect(credentials)
@@ -188,6 +220,38 @@ export class RithmicMdsBridge {
         message: String(err?.message || err),
       })
     }
+  }
+
+  async #subscribeViaLiveDataHub(sub, credentials) {
+    if (this.closed) return
+
+    const bootstrapCreds = await ensureLiveDataRithmicReady()
+    const hubCredentials = bootstrapCreds || credentials
+    const tickerResult = await startRithmicLiveTicker(hubCredentials, sub)
+    if (!tickerResult.ok) {
+      throw new Error(tickerResult.message || 'Failed to subscribe to live data ticker.')
+    }
+
+    await this.#attachToLiveTickerHub(sub)
+  }
+
+  async #attachToLiveTickerHub(sub) {
+    if (this.closed) return
+    await this.stopLive()
+    if (this.closed) return
+
+    const { chartSymbol, symbol, exchange, resolution } = sub
+    this.chartSymbol = chartSymbol
+    this.symbol = symbol
+    this.exchange = exchange
+    this.resolution = resolution
+    this.liveActive = true
+
+    this.hubDetach = attachRithmicLiveTickerListener((payload) => {
+      safeSend(this.clientWs, payload)
+    })
+
+    safeSend(this.clientWs, { type: 'subscribed', symbol: chartSymbol, resolution })
   }
 
   /** Push cached session high/low/close so late WebSocket clients still get a snapshot. */
@@ -272,6 +336,10 @@ export class RithmicMdsBridge {
 
   async stopLive() {
     this.liveActive = false
+    if (this.hubDetach) {
+      this.hubDetach()
+      this.hubDetach = null
+    }
     this.#detachSession()
     if (this.session) {
       try {

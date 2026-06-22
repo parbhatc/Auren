@@ -2,6 +2,8 @@ import App from './app.js'
 import Database from './config/Database.js'
 import RoleLoader from './config/RoleLoader.js'
 import EconomicNewsScheduler from './services/EconomicNewsScheduler.js'
+import { bootstrapLiveDataOnStartup } from './services/liveData/StartupService.js'
+import { stopRithmicLiveTicker } from './services/liveData/rithmicLiveTickerHub.js'
 import tradeseaTradesWebSocket from './websocket/TradeseaTradesWebSocket.js'
 import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
 import rithmicMdsWebSocket from './websocket/RithmicMdsWebSocket.js'
@@ -94,6 +96,8 @@ class Server {
 
       webSocketManager.initialize(this.server, [])
 
+      void bootstrapLiveDataOnStartup()
+
       // Start server on all interfaces (0.0.0.0) to allow network access
       this.server.listen(this.port, '0.0.0.0', () => {
         console.log(`🚀 Server running on http://localhost:${this.port}`)
@@ -117,6 +121,7 @@ class Server {
       process.on('SIGINT', async () => {
         console.log('\n🛑 Shutting down server...')
         economicNewsScheduler.stop()
+        await stopRithmicLiveTicker()
         webSocketManager.closeAll()
         await Database.close()
         if (this.server) {

@@ -5,6 +5,9 @@ import WebSocketBase from './WebSocketBase.js'
 import TokenService from '../services/TokenService.js'
 
 import { RithmicMdsBridge } from '../services/rithmic/RithmicMdsBridge.js'
+import { logLiveDataConnected, logLiveDataDisconnected } from '../services/liveData/liveDataLog.js'
+
+const LIVE_DATA_PROVIDER = 'Rithmic'
 
 
 
@@ -146,21 +149,14 @@ class RithmicMdsWebSocket extends WebSocketBase {
 
 
 
-    clientWs.on('close', (code, reason) => {
-      console.log('[RithmicMds] client disconnected', {
-        userId,
-        code,
-        reason: String(reason || ''),
-      })
+    clientWs.on('close', () => {
+      logLiveDataDisconnected(`${LIVE_DATA_PROVIDER} WS`)
       void shutdown()
     })
 
-
-
     clientWs.on('error', () => {
-
+      logLiveDataDisconnected(`${LIVE_DATA_PROVIDER} WS`)
       void shutdown()
-
     })
 
 
@@ -175,13 +171,7 @@ class RithmicMdsWebSocket extends WebSocketBase {
 
 
 
-    console.log('[RithmicMds] client connected', {
-
-      userId,
-
-      accountId,
-
-    })
+    logLiveDataConnected(`${LIVE_DATA_PROVIDER} WS`)
 
   }
 

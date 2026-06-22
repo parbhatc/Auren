@@ -1,4 +1,4 @@
-import { connect, init } from 'rithmic-api'
+import { connect, init, HistoryQuery, normalizeBar } from 'rithmic-api'
 import {
   InfraType,
   RequestLogin,
@@ -7,10 +7,8 @@ import {
   ResponseTimeBarReplay,
   ReplayDirection,
   ReplayTimeOrder,
-  resolveHistoryQuery,
-  normalizeBar,
-  splitHistoryForForming,
 } from 'rithmic-api'
+import { splitHistoryForForming } from './rithmicResolution.js'
 
 const WEB_APP = {
   template_version: '2.0',
@@ -69,7 +67,7 @@ export async function replayHistoryBars({
   try {
     await loginPlant(history, credentials, InfraType.HISTORY_PLANT)
 
-    const q = resolveHistoryQuery(queryOpts)
+    const q = HistoryQuery.resolveHistoryQuery(queryOpts)
     const msg = userMsg(symbol, exchange)
 
     const replayRange = async (start_index, finish_index) => {

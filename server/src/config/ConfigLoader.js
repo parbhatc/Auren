@@ -79,6 +79,22 @@ class ConfigLoader {
       resetToken: {
         expiryHours: 1,
       },
+      live_data: {
+        type: 'rithmic',
+        rithmic: {
+          enabled: false,
+          connectOnStartup: true,
+          subscribeOnStartup: true,
+          seedAdminCredentials: true,
+          username: '',
+          password: '',
+          systemName: 'LucidTrading',
+          gatewayName: 'Chicago Area',
+          ticker: 'MNQ',
+          exchange: 'CME',
+          resolution: '1',
+        },
+      },
     }
   }
 

@@ -70,7 +70,7 @@ export default function BaseEmailOTPFirm({
           type="button"
           disabled={sendingOtp}
           onClick={onSendOtp}
-          className={`${primaryBtn} ${sendingOtp ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`${primaryBtn} mt-4 ${sendingOtp ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {sendingOtp ? t('props.tradesea.sendingOtp') : t('props.tradesea.sendOtp')}
         </button>

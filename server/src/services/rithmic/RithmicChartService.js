@@ -1,14 +1,20 @@
 import {
   ChartSession,
-  CandleLayer,
-  isCanonicalResolution,
-  trimCountbackBars,
-  barsToHistoryPayload,
-  parseResolution,
+  HistoryQuery,
+  FormingBarManager,
+  wrapChartSession,
 } from 'rithmic-api'
+import {
+  isCanonicalResolution,
+  mergeBarIntoSeries,
+} from './rithmicResolution.js'
 import { getRithmicCredentials } from './RithmicCredentialsStore.js'
 import { findRithmicSymbol } from './RithmicSymbolsService.js'
 import { resolveChartConnect, withRithmicUserLock } from './rithmicConnect.js'
+import {
+  ensureLiveDataRithmicReady,
+  usesLiveDataRithmicSession,
+} from '../liveData/rithmicLiveDataSession.js'
 import { replayHistoryBars } from './RithmicHistoryReplay.js'
 import { logRithmicHistory } from './rithmicChartDebug.js'
 
@@ -51,12 +57,20 @@ function resolveCountback(query, periodSeconds) {
  * @param {{ symbol: string, exchange: string, resolution?: string|number, from?: number, to?: number, countback?: number, include_forming?: boolean }} query
  */
 export async function fetchRithmicChartHistory(userId, query) {
-  return withRithmicUserLock(userId, async () => {
-    const credentials = await getRithmicCredentials(userId)
-    if (!credentials) {
-      throw new Error('Rithmic market data is not connected.')
-    }
-    const connect = await resolveChartConnect(credentials)
+  const credentials = await getRithmicCredentials(userId)
+  if (!credentials) {
+    throw new Error('Rithmic market data is not connected.')
+  }
+
+  const useLiveData = usesLiveDataRithmicSession(credentials)
+  let connectCredentials = credentials
+  if (useLiveData) {
+    const bootstrapCreds = await ensureLiveDataRithmicReady()
+    if (bootstrapCreds) connectCredentials = bootstrapCreds
+  }
+
+  const run = async () => {
+    const connect = await resolveChartConnect(connectCredentials)
     const symbol = String(query.symbol || 'NQ').trim().toUpperCase()
     const catalog = findRithmicSymbol(symbol) || findRithmicSymbol(`${query.exchange || 'CME'}:${symbol}`)
     const exchange = String(query.exchange || catalog?.exchange || 'CME')
@@ -71,10 +85,11 @@ export async function fetchRithmicChartHistory(userId, query) {
       query.from != null && Number.isFinite(Number(query.from)) ? Number(query.from) : undefined
     const to =
       query.to != null && Number.isFinite(Number(query.to)) ? Number(query.to) : undefined
-    const { periodSeconds } = parseResolution(resolution)
+    const { periodSeconds } = HistoryQuery.parseResolution(resolution)
     const countback = resolveCountback(query, periodSeconds)
 
-    if (!isCanonicalResolution(resolution)) {
+    // History plant replay does not open a ticker ChartSession — safe alongside live_data hub.
+    if (useLiveData || !isCanonicalResolution(resolution)) {
       let bars = await replayHistoryBars({
         connect,
         symbol: chartSymbol,
@@ -87,11 +102,11 @@ export async function fetchRithmicChartHistory(userId, query) {
       })
       bars = filterBarsToRange(bars, from, to)
       if (bars.length > countback) {
-        bars = trimCountbackBars(bars, countback, 'to')
+        bars = HistoryQuery.trimCountbackBars(bars, countback, 'to')
       }
 
       logRithmicHistory(chartLabel, bars)
-      return barsToHistoryPayload(bars, { timeOffset: 0, compat: true })
+      return HistoryQuery.barsToHistoryPayload(bars, { timeOffset: 0, compat: true })
     }
 
     const chart = await ChartSession.open({
@@ -108,35 +123,47 @@ export async function fetchRithmicChartHistory(userId, query) {
       let series
 
       if (!include_forming) {
-        // Scrollback / incremental: load the exact TV window (closed bars only).
-        series = await chart.loadHistory({
+        series = await chart.planets.history.load({
           resolution,
           from,
           to,
           countback,
-          include_forming: false,
         })
       } else {
-        // First load: CandleLayer for correct forming OHLC on the open bucket.
-        const layer = new CandleLayer(chart)
-        await layer.load1m({
-          alsoFor: [resolution],
-          countback,
-          include_forming: true,
+        const nowSec = to ?? Math.floor(Date.now() / 1000)
+        const mgr = new FormingBarManager(wrapChartSession(chart))
+        await mgr.bootstrap({
+          resolutions: [String(resolution)],
+          nowSec,
         })
-        series = layer.getSeries(resolution)
+        series = await chart.planets.history.load({
+          resolution,
+          from,
+          to,
+          countback,
+        })
+        const forming = mgr.getForming(resolution)
+        if (forming) {
+          series = mergeBarIntoSeries(series, forming)
+        }
       }
 
       series = filterBarsToRange(series, from, to)
       if (series.length > countback) {
         const anchor = from != null && to != null && to - from > countback * periodSeconds ? 'spread' : 'to'
-        series = trimCountbackBars(series, countback, anchor)
+        series = HistoryQuery.trimCountbackBars(series, countback, anchor)
       }
 
       logRithmicHistory(chartLabel, series)
-      return barsToHistoryPayload(series, { timeOffset: 0, compat: true })
+      return HistoryQuery.barsToHistoryPayload(series, { timeOffset: 0, compat: true })
     } finally {
       chart.close()
     }
-  })
+  }
+
+  if (useLiveData) {
+    return run()
+  }
+
+  return withRithmicUserLock(userId, run)
 }

@@ -514,7 +514,7 @@ export class RithmicHistoryDatafeed implements IDatafeedChartApi {
   ): void {
     const tvLabel = String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || '')
     const { chartSymbol } = parseSymbol(
-      String(symbolInfo.ticker || symbolInfo.name || symbolInfo.symbol || 'CME:MNQ')
+      String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || 'CME:MNQ')
     )
     const key = this.keyFor(chartSymbol, String(resolution))
 
