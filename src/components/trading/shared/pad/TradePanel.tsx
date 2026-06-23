@@ -12,6 +12,7 @@ import {
 import { DomTab } from './tabs/DomTab'
 import { OrderTab } from './tabs/OrderTab'
 import type { TradePanelProps } from './types'
+import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
 
 export type { TradePanelProps, OrderSide, BracketOptions, OrderSubmitOptions } from './types'
 export type {
@@ -213,6 +214,7 @@ export default function TradePanel(props: TradePanelProps) {
   const product = account ? resolvePracticeProductSymbol(rootSymbol, null) : rootSymbol
   const maxQty = account ? getMaxContractsForSymbol(account.size, product) : 10
   const marketPrice = book?.last ?? markPrice ?? null
+  const tradeOffline = !isTradePanelTradingEnabled(props)
 
   return (
     <div className={`h-full flex flex-col w-full ${fullWidth ? 'max-w-none' : 'max-w-[332px]'}`}>
@@ -224,6 +226,14 @@ export default function TradePanel(props: TradePanelProps) {
         hideQuickTab={mobileSheet}
       />
       <div className="bg-[#0f172a] flex flex-1 min-h-0 flex-col px-2 pt-2 overflow-hidden rounded-b-2xl border border-t-0 border-[#475569]">
+        {tradeOffline && (
+          <div
+            className="shrink-0 mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-center text-[10px] font-medium leading-snug text-amber-300/95"
+            role="status"
+          >
+            Market data offline — trading disabled
+          </div>
+        )}
         {tab === 'ticket' && (
           <OrderTab
             props={props}

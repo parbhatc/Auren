@@ -156,12 +156,14 @@ export interface ContractQuantityControlProps {
   onQuantityInputChange: (value: string) => void
   onQuantityBlur: () => void
   isDark: boolean
+  disabled?: boolean
 }
 
 export interface TradeButtonsProps {
   onBuy: () => void
   onSell: () => void
   isDark: boolean
+  disabled?: boolean
 }
 
 export interface PositionButtonsProps {
@@ -169,6 +171,7 @@ export interface PositionButtonsProps {
   onReverse: () => void
   onFlatten: () => void
   isDark: boolean
+  disabled?: boolean
 }
 
 export interface AccountInfoBarProps {

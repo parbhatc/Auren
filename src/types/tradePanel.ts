@@ -69,6 +69,8 @@ export type TradePanelProps = {
   hideDetach?: boolean
   onDetach?: () => void
   fullWidth?: boolean
+  /** When false, buy/sell and order controls are disabled (MDS offline). */
+  marketDataLive?: boolean
 }
 
 /** @deprecated use TradePanelProps */

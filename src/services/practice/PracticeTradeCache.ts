@@ -688,9 +688,14 @@ export class PracticeTradeCache extends ChartTradeCache {
     const mark = this.getMarkForBracketClose(position.symbol)
     if (mark == null) return false
     const isLong = Number(position.contracts) > 0
+    const entry = Number((position as { entry?: number }).entry)
     const tickSize = this.getDatafeed()?.getTickSize?.(position.symbol) ?? 0.25
     const pad = tickSize / 2
     if (bracket === 'takeProfit') {
+      // Take profit must be on the profit side of entry; do not flatten when placing TP in profit zone.
+      if (Number.isFinite(entry)) {
+        return isLong ? price <= entry + pad : price >= entry - pad
+      }
       return isLong ? price <= mark + pad : price >= mark - pad
     }
     return isLong ? price >= mark - pad : price <= mark + pad

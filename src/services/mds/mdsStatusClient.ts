@@ -13,6 +13,7 @@ export type MdsStatusClient = {
   on(event: 'close', handler: () => void): () => void
   on(event: 'autoReconnect', handler: (enabled: boolean) => void): () => void
   on(event: 'reconnectOnLimit', handler: (enabled: boolean) => void): () => void
+  on(event: 'connectionsLimitBlocked', handler: () => void): () => void
 }
 
 export function asMdsStatusClient(mds: MdsStatusClient): MdsStatusClient {

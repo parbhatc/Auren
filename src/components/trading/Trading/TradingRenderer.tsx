@@ -20,6 +20,7 @@ import { TradeHeader } from './TradeHeader'
 import TradePanel from '../shared/pad/TradePanel'
 import { PracticeTradeHandler } from '../../../services/practice/PracticeTradeHandler'
 import type { TradeseaDatafeed } from '../../../services/tradesea/TradeseaDatafeed'
+import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
 import { resolveTradePanelBidAsk } from '../../../services/tradesea/tradeseaMarketBook'
 import { DetachedTradePanel } from '../shared/mobile/DetachedTradePanel'
 import { t } from '../../../utils/translator'
@@ -52,6 +53,8 @@ import {
  */
 class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private accountDropdownRef = createRef<HTMLDivElement>()
+  private mdsClientRef: TradeseaMdsClient | null = null
+  private mdsConnectionCleanups: (() => void)[] = []
 
   state: TradingRendererState = {
     selectedSymbol: 'MNQ',
@@ -62,6 +65,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     showNews: true,
     showNav: true,
     practiceMobileOrderOpen: false,
+    marketDataLive: true,
   }
 
   private lastBalance: number = 0
@@ -113,6 +117,43 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       }
     }
     return null
+  }
+
+  private getMdsClient(): TradeseaMdsClient | null {
+    const firm = this.getActivePropFirm()
+    if (!firm) return null
+    return firm.chartServices?.mds ?? firm.mdsClient ?? null
+  }
+
+  private bindMdsConnectionState() {
+    const mds = this.getMdsClient()
+    if (mds === this.mdsClientRef) return
+    this.unbindMdsConnectionState()
+    this.mdsClientRef = mds
+    if (!mds) {
+      if (this.state.marketDataLive === false) {
+        this.setState({ marketDataLive: true })
+      }
+      return
+    }
+    const sync = () => {
+      const live = mds.getConnectionState() === 'connected'
+      if (live !== this.state.marketDataLive) {
+        this.setState({ marketDataLive: live })
+      }
+    }
+    sync()
+    this.mdsConnectionCleanups = [
+      mds.on('connection', sync),
+      mds.on('open', sync),
+      mds.on('close', sync),
+    ]
+  }
+
+  private unbindMdsConnectionState() {
+    this.mdsConnectionCleanups.forEach((fn) => fn())
+    this.mdsConnectionCleanups = []
+    this.mdsClientRef = null
   }
 
   /**
@@ -204,6 +245,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     ) {
       this.setState({ selectedAccount: this.props.selectedAccount })
     }
+
+    this.bindMdsConnectionState()
   }
 
   componentDidMount() {
@@ -264,6 +307,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         })
       }
     }
+
+    this.bindMdsConnectionState()
     
     // If accounts are already available, update selectedAccount to match prop
     if (this.props.accounts && this.props.accounts.length > 0 && this.props.selectedAccount) {
@@ -332,6 +377,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   componentWillUnmount() {
+    this.unbindMdsConnectionState()
     dismissMdsConnectionToast()
     document.removeEventListener('mousedown', this.handleClickOutside)
     window.removeEventListener('storage', this.handleStorageChange)
@@ -468,6 +514,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     // Get account info from active market data provider
     const activeFirm = this.getActivePropFirm()
+    const mdsClient = this.getMdsClient()
+    const marketDataLive = !mdsClient || this.state.marketDataLive !== false
+    const tradingBlocked = Boolean(mdsClient) && !marketDataLive
     
     // Prefer accounts from provider sync over props
     // This ensures we get the latest accounts even if props haven't updated yet
@@ -807,6 +856,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   entryPrice?: number
                 }
               ) => {
+                if (tradingBlocked) {
+                  aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                  return
+                }
                 const qty = Number(contractQuantity) || 1
                 const handler = this.getTradeHandler()
                 const payload =
@@ -863,6 +916,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null
                 }
                 const runJoinLimit = (side: 'buy' | 'sell') => {
+                  if (tradingBlocked) {
+                    aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                    return
+                  }
                   const book = resolvePracticeBook()
                   const { bid, ask } = resolveTradePanelBidAsk(book)
                   const price = side === 'buy' ? bid : ask
@@ -883,6 +940,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   accountId: practiceAccountId,
                   mode: 'practice' as const,
                   isDark,
+                  marketDataLive,
                   chartSymbol: chartSymbolLabel,
                   onChartSymbolChange: (sym: string) => {
                     const root = chartSymbolToProductRoot(sym)
@@ -1053,10 +1111,15 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                       onQuantityInputChange={this.handleQuantityInputChange}
                       onQuantityBlur={this.handleQuantityBlur}
                       isDark={isDark}
+                      disabled={tradingBlocked}
                     />
 
                     <TradeButtons
                       onBuy={() => {
+                          if (tradingBlocked) {
+                            aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                            return
+                          }
                           const qty = Number(contractQuantity) || 1
                           const handler = this.getTradeHandler()
                           if (handler) {
@@ -1066,6 +1129,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           }
                         }}
                       onSell={() => {
+                          if (tradingBlocked) {
+                            aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                            return
+                          }
                           const qty = Number(contractQuantity) || 1
                           const handler = this.getTradeHandler()
                           if (handler) {
@@ -1075,10 +1142,15 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           }
                         }}
                       isDark={isDark}
+                      disabled={tradingBlocked}
                     />
 
                     <PositionButtons
                       onClose={() => {
+                          if (tradingBlocked) {
+                            aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                            return
+                          }
                           const handler = this.getTradeHandler()
                           if (handler) {
                             handler.logButtonPress('Close Position')
@@ -1087,6 +1159,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           }
                         }}
                       onReverse={() => {
+                          if (tradingBlocked) {
+                            aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                            return
+                          }
                           const handler = this.getTradeHandler()
                           if (handler) {
                             handler.logButtonPress('Reverse Position')
@@ -1095,6 +1171,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           }
                         }}
                       onFlatten={() => {
+                          if (tradingBlocked) {
+                            aurenToast.warning('Market data offline', 'Reconnect the stream before trading')
+                            return
+                          }
                           const handler = this.getTradeHandler()
                           if (handler) {
                             handler.logButtonPress('Flatten All Position')
@@ -1103,6 +1183,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                           }
                         }}
                       isDark={isDark}
+                      disabled={tradingBlocked}
                     />
                   </div>
 

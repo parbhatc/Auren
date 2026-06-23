@@ -127,14 +127,12 @@ class ChartPositionLine {
 
   private async createPositionLine(){
     let entryPrice = this.props.entryPrice;
-    let price = this.props.price;
-    let size = this.props.contracts;
     let line = await this.createOrderLine();
     if(!line){
       console.error('[ChartPositionLine] createPositionLine: Failed to create order line');
       return;
     }
-    this.updatePositionLine(size);
+    this.updatePositionLine(this.props.contracts);
 
     line.onModify(() => {})
     line.onCancel(() => {
@@ -153,66 +151,59 @@ class ChartPositionLine {
         line.target = {price: target_price, type: null}
         this.props.onMoving?.(target_price);
 
+        const size = this.getContracts();
+        const entry = this.getEntryPrice();
         let symbol = this.getSymbol();
         let datafeed = this.props.datafeed;
         let lastBar = datafeed.getLastBarForChart(this.props.chart);
-        let lastClose = lastBar?.close;
         let tickSize = datafeed.getTickSize(symbol);
         let tickValue = datafeed.getTickValue(symbol);
-        let pnl = this.calcPnL(entryPrice, target_price, size, tickSize, tickValue);
+        let pnl = this.calcPnL(entry, target_price, size, tickSize, tickValue);
         let text = this.formatDollar(pnl, "-")
+        const eps = (tickSize || 0.25) / 1000
 
         if(size > 0){
-          //long position
-          if(target_price <= price){
-            //stop loss
+          // Long: below/equal entry = stop loss, above entry = take profit
+          if(target_price <= entry + eps){
             line.setText('Set Stop Market ' + text);
             this.setLineColor(line, false);
             line.target.type = 'stop_loss';
           }else{
-            if(target_price <= lastClose){
-              //stop loss
-              line.setText('Set Stop Market ' + text);
-              this.setLineColor(line, false);
-              line.target.type = 'stop_loss';
-            }else{
-              //limit order
-              line.setText('Set Limit Order ' + text);
-              this.setLineColor(line);
-              line.target.type = 'limit_order';
-            }
-          }
-        }else{
-          //short position
-          if(target_price >= price){
-            //stop loss
-            line.setText('Set Stop Market ' + text);
-            this.setLineColor(line, false);
-            line.target.type = 'stop_loss';
-          }else{
-            if (target_price >= lastClose){
-              //stop profit
-              line.setText('Set Stop Profit ' + text);
-              line.target.type = 'stop_profit';
-            }else{
-              //take profit
-              line.setText('Set Take Profit ' + text);
-              line.target.type = 'take_profit';
-            }
+            line.setText('Set Take Profit ' + text);
             this.setLineColor(line);
+            line.target.type = 'take_profit';
+          }
+        }else if(size < 0){
+          // Short: above/equal entry = stop loss, below entry = take profit
+          if(target_price >= entry - eps){
+            line.setText('Set Stop Market ' + text);
+            this.setLineColor(line, false);
+            line.target.type = 'stop_loss';
+          }else{
+            line.setText('Set Take Profit ' + text);
+            this.setLineColor(line);
+            line.target.type = 'take_profit';
           }
         }
     })
     line.setPrice(entryPrice);
-    line.setQuantity(size.toString());
+    line.setQuantity(this.getContracts().toString());
     line.setLineStyle(0);
     line.setLineLength(this.RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
     this.applyPillOffset(line, this.POSITION_PILL_OFFSET);
     this.applyPillTextStyle(line);
-    const qtyColors = chartQtyColors(size > 0 ? 'buy' : 'sell');
+    const qtyColors = chartQtyColors(this.getContracts() > 0 ? 'buy' : 'sell');
     line.setQuantityBackgroundColor(qtyColors.fill);
     line.setCancelTooltip('Close position');
+  }
+
+  private bracketExitQuantity(size: number): string {
+    return (size * -1).toString()
+  }
+
+  private refreshBracketQuantity(line: any, size: number): void {
+    line.setQuantity(this.bracketExitQuantity(size))
   }
 
   updatePositionLine(size: number): void {
@@ -300,18 +291,22 @@ class ChartPositionLine {
         this.props.onCancel?.();
     })
     line.onMove(() => {
+      const liveSize = this.getContracts();
+      this.refreshBracketQuantity(line, liveSize);
       this.props.onUpdate?.(line.getPrice());
     })
     line.onMoving(() => {
+      const liveSize = this.getContracts();
       let target_price = line.getPrice();
-      let pnl = this.calcPnL(entryPrice, target_price, size, tickSize, tickValue);
+      let pnl = this.calcPnL(entryPrice, target_price, liveSize, tickSize, tickValue);
       let text = this.formatDollar(pnl, "-")
       this.setTvLineText(line, text);
+      this.refreshBracketQuantity(line, liveSize);
       this.props.onMoving?.(target_price);
     })
     line.setPrice(price);
     this.setTvLineText(line, this.formatDollar(pnl));
-    line.setQuantity((size * -1).toString());
+    this.refreshBracketQuantity(line, size);
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
@@ -372,7 +367,7 @@ class ChartPositionLine {
     let text = this.formatDollar(pnl)
     this.setTvLineText(this.line, text);
     try {
-      this.line.setQuantity((size * -1).toString());
+      this.refreshBracketQuantity(this.line, size);
       this.line.setPrice(price);
       const qtyColors = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
       this.line.setQuantityBackgroundColor(qtyColors.fill);
@@ -436,18 +431,22 @@ class ChartPositionLine {
         this.props.onCancel?.();
     })
     line.onMove(() => {
+      const liveSize = this.getContracts();
+      this.refreshBracketQuantity(line, liveSize);
       this.props.onUpdate?.(line.getPrice());
     })
     line.onMoving(() => {
+      const liveSize = this.getContracts();
       let target_price = line.getPrice();
-      let pnl = this.calcPnL(entryPrice, target_price, size, tickSize, tickValue);
+      let pnl = this.calcPnL(entryPrice, target_price, liveSize, tickSize, tickValue);
       let text = this.formatDollar(pnl)
       this.setTvLineText(line, text);
+      this.refreshBracketQuantity(line, liveSize);
       this.props.onMoving?.(target_price);
     })
     line.setPrice(price);
     this.setTvLineText(line, this.formatDollar(pnl));
-    line.setQuantity((size * -1).toString());
+    this.refreshBracketQuantity(line, size);
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
@@ -507,7 +506,7 @@ class ChartPositionLine {
     let text = this.formatDollar(pnl)
     this.setTvLineText(this.line, text);
     try {
-      this.line.setQuantity((size * -1).toString());
+      this.refreshBracketQuantity(this.line, size);
       this.line.setPrice(price);
     } catch (err) {
       debugTradeseaSl('chart:line-update-error', {

@@ -25,6 +25,7 @@ import type {
   OrderSubmitOptions,
 } from '../types'
 import { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../types'
+import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
 
 const ORDER_TYPES: OrderType[] = ['market', 'limit', 'stop']
 export function OrderTab({
@@ -42,6 +43,7 @@ export function OrderTab({
   tickSize: number
   symbolLabel?: string
 }) {
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const [orderType, setOrderType] = useState<OrderType>('market')
   const [selectedSide, setSelectedSide] = useState<OrderSide>('buy')
   const [stopLossOn, setStopLossOn] = useState(false)
@@ -302,6 +304,7 @@ export function OrderTab({
   }
 
   const handleConfirm = () => {
+    if (tradeDisabled) return
     const entry = parseOrderEntry()
     if (entry == null) return
     const brackets: BracketOptions = {
@@ -364,6 +367,10 @@ export function OrderTab({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <fieldset
+        disabled={tradeDisabled}
+        className="flex flex-col flex-1 min-h-0 overflow-hidden border-0 m-0 p-0 min-w-0"
+      >
       <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto py-1 pb-36 scrollbar-hide">
         {(spread != null || mid != null) && (
           <div className="flex items-center justify-between rounded-xl border border-[#334155]/80 bg-[#020617]/60 px-3 py-2 text-[10px]">
@@ -684,7 +691,7 @@ export function OrderTab({
             side={selectedSide}
             variant="confirm"
             tabIndex={16}
-            disabled={parseOrderEntry() == null}
+            disabled={parseOrderEntry() == null || tradeDisabled}
             onClick={handleConfirm}
             className="disabled:opacity-50"
           >
@@ -692,6 +699,7 @@ export function OrderTab({
           </TradeSideButton>
         </div>
       </div>
+      </fieldset>
     </div>
   )
 }

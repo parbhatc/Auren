@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import type { TradePanelProps } from '../pad/TradePanel'
+import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { QuickTradeCard } from './QuickTradeCard'
 import { FloatingTradePadIcon } from './MobileTradeIcons'
 import {
@@ -19,6 +20,7 @@ function CompactQuickTrade({
   isDark: boolean
   onExpand: () => void
 }) {
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const shell = isDark
     ? 'border-[#475569] bg-[#0f172a]'
     : 'border-slate-200 bg-white'
@@ -54,8 +56,9 @@ function CompactQuickTrade({
         >
           <button
             type="button"
+            disabled={tradeDisabled}
             onClick={() => props.onQuantityChange(-1)}
-            className={`px-2 flex items-center justify-center ${btn}`}
+            className={`px-2 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
             aria-label="Decrease quantity"
           >
             <Minus className="w-3.5 h-3.5" aria-hidden />
@@ -64,6 +67,7 @@ function CompactQuickTrade({
             type="text"
             inputMode="numeric"
             value={props.quantity}
+            disabled={tradeDisabled}
             onChange={(e) => props.onQuantityInputChange(e.target.value)}
             onBlur={props.onQuantityBlur}
             className={`no-spinner w-8 bg-transparent text-center text-sm font-bold font-mono tabular-nums outline-none border-x ${divider} ${input}`}
@@ -71,8 +75,9 @@ function CompactQuickTrade({
           />
           <button
             type="button"
+            disabled={tradeDisabled}
             onClick={() => props.onQuantityChange(1)}
-            className={`px-2 flex items-center justify-center ${btn}`}
+            className={`px-2 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
             aria-label="Increase quantity"
           >
             <Plus className="w-3.5 h-3.5" aria-hidden />
@@ -80,15 +85,17 @@ function CompactQuickTrade({
         </div>
         <button
           type="button"
+          disabled={tradeDisabled}
           onClick={props.onBuy}
-          className="flex-1 min-w-0 h-9 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-xs font-bold text-white active:scale-[0.98]"
+          className={`flex-1 min-w-0 h-9 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-xs font-bold text-white active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Buy
         </button>
         <button
           type="button"
+          disabled={tradeDisabled}
           onClick={props.onSell}
-          className="flex-1 min-w-0 h-9 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-xs font-bold text-white active:scale-[0.98]"
+          className={`flex-1 min-w-0 h-9 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-xs font-bold text-white active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Sell
         </button>

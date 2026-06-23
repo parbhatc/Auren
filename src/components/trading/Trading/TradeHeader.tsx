@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { LogOut, Menu } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import Logo from '../../common/Logo'
@@ -9,6 +10,7 @@ import AccountStatusBar from '../shared/header/AccountStatusBar'
 import LockoutCard from '../shared/header/LockoutCard'
 import HeaderTradingSettings from '../shared/header/HeaderTradingSettings'
 import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
+import { MdsConnectionLimitModal } from '../MdsConnectionLimitModal'
 
 export function TradeHeader({
   isDark,
@@ -53,6 +55,33 @@ export function TradeHeader({
   practiceAccountStatus?: 'blown' | 'passed'
 }) {
   const accountId = accountIdProp ?? practiceAccountId
+  const [connectionLimitOpen, setConnectionLimitOpen] = useState(false)
+
+  useEffect(() => {
+    if (!mdsClient) {
+      setConnectionLimitOpen(false)
+      return
+    }
+    const offBlocked = mdsClient.on('connectionsLimitBlocked', () => setConnectionLimitOpen(true))
+    const offOpen = mdsClient.on('open', () => setConnectionLimitOpen(false))
+    const offConnection = mdsClient.on('connection', (state) => {
+      if (state === 'connected') setConnectionLimitOpen(false)
+    })
+    return () => {
+      offBlocked()
+      offOpen()
+      offConnection()
+    }
+  }, [mdsClient])
+
+  const handleConnectionLimitRefresh = () => {
+    setConnectionLimitOpen(false)
+    if (onReconnectMds) {
+      onReconnectMds()
+      return
+    }
+    mdsClient?.reconnect()
+  }
 
   const shell = isDark
     ? 'border-slate-800 bg-slate-950/95 text-slate-200'
@@ -145,6 +174,12 @@ export function TradeHeader({
       {accountId && !practiceAccountStatus ? (
         <LockoutCard practiceAccountId={accountId} isDark={isDark} />
       ) : null}
+
+      <MdsConnectionLimitModal
+        isOpen={connectionLimitOpen}
+        isDark={isDark}
+        onRefresh={handleConnectionLimitRefresh}
+      />
     </div>
   )
 }

@@ -12,6 +12,7 @@ import {
 import { TradeSideButton } from '../../../common/TradeSideButton'
 import type { TradePanelSettings } from '../../../../constants/tradePanelSettings'
 import type { TradePanelProps } from './types'
+import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
 
 const focusRing =
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]'
@@ -45,6 +46,7 @@ export function DomActionButtons({
   props: TradePanelProps
   ui: TradePanelSettings
 }) {
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const showMarket = !ui.hideBuySell
   const showJoin = !ui.hideJoinBidAsk
   const showPosition = !ui.hideClosePosition || !ui.hideReverse
@@ -56,11 +58,11 @@ export function DomActionButtons({
     <div className="space-y-2" aria-label="DOM trade actions">
       {showMarket ? (
         <div className="grid grid-cols-2 gap-2">
-          <TradeSideButton side="buy" variant="market" onClick={props.onBuy} title="Market buy">
+          <TradeSideButton side="buy" variant="market" onClick={props.onBuy} disabled={tradeDisabled} title="Market buy">
             <TrendingUp className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
             Buy
           </TradeSideButton>
-          <TradeSideButton side="sell" variant="market" onClick={props.onSell} title="Market sell">
+          <TradeSideButton side="sell" variant="market" onClick={props.onSell} disabled={tradeDisabled} title="Market sell">
             <TrendingDown className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
             Sell
           </TradeSideButton>
@@ -69,11 +71,11 @@ export function DomActionButtons({
 
       {showJoin ? (
         <div className="grid grid-cols-2 gap-2">
-          <TradeSideButton side="buy" variant="join" onClick={props.onJoinBid} title="Join best bid">
+          <TradeSideButton side="buy" variant="join" onClick={props.onJoinBid} disabled={tradeDisabled} title="Join best bid">
             <ArrowDownToLine className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
             Join bid
           </TradeSideButton>
-          <TradeSideButton side="sell" variant="join" onClick={props.onJoinAsk} title="Join best ask">
+          <TradeSideButton side="sell" variant="join" onClick={props.onJoinAsk} disabled={tradeDisabled} title="Join best ask">
             <ArrowUpFromLine className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
             Join ask
           </TradeSideButton>
@@ -87,6 +89,7 @@ export function DomActionButtons({
           {!ui.hideClosePosition ? (
             <ActionBtn
               onClick={props.onClose}
+              disabled={tradeDisabled}
               title="Close position"
               className="border border-slate-600/80 bg-slate-800/70 text-slate-200 hover:border-slate-500 hover:bg-slate-700/80"
             >
@@ -97,6 +100,7 @@ export function DomActionButtons({
           {!ui.hideReverse ? (
             <ActionBtn
               onClick={props.onReverse}
+              disabled={tradeDisabled}
               title="Reverse position"
               className="border border-violet-500/35 bg-violet-500/10 text-violet-200 hover:bg-violet-500/16"
             >
@@ -122,6 +126,7 @@ export function DomActionButtons({
           {!ui.hideFlattenAll ? (
             <ActionBtn
               onClick={props.onFlatten}
+              disabled={tradeDisabled}
               title="Flatten all positions"
               className="border border-amber-500/40 bg-amber-500/12 text-amber-200 hover:bg-amber-500/20"
             >

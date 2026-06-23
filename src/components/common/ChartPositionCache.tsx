@@ -25,6 +25,28 @@ class ChartPositionCache {
     this.chart = this.tradeCache.getChart()
   }
 
+  /** Current size/entry from trade cache (position may have been scaled since line creation). */
+  private resolveLivePosition(fallbackEntry: number, fallbackContracts: number): {
+    entry: number
+    contracts: number
+  } {
+    const position = this.tradeCache.getPosition(this.symbol)
+    if (position && Number(position.contracts)) {
+      return {
+        entry: Number(position.entry) || fallbackEntry,
+        contracts: Number(position.contracts),
+      }
+    }
+    const positionLine = this.get('position')
+    if (positionLine) {
+      return {
+        entry: positionLine.getEntryPrice() || fallbackEntry,
+        contracts: positionLine.getContracts() || fallbackContracts,
+      }
+    }
+    return { entry: fallbackEntry, contracts: fallbackContracts }
+  }
+
   createPositionLine(entryPrice: number, price: number, contracts: number, create_stop_loss_and_take_profit_lines: boolean = true) {
     let lineType: LineType = 'position'
     if(this.updatePositionLine(entryPrice, price, contracts)){
@@ -41,10 +63,30 @@ class ChartPositionCache {
       contracts,
       lineType,
       onUpdate: (updatePrice: number, type: 'stop_loss' | 'take_profit' | 'limit_order' | 'stop_profit' | null | undefined) => {
-        if(type === 'stop_loss'){
-          this.updateStopLossLine(entryPrice, updatePrice, contracts, true, "onUpdate", create_stop_loss_and_take_profit_lines)
-        }else{
-          this.updateTakeProfitLine(entryPrice, updatePrice, contracts, true, "onUpdate", create_stop_loss_and_take_profit_lines)
+        const live = this.resolveLivePosition(entryPrice, contracts)
+        if (type === 'stop_loss') {
+          this.updateStopLossLine(
+            live.entry,
+            updatePrice,
+            live.contracts,
+            true,
+            'onUpdate',
+            create_stop_loss_and_take_profit_lines
+          )
+        } else if (
+          type === 'take_profit' ||
+          type === 'stop_profit' ||
+          type === 'limit_order'
+        ) {
+          // Long TP above market is tagged limit_order while dragging the position line.
+          this.updateTakeProfitLine(
+            live.entry,
+            updatePrice,
+            live.contracts,
+            true,
+            'onUpdate',
+            create_stop_loss_and_take_profit_lines
+          )
         }
       },
       onCancel: () => {

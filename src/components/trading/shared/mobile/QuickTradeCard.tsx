@@ -9,6 +9,7 @@ import {
   type TradePanelSettings,
 } from '../../../../constants/tradePanelSettings'
 import type { TradePanelProps } from '../pad/TradePanel'
+import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 
 const QTY_CHIP_LIMIT = 6
 
@@ -27,6 +28,7 @@ export function QuickTradeCard({
   headerActions?: ReactNode
 }) {
   const [ui, setUi] = useState<TradePanelSettings>(() => getTradePanelSettings())
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const qty = Number(props.quantity) || 1
   const presets = useMemo(
     () =>
@@ -58,12 +60,14 @@ export function QuickTradeCard({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
               Quick trade
             </p>
-            <p className="text-[10px] text-[#7d8590]">Tap size, then side</p>
+            <p className="text-[10px] text-[#7d8590]">
+              {tradeDisabled ? 'Market data offline' : 'Tap size, then side'}
+            </p>
           </div>
           {headerActions ? (
             <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
           ) : null}
-          <QtyStepper {...props} variant="dark" />
+          <QtyStepper {...props} variant="dark" disabled={tradeDisabled} />
         </header>
 
         {presets.length > 0 && (
@@ -73,8 +77,9 @@ export function QuickTradeCard({
                 <button
                   key={p}
                   type="button"
+                  disabled={tradeDisabled}
                   onClick={() => props.onQuantityUpdate(p)}
-                  className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${
+                  className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${TRADE_OFFLINE_DISABLED_CLASS} ${
                     qty === p
                       ? 'bg-[#8b5cf6] text-white shadow-sm'
                       : 'text-[#94a3b8] hover:bg-[#1e293b] hover:text-[#e6edf3]'
@@ -92,15 +97,17 @@ export function QuickTradeCard({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
+                disabled={tradeDisabled}
                 onClick={props.onBuy}
-                className="h-11 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#2ea043]"
+                className={`h-11 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#2ea043] ${TRADE_OFFLINE_DISABLED_CLASS}`}
               >
                 Buy
               </button>
               <button
                 type="button"
+                disabled={tradeDisabled}
                 onClick={props.onSell}
-                className="h-11 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#f03e3e]"
+                className={`h-11 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#f03e3e] ${TRADE_OFFLINE_DISABLED_CLASS}`}
               >
                 Sell
               </button>
@@ -118,13 +125,13 @@ export function QuickTradeCard({
               }`}
             >
               {!ui.hideClosePosition && (
-                <SecondaryAction label="Close" onClick={props.onClose} />
+                <SecondaryAction label="Close" onClick={props.onClose} disabled={tradeDisabled} />
               )}
               {!ui.hideReverse && (
-                <SecondaryAction label="Reverse" onClick={props.onReverse} />
+                <SecondaryAction label="Reverse" onClick={props.onReverse} disabled={tradeDisabled} />
               )}
               {!ui.hideFlattenAll && (
-                <SecondaryAction label="Flatten" onClick={props.onFlatten} />
+                <SecondaryAction label="Flatten" onClick={props.onFlatten} disabled={tradeDisabled} />
               )}
             </div>
           )}
@@ -143,12 +150,14 @@ export function QuickTradeCard({
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             Quick trade
           </p>
-          <p className="text-[10px] text-slate-400">Tap size, then side</p>
+          <p className="text-[10px] text-slate-400">
+            {tradeDisabled ? 'Market data offline' : 'Tap size, then side'}
+          </p>
         </div>
         {headerActions ? (
           <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
         ) : null}
-        <QtyStepper {...props} variant="light" />
+        <QtyStepper {...props} variant="light" disabled={tradeDisabled} />
       </header>
 
       {presets.length > 0 && (
@@ -158,8 +167,9 @@ export function QuickTradeCard({
               <button
                 key={p}
                 type="button"
+                disabled={tradeDisabled}
                 onClick={() => props.onQuantityUpdate(p)}
-                className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${
+                className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${TRADE_OFFLINE_DISABLED_CLASS} ${
                   qty === p
                     ? 'bg-violet-600 text-white shadow-sm'
                     : 'text-slate-600 hover:bg-white hover:text-slate-900'
@@ -177,15 +187,17 @@ export function QuickTradeCard({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onBuy}
-              className="h-11 rounded-xl bg-emerald-600 text-sm font-bold text-white shadow-md shadow-emerald-900/20 active:scale-[0.98] transition-transform hover:bg-emerald-500"
+              className={`h-11 rounded-xl bg-emerald-600 text-sm font-bold text-white shadow-md shadow-emerald-900/20 active:scale-[0.98] transition-transform hover:bg-emerald-500 ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               Buy
             </button>
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onSell}
-              className="h-11 rounded-xl bg-red-600 text-sm font-bold text-white shadow-md shadow-red-900/20 active:scale-[0.98] transition-transform hover:bg-red-500"
+              className={`h-11 rounded-xl bg-red-600 text-sm font-bold text-white shadow-md shadow-red-900/20 active:scale-[0.98] transition-transform hover:bg-red-500 ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               Sell
             </button>
@@ -203,11 +215,13 @@ export function QuickTradeCard({
             }`}
           >
             {!ui.hideClosePosition && (
-              <SecondaryAction label="Close" onClick={props.onClose} light />
+              <SecondaryAction label="Close" onClick={props.onClose} light disabled={tradeDisabled} />
             )}
-            {!ui.hideReverse && <SecondaryAction label="Reverse" onClick={props.onReverse} light />}
+            {!ui.hideReverse && (
+              <SecondaryAction label="Reverse" onClick={props.onReverse} light disabled={tradeDisabled} />
+            )}
             {!ui.hideFlattenAll && (
-              <SecondaryAction label="Flatten" onClick={props.onFlatten} light />
+              <SecondaryAction label="Flatten" onClick={props.onFlatten} light disabled={tradeDisabled} />
             )}
           </div>
         )}
@@ -222,10 +236,11 @@ function QtyStepper({
   onQuantityInputChange,
   onQuantityBlur,
   variant,
+  disabled,
 }: Pick<
   TradePanelProps,
   'quantity' | 'onQuantityChange' | 'onQuantityInputChange' | 'onQuantityBlur'
-> & { variant: 'dark' | 'light' }) {
+> & { variant: 'dark' | 'light'; disabled?: boolean }) {
   const shell =
     variant === 'dark'
       ? 'border-[#475569] bg-[#020617]'
@@ -241,8 +256,9 @@ function QtyStepper({
     <div className={`flex items-stretch rounded-xl border overflow-hidden ${shell}`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onQuantityChange(-1)}
-        className={`px-2.5 flex items-center justify-center ${btn}`}
+        className={`px-2.5 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         aria-label="Decrease quantity"
       >
         <Minus className="w-3.5 h-3.5" aria-hidden />
@@ -251,6 +267,7 @@ function QtyStepper({
         type="text"
         inputMode="numeric"
         value={quantity}
+        disabled={disabled}
         onChange={(e) => onQuantityInputChange(e.target.value)}
         onBlur={onQuantityBlur}
         className={`no-spinner w-9 bg-transparent text-center text-sm font-bold font-mono tabular-nums outline-none border-x ${divider} ${input}`}
@@ -258,8 +275,9 @@ function QtyStepper({
       />
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onQuantityChange(1)}
-        className={`px-2.5 flex items-center justify-center ${btn}`}
+        className={`px-2.5 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         aria-label="Increase quantity"
       >
         <Plus className="w-3.5 h-3.5" aria-hidden />
@@ -272,16 +290,19 @@ function SecondaryAction({
   label,
   onClick,
   light = false,
+  disabled = false,
 }: {
   label: string
   onClick: () => void
   light?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`h-9 rounded-xl text-[11px] font-semibold transition active:scale-[0.98] ${
+      className={`h-9 rounded-xl text-[11px] font-semibold transition active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS} ${
         light
           ? 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
           : 'border border-[#475569] bg-[#1e293b]/80 text-[#adbac7] hover:bg-[#334155] hover:text-[#e6edf3]'

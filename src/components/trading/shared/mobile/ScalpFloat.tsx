@@ -5,6 +5,7 @@ import {
   type TradeseaMarketBook,
 } from '../../../../services/tradesea/tradeseaMarketBook'
 import type { TradePanelProps } from '../pad/TradePanel'
+import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { getTradePanelSettings } from '../../../../constants/tradePanelSettings'
 import { PRACTICE_CONTRACT_SYMBOL_PRESETS } from '../../../../constants/practice'
 
@@ -27,6 +28,7 @@ export function ScalpFloat({
   onDragStart?: (clientX: number, clientY: number) => void
   dockTitle?: string
 }) {
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const [bookTick, setBookTick] = useState(0)
   const [panelUi, setPanelUi] = useState(() => getTradePanelSettings())
   useEffect(() => {
@@ -99,8 +101,9 @@ export function ScalpFloat({
           {!panelUi.hideBuySell && (
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onBuy}
-              className="h-9 rounded-2xl bg-[#238636] hover:bg-[#2ea043] text-sm font-semibold text-white"
+              className={`h-9 rounded-2xl bg-[#238636] hover:bg-[#2ea043] text-sm font-semibold text-white ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               Buy
             </button>
@@ -108,8 +111,9 @@ export function ScalpFloat({
           <div className="flex h-9 items-center justify-center gap-1 rounded-2xl border border-[#8b5cf6]/50 bg-[#020617] px-1">
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={() => props.onQuantityChange(-1)}
-              className="p-1 text-[#7d8590] hover:text-[#e6edf3]"
+              className={`p-1 text-[#7d8590] hover:text-[#e6edf3] ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
@@ -117,6 +121,7 @@ export function ScalpFloat({
               type="text"
               inputMode="numeric"
               value={props.quantity}
+              disabled={tradeDisabled}
               onChange={(e) => props.onQuantityInputChange(e.target.value)}
               onBlur={props.onQuantityBlur}
               className="no-spinner w-8 bg-transparent text-center text-sm font-semibold tabular-nums text-[#e6edf3] outline-none"
@@ -124,8 +129,9 @@ export function ScalpFloat({
             <span className="text-xs text-[#7d8590]">lots</span>
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={() => props.onQuantityChange(1)}
-              className="p-1 text-[#7d8590] hover:text-[#e6edf3]"
+              className={`p-1 text-[#7d8590] hover:text-[#e6edf3] ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -133,8 +139,9 @@ export function ScalpFloat({
           {!panelUi.hideBuySell && (
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onSell}
-              className="h-9 rounded-2xl bg-[#da3633] hover:bg-[#f85149] text-sm font-semibold text-white"
+              className={`h-9 rounded-2xl bg-[#da3633] hover:bg-[#f85149] text-sm font-semibold text-white ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               Sell
             </button>
@@ -145,8 +152,9 @@ export function ScalpFloat({
           <div className="grid grid-cols-2 gap-1">
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onJoinBid ?? props.onBuy}
-              className="flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128]"
+              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128] ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <span className="text-sm font-semibold text-[#adbac7]">Join Bid</span>
               <span className="text-sm font-semibold tabular-nums text-[#3fb950]">
@@ -155,8 +163,9 @@ export function ScalpFloat({
             </button>
             <button
               type="button"
+              disabled={tradeDisabled}
               onClick={props.onJoinAsk ?? props.onSell}
-              className="flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128]"
+              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128] ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <span className="text-sm font-semibold text-[#adbac7]">Join Ask</span>
               <span className="text-sm font-semibold tabular-nums text-[#f85149]">

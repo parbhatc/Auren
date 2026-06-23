@@ -135,12 +135,14 @@ export function buildDomLadder(
     minP = Math.min(minP, k)
     maxP = Math.max(maxP, k)
   }
-  if (book) {
-    for (const k of book.volumeByPrice.keys()) {
-      const tk = tickKey(k, tickSize)
-      minP = Math.min(minP, tk)
-      maxP = Math.max(maxP, tk)
-    }
+
+  // Session volume (f:7) can span far from LTP; never let it widen the ladder past the
+  // row cap or the current-price row falls off the bottom (Tradesea keeps LTP in view).
+  const maxSpan = (DOM_MAX_ROWS - 1) * tickSize
+  if (maxP - minP > maxSpan) {
+    const half = maxSpan / 2
+    minP = anchor - half
+    maxP = anchor + half
   }
 
   const rows: LadderRow[] = []

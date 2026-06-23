@@ -51,6 +51,7 @@ type MdsEventMap = {
   connection: MdsConnectionState
   autoReconnect: boolean
   reconnectOnLimit: boolean
+  connectionsLimitBlocked: void
   open: void
   close: { code: number; reason: string }
   error: Error
@@ -324,7 +325,15 @@ export class TradeseaMdsClient {
     if (this.autoReconnectEnabled === enabled) return
     this.autoReconnectEnabled = enabled
     writeMdsAutoReconnect(enabled)
-    if (!enabled) this.clearReconnectTimer()
+    if (!enabled) {
+      this.clearReconnectTimer()
+      this.clearLimitReconnectTimer()
+      if (this.reconnectOnLimitEnabled) {
+        this.reconnectOnLimitEnabled = false
+        writeMdsReconnectOnLimit(false)
+        this.emit('reconnectOnLimit', false)
+      }
+    }
     this.emit('autoReconnect', enabled)
     if (
       enabled &&
@@ -352,6 +361,7 @@ export class TradeseaMdsClient {
       return
     }
     if (
+      this.autoReconnectEnabled &&
       !this.isConnectedOrConnecting() &&
       this.lastAccountId &&
       this.lastConnectionGroupId &&
@@ -463,7 +473,9 @@ export class TradeseaMdsClient {
     return (
       Boolean(this.lastAccountId && this.lastConnectionGroupId) &&
       !this.suspended &&
-      !this.limitReconnectStopped
+      !this.limitReconnectStopped &&
+      this.autoReconnectEnabled &&
+      this.reconnectOnLimitEnabled
     )
   }
 
@@ -511,6 +523,8 @@ export class TradeseaMdsClient {
       this.logWs('Connection limit — reconnect skipped', {
         hasSession: Boolean(this.lastAccountId && this.lastConnectionGroupId),
         suspended: this.suspended,
+        autoReconnect: this.autoReconnectEnabled,
+        reconnectOnLimit: this.reconnectOnLimitEnabled,
       })
       return
     }
@@ -751,15 +765,24 @@ export class TradeseaMdsClient {
         })
       }
 
-      // Server connection-limit: always retry (ignore stale manualDisconnect from prior disconnect()).
       if (limitExceeded && !this.suspended) {
+        this.syncPrefsFromStorage()
+        if (!this.autoReconnectEnabled || !this.reconnectOnLimitEnabled) {
+          this.logWs('Connection limit — reconnect disabled by prefs', {
+            autoReconnect: this.autoReconnectEnabled,
+            reconnectOnLimit: this.reconnectOnLimitEnabled,
+          })
+          dismissMdsConnectionToast()
+          this.emit('connectionsLimitBlocked', undefined as MdsEventMap['connectionsLimitBlocked'])
+          return
+        }
+        showMdsConnectionToast('limit')
         if (this.limitReconnectStopped || this.limitReconnectBudgetExceeded()) {
           this.cancelLimitReconnectLoop()
           return
         }
-        showMdsConnectionToast('limit')
         console.warn(
-          '[Tradesea MDS] Connection limit exceeded — auto-reconnecting. Close other Tradesea/Auren tabs on this account.'
+          '[Tradesea MDS] Connection limit exceeded — retrying (Connect on limit). Close other Tradesea/Auren tabs on this account.'
         )
         this.scheduleLimitReconnect()
         return

@@ -4,7 +4,15 @@ import { ContractQuantityControlProps } from '../../types/common'
 
 class ContractQuantityControl extends Component<ContractQuantityControlProps> {
   render() {
-    const { quantity, onQuantityChange, onQuantityUpdate, onQuantityInputChange, onQuantityBlur, isDark } = this.props
+    const {
+      quantity,
+      onQuantityChange,
+      onQuantityUpdate,
+      onQuantityInputChange,
+      onQuantityBlur,
+      isDark,
+      disabled,
+    } = this.props
 
     return (
       <div>
@@ -16,8 +24,9 @@ class ContractQuantityControl extends Component<ContractQuantityControlProps> {
           {[1, 2, 3, 5, 10, 15].map((preset) => (
             <button
               key={preset}
+              disabled={disabled}
               onClick={() => onQuantityUpdate(preset)}
-              className={`px-2 py-1.5 rounded text-xs font-medium transition-all ${
+              className={`px-2 py-1.5 rounded text-xs font-medium transition-all disabled:opacity-45 disabled:pointer-events-none ${
                 Number(quantity) === preset
                   ? isDark
                     ? 'bg-blue-600 text-white'
@@ -34,8 +43,9 @@ class ContractQuantityControl extends Component<ContractQuantityControlProps> {
         {/* Manual Input with +/- */}
         <div className="flex items-center gap-2">
           <button
+            disabled={disabled}
             onClick={() => onQuantityChange(-1)}
-            className={`p-2 rounded-lg transition-all ${
+            className={`p-2 rounded-lg transition-all disabled:opacity-45 disabled:pointer-events-none ${
               isDark
                 ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -46,6 +56,7 @@ class ContractQuantityControl extends Component<ContractQuantityControlProps> {
           <input
             type="number"
             value={quantity}
+            disabled={disabled}
             onChange={(e) => onQuantityInputChange(e.target.value)}
             onBlur={onQuantityBlur}
             min="1"
@@ -56,8 +67,9 @@ class ContractQuantityControl extends Component<ContractQuantityControlProps> {
             } focus:outline-none focus:ring-2`}
           />
           <button
+            disabled={disabled}
             onClick={() => onQuantityChange(1)}
-            className={`p-2 rounded-lg transition-all ${
+            className={`p-2 rounded-lg transition-all disabled:opacity-45 disabled:pointer-events-none ${
               isDark
                 ? 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'

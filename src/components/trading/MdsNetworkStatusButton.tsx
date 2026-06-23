@@ -215,7 +215,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 <p className="text-[10px] text-[#7d8590] leading-snug">
                   {autoReconnect
                     ? 'Retries after unexpected drops'
-                    : 'Manual refresh only'}
+                    : 'Manual refresh only (no limit retries)'}
                 </p>
               </div>
               <button
@@ -245,7 +245,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 <p className="text-sm font-medium text-[#e6edf3]">Connect on limit</p>
                 <p className="text-[10px] text-[#7d8590] leading-snug">
                   {reconnectOnLimit
-                    ? 'Retries until a connection slot is free'
+                    ? 'Retries until a connection slot is free (requires auto-reconnect)'
                     : 'Off — limit closes stay offline'}
                 </p>
               </div>

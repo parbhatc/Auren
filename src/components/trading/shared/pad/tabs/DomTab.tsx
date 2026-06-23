@@ -21,6 +21,7 @@ import { DomLtpLockButton } from '../../dom/DomLtpLockButton'
 import { formatStatMoney } from '../../account/AccountStatsBar'
 import { DomActionButtons } from '../DomActionButtons'
 import type { TradeseaMarketBook } from '../../../../../services/tradesea/tradeseaMarketBook'
+import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
 
 /** Must match LadderRow minHeight (22px row + 1px separator). */
 const DOM_ROW_HEIGHT_PX = 23
@@ -45,6 +46,7 @@ export function DomTab({
   panelUi: TradePanelSettings
 }) {
   const qty = Number(props.quantity) || 1
+  const tradeDisabled = !isTradePanelTradingEnabled(props)
   const chartSymbolKeyRef = useRef(chartSymbol)
   const lastResolvedLtpRef = useRef<number | null>(null)
 
@@ -155,6 +157,7 @@ export function DomTab({
 
   const placeDomOrder = useCallback(
     (side: OrderSide, price: number) => {
+      if (tradeDisabled) return
       if (props.onSubmitOrder) {
         props.onSubmitOrder(
           side,
@@ -166,7 +169,7 @@ export function DomTab({
       if (side === 'buy') props.onBuy()
       else props.onSell()
     },
-    [props.onSubmitOrder, props.onBuy, props.onSell]
+    [tradeDisabled, props.onSubmitOrder, props.onBuy, props.onSell]
   )
 
   const domPosition = useMemo(() => {
@@ -278,8 +281,8 @@ export function DomTab({
                 tradeVolume={row.tradeVolume}
                 isLtp={isLtp}
                 isEntryRow={pnlFmt.isEntry}
-                buyDisabled={isAboveLtp}
-                sellDisabled={isBelowLtp || isLtp}
+                buyDisabled={isAboveLtp || tradeDisabled}
+                sellDisabled={isBelowLtp || isLtp || tradeDisabled}
                 bidZone={bidZone}
                 askZone={askZone}
                 qty={qty}
@@ -296,6 +299,10 @@ export function DomTab({
       </div>
 
       <div className="mt-auto shrink-0 space-y-2 border-t border-[#475569] pb-2 pt-2">
+        <fieldset
+          disabled={tradeDisabled}
+          className="m-0 min-w-0 space-y-2 border-0 p-0 disabled:opacity-90"
+        >
         <div className="flex h-9 items-center gap-1">
           <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-teal-500/50 px-1">
             <button type="button" onClick={() => props.onQuantityChange(-1)} className="p-1">
@@ -330,6 +337,7 @@ export function DomTab({
           ))}
         </div>
         <DomActionButtons props={props} ui={panelUi} />
+        </fieldset>
       </div>
     </div>
   )
