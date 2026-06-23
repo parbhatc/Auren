@@ -126,6 +126,14 @@ class ChartPositionCache {
     return true
   }
 
+  private purgeStaleLine(lineType: LineType): void {
+    const line = this.get(lineType)
+    if (!line) return
+    if (typeof line.hasTvLine === 'function' && !line.hasTvLine()) {
+      this.cache.delete(lineType)
+    }
+  }
+
   createStopLossLine(entryPrice: number, price: number, contracts: number): any {
     let lineType: LineType = 'stop_loss'
     // Drop any stale map entry (and its TV line) before creating — avoids duplicate SL lines.
@@ -147,6 +155,7 @@ class ChartPositionCache {
       },
       onCancel: () => {
         this.tradeCache.updateStopLoss(this.symbol, null, 'onCancel')
+        this.remove(lineType)
       }
     }
     let line = new ChartPositionLine(props)
@@ -177,6 +186,7 @@ class ChartPositionCache {
       return false
     }
     let lineType: LineType = 'stop_loss'
+    this.purgeStaleLine(lineType)
     let line = this.get(lineType)
     if(!line){
       if(!price){
@@ -203,6 +213,11 @@ class ChartPositionCache {
           entryPrice,
           price,
         })
+        if (price) {
+          this.createStopLossLine(entryPrice, price, contracts)
+        } else {
+          this.remove(lineType)
+        }
         return true
       }
       line.setEntryPrice(entryPrice)
@@ -239,6 +254,7 @@ class ChartPositionCache {
       },
       onCancel: () => {
         this.tradeCache.updateTakeProfit(this.symbol, null, 'onCancel')
+        this.remove(lineType)
       }
     }
     let line = new ChartPositionLine(props)
@@ -260,6 +276,7 @@ class ChartPositionCache {
       return false
     }
     let lineType: LineType = 'take_profit'
+    this.purgeStaleLine(lineType)
     let line = this.get(lineType)
     if(!line){
       if(!price){
@@ -286,6 +303,11 @@ class ChartPositionCache {
           entryPrice,
           price,
         })
+        if (price) {
+          this.createTakeProfitLine(entryPrice, price, contracts)
+        } else {
+          this.remove(lineType)
+        }
         return true
       }
       line.setEntryPrice(entryPrice)

@@ -137,6 +137,7 @@ class ChartPositionLine {
     line.onModify(() => {})
     line.onCancel(() => {
         line.remove();
+        this.detachTvLine();
         this.props.onCancel?.();
     })
     line.onMove(async () => {
@@ -252,7 +253,7 @@ class ChartPositionLine {
   }
   
   private async createStopLossLine(){
-    if (this.line) return
+    if (this.hasTvLine()) return
     let entryPrice = this.props.entryPrice;
     if(!entryPrice){
       return;
@@ -288,6 +289,7 @@ class ChartPositionLine {
     line.onModify(() => {})
     line.onCancel(() => {
         line.remove();
+        this.detachTvLine();
         this.props.onCancel?.();
     })
     line.onMove(() => {
@@ -396,7 +398,7 @@ class ChartPositionLine {
   }
 
   private async createTakeProfitLine(){
-    if (this.line) return
+    if (this.hasTvLine()) return
     let entryPrice = this.props.entryPrice;
     if(!entryPrice){
       return;
@@ -428,6 +430,7 @@ class ChartPositionLine {
     line.onModify(() => {})
     line.onCancel(() => {
         line.remove();
+        this.detachTvLine();
         this.props.onCancel?.();
     })
     line.onMove(() => {

@@ -61,6 +61,18 @@ type UdfHistoryResponse = {
   message?: string
 }
 
+type TvQuote = {
+  s: 'ok'
+  n: string
+  v: { bid: number; ask: number; lp?: number }
+}
+
+type QuoteSubscription = {
+  streamId: string
+  symbolKey: string
+  callback: (quotes: TvQuote[]) => void
+}
+
 export class TradeseaDatafeed implements IDatafeedChartApi {
   private mds: TradeseaMdsClient
   private accountId: string
@@ -86,6 +98,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private lastRefetchCandlesAt = 0
   private chartResetCallback: (() => void) | null = null
   private refetchInFlight: Promise<void> | null = null
+  private quoteSubs = new Map<string, QuoteSubscription>()
+  private quoteBookListenerInstalled = false
 
   constructor(options: {
     mds: TradeseaMdsClient
@@ -166,6 +180,119 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   getMarketBookForStream(streamId: string): TradeseaMarketBook | null {
     return this.marketBook.get(streamId)
+  }
+
+  /** TradingView / BetterweightChart quote API — bid/ask lines on chart. */
+  get supportsQuotes(): boolean {
+    return true
+  }
+
+  private installQuoteBookListener(): void {
+    if (this.quoteBookListenerInstalled) return
+    this.quoteBookListenerInstalled = true
+    this.offMarketBook.push(
+      this.marketBook.subscribe((streamId) => {
+        this.dispatchQuotesForStream(streamId)
+      })
+    )
+  }
+
+  private buildTvQuote(streamId: string, symbolKey: string): TvQuote | null {
+    const book = this.marketBook.get(streamId)
+    if (!book) return null
+    const bid = book.bestBid
+    const ask = book.bestAsk
+    if (bid == null || ask == null || !Number.isFinite(bid) || !Number.isFinite(ask)) {
+      return null
+    }
+    const lp = book.last
+    return {
+      s: 'ok',
+      n: symbolKey,
+      v: {
+        bid,
+        ask,
+        ...(lp != null && Number.isFinite(lp) ? { lp } : {}),
+      },
+    }
+  }
+
+  private dispatchQuotesForStream(streamId: string): void {
+    for (const sub of this.quoteSubs.values()) {
+      if (sub.streamId !== streamId) continue
+      const quote = this.buildTvQuote(streamId, sub.symbolKey)
+      if (!quote) continue
+      try {
+        sub.callback([quote])
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private quoteKeysForSymbolInfo(info: LibrarySymbolInfo): {
+    chartSymbol: string
+    streamId: string
+    symbolKey: string
+  } | null {
+    const chartSymbol = String(info.name || info.ticker || info.symbol || '').trim()
+    const streamId = this.streamSymbol(String(info.ticker || info.name || info.symbol || chartSymbol))
+    if (!streamId) return null
+    return {
+      chartSymbol: chartSymbol || streamId,
+      streamId,
+      symbolKey: chartSymbol || streamId,
+    }
+  }
+
+  getQuotes(
+    symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[]
+  ): Promise<TvQuote[]> {
+    const list = Array.isArray(symbolInfos) ? symbolInfos : [symbolInfos]
+    const out: TvQuote[] = []
+    for (const info of list) {
+      const keys = this.quoteKeysForSymbolInfo(info)
+      if (!keys) continue
+      this.ensureMarketBookSubscription(keys.chartSymbol)
+      const quote = this.buildTvQuote(keys.streamId, keys.symbolKey)
+      if (quote) out.push(quote)
+    }
+    return Promise.resolve(out)
+  }
+
+  subscribeQuotes(
+    symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[],
+    onQuotes: (quotes: TvQuote[]) => void,
+    listenerGuid: string
+  ): void {
+    const list = Array.isArray(symbolInfos) ? symbolInfos : [symbolInfos]
+    const info = list[0]
+    if (!info) return
+
+    const keys = this.quoteKeysForSymbolInfo(info)
+    if (!keys) return
+
+    this.installQuoteBookListener()
+    this.ensureMarketBookSubscription(keys.chartSymbol)
+
+    this.quoteSubs.set(listenerGuid, {
+      streamId: keys.streamId,
+      symbolKey: keys.symbolKey,
+      callback: onQuotes,
+    })
+
+    const snap = this.buildTvQuote(keys.streamId, keys.symbolKey)
+    if (snap) {
+      try {
+        onQuotes([snap])
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  unsubscribeQuotes(listenerGuid: string): void {
+    this.quoteSubs.delete(listenerGuid)
   }
 
   subscribeMarketBook(listener: (streamId: string) => void): () => void {
@@ -880,6 +1007,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       callback({
         supported_resolutions: TRADESEA_SUPPORTED_RESOLUTIONS,
         supports_search: true,
+        supports_quotes: true,
       })
     }, 0)
   }

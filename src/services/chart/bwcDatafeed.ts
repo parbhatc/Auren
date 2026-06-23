@@ -55,9 +55,12 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
     resolutions: BwcResolution[]
     supported_resolutions: string[]
     default_resolution: string
+    supports_quotes: boolean
   } | null = null
 
   return {
+    supportsQuotes: true,
+
     onReady() {
       if (cachedConfig) return Promise.resolve(cachedConfig)
       return promisify<Record<string, unknown>>((cb) => source.onReady(cb)).then((cfg) => {
@@ -66,6 +69,7 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
           resolutions: buildResolutions(source, supported),
           supported_resolutions: supported,
           default_resolution: supported.includes('1') ? '1' : supported[0],
+          supports_quotes: Boolean(cfg.supports_quotes ?? source.supportsQuotes),
         }
         return cachedConfig
       })
@@ -132,6 +136,23 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
 
     unsubscribeBars(listenerGuid: string) {
       source.unsubscribeBars(listenerGuid)
+    },
+
+    getQuotes(symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[]) {
+      if (typeof source.getQuotes !== 'function') return Promise.resolve([])
+      return source.getQuotes(symbolInfos)
+    },
+
+    subscribeQuotes(
+      symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[],
+      onQuotes: (quotes: unknown[]) => void,
+      listenerGuid: string
+    ) {
+      source.subscribeQuotes?.(symbolInfos, onQuotes, listenerGuid)
+    },
+
+    unsubscribeQuotes(listenerGuid: string) {
+      source.unsubscribeQuotes?.(listenerGuid)
     },
   }
 }

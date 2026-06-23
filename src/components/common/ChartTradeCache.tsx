@@ -415,10 +415,16 @@ class ChartTradeCache {
     }
   }
 
-  handleUpdateStopLoss(_price: number | null, _oldPrice: number | null, _position: any, _context: string | undefined = undefined) {
+  handleUpdateStopLoss(price: number | null, _oldPrice: number | null, position: any, context: string | undefined = undefined) {
+    if (price == null && context === 'onCancel' && position?.line?.remove) {
+      position.line.remove('stop_loss')
+    }
   }
 
-  handleUpdateTakeProfit(_price: number | null, _oldPrice: number | null, _position: any, _context: string | undefined = undefined) {
+  handleUpdateTakeProfit(price: number | null, _oldPrice: number | null, position: any, context: string | undefined = undefined) {
+    if (price == null && context === 'onCancel' && position?.line?.remove) {
+      position.line.remove('take_profit')
+    }
   }
 
   createLines(symbol: string, entryPrice: number, price: number, contracts: number, stopLoss: number | null | undefined, takeProfit: number | null | undefined){

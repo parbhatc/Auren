@@ -73,6 +73,17 @@ export interface IDatafeedChartApi {
     listenerGuid: string
   ): void
   unsubscribeBars(listenerGuid: string): void
+  /** Optional — enables BetterweightChart bid/ask price lines. */
+  getQuotes?(
+    symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[]
+  ): Promise<Array<{ s: string; n: string; v: { bid: number; ask: number; lp?: number } }>>
+  subscribeQuotes?(
+    symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[],
+    onQuotes: (quotes: unknown[]) => void,
+    listenerGuid: string
+  ): void
+  unsubscribeQuotes?(listenerGuid: string): void
+  supportsQuotes?: boolean
 }
 
 export type ChartPositionLineProps = {
