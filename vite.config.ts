@@ -16,7 +16,7 @@ export default defineConfig({
     hmr: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         secure: false,
         ws: true,
@@ -25,18 +25,23 @@ export default defineConfig({
         },
       },
       '/news': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         secure: false,
         rewrite: (p) => `/api${p}`,
       },
       '/tradesea-mds-ws': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         ws: true,
       },
       '/tradesea-trades-ws': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/practice-account-ws': {
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         ws: true,
       },

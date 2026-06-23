@@ -18,6 +18,12 @@ class ChartPositionLine {
   private props: ChartPositionLineProps
   private RIGHT_PLOT_SIDE: number
   private ORDER_RIGHT_PLOT_SIDE: number
+  private readonly POSITION_PILL_OFFSET = 100
+  private readonly BRACKET_PILL_OFFSET = 160
+  private readonly PILL_FONT_WEIGHT = 900
+  private readonly PILL_FONT_SIZE = 12
+  private readonly PILL_FONT_FAMILY = "'Trebuchet MS', Roboto, Ubuntu, sans-serif"
+  private readonly PILL_TEXT_COLOR = '#000000'
   private line: any
   /** Prevents duplicate TV order lines while createOrderLine is in flight. */
   private orderLineCreatePromise: Promise<any> | null = null
@@ -50,6 +56,7 @@ class ChartPositionLine {
     })
     try {
       tvLine.setText(text)
+      this.applyPillTextStyle(tvLine)
     } catch (err) {
       debugTradeseaSl('chart:line-text-error', {
         symbol: this.props.symbol,
@@ -200,6 +207,9 @@ class ChartPositionLine {
     line.setQuantity(size.toString());
     line.setLineStyle(0);
     line.setLineLength(this.RIGHT_PLOT_SIDE);
+    this.applyFullWidthLine(line);
+    this.applyPillOffset(line, this.POSITION_PILL_OFFSET);
+    this.applyPillTextStyle(line);
     const qtyColors = chartQtyColors(size > 0 ? 'buy' : 'sell');
     line.setQuantityBackgroundColor(qtyColors.fill);
     line.setCancelTooltip('Close position');
@@ -304,6 +314,9 @@ class ChartPositionLine {
     line.setQuantity((size * -1).toString());
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
+    this.applyFullWidthLine(line);
+    this.applyPillOffset(line, this.BRACKET_PILL_OFFSET);
+    this.applyPillTextStyle(line);
     const slQty = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
     line.setQuantityBackgroundColor(slQty.fill);
     this.applyChartLineColor(line, pnl >= 0);
@@ -437,6 +450,9 @@ class ChartPositionLine {
     line.setQuantity((size * -1).toString());
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
+    this.applyFullWidthLine(line);
+    this.applyPillOffset(line, this.BRACKET_PILL_OFFSET);
+    this.applyPillTextStyle(line);
     line.setQuantityBackgroundColor(TRADING_SIDE_CHART.buy.fill);
     this.applyChartLineColor(line, true);
   }
@@ -552,10 +568,9 @@ class ChartPositionLine {
       }
       line.onContextMenu(() => {return []})
       line.setBodyBorderColor('#000');
-      line.setQuantityTextColor('#000');
-      line.setQuantityBorderColor('#000');
       line.setCancelButtonBorderColor('#000');
       line.setCancelButtonIconColor('#000');
+      this.applyPillTextStyle(line);
       this.line = line;
       debugTradeseaSl('chart:line-created', {
         symbol: this.props.symbol,
@@ -631,16 +646,16 @@ class ChartPositionLine {
       // Set line style and length
       line.setLineStyle(0)
       line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE)
-      
+      this.applyFullWidthLine(line)
+      this.applyPillTextStyle(line)
+
       const gray = TRADING_SIDE_CHART.neutral
       line.setBodyBackgroundColor(gray.fill)
-      line.setBodyTextColor(gray.textOnFill)
       line.setBodyBorderColor('#000')
       line.setLineColor(gray.fill)
 
       const qtyColors = chartQtyColors(action === 'Buy' ? 'buy' : 'sell')
       line.setQuantityBackgroundColor(qtyColors.fill)
-      line.setQuantityTextColor(qtyColors.text)
       line.setQuantityBorderColor('#000')
       
       // Set cancel button colors
@@ -665,10 +680,50 @@ class ChartPositionLine {
   }
 
   private applyChartLineColor(line: any, profit = true): void {
-    const { fill, text } = chartLineColors(profit)
+    const { fill } = chartLineColors(profit)
     line.setBodyBackgroundColor(fill)
-    line.setBodyTextColor(text)
     line.setLineColor(fill)
+    this.applyPillTextStyle(line)
+  }
+
+  /** Span the horizontal rule across the full chart pane (BWC order line). */
+  private applyFullWidthLine(line: any): void {
+    if (typeof line?.setLineFullWidth === 'function') {
+      line.setLineFullWidth(true)
+    }
+  }
+
+  private applyPillOffset(line: any, offset: number): void {
+    if (typeof line?.setPillOffset === 'function') {
+      line.setPillOffset(offset)
+    }
+  }
+
+  private applyPillTextStyle(line: any): void {
+    if (typeof line?.setBodyTextColor === 'function') {
+      line.setBodyTextColor(this.PILL_TEXT_COLOR)
+    }
+    if (typeof line?.setQuantityTextColor === 'function') {
+      line.setQuantityTextColor(this.PILL_TEXT_COLOR)
+    }
+    if (typeof line?.setBodyFontWeight === 'function') {
+      line.setBodyFontWeight(this.PILL_FONT_WEIGHT)
+    }
+    if (typeof line?.setQuantityFontWeight === 'function') {
+      line.setQuantityFontWeight(this.PILL_FONT_WEIGHT)
+    }
+    if (typeof line?.setBodyFontSize === 'function') {
+      line.setBodyFontSize(this.PILL_FONT_SIZE)
+    }
+    if (typeof line?.setQuantityFontSize === 'function') {
+      line.setQuantityFontSize(this.PILL_FONT_SIZE)
+    }
+    if (typeof line?.setBodyFontFamily === 'function') {
+      line.setBodyFontFamily(this.PILL_FONT_FAMILY)
+    }
+    if (typeof line?.setQuantityFontFamily === 'function') {
+      line.setQuantityFontFamily(this.PILL_FONT_FAMILY)
+    }
   }
 
   /** @deprecated use applyChartLineColor */

@@ -1,8 +1,4 @@
-import {
-  getPracticePropFirmConfig,
-  normalizePracticePropFirmId,
-  resolveOfflineModePositionsForFirm,
-} from './practicePropFirms'
+import { normalizePracticePropFirmId } from './practicePropFirms'
 import type {
   PracticeFirmMarketDataSelection,
   PracticeMarketDataSettings,
@@ -21,9 +17,6 @@ export function normalizeMarketDataByFirm(
     out[id] = {
       accountId: String(value.accountId ?? ''),
       accountLabel: String(value.accountLabel ?? ''),
-      ...(value.offlineModePositions !== undefined
-        ? { offlineModePositions: Boolean(value.offlineModePositions) }
-        : {}),
     }
   }
   return out
@@ -40,9 +33,6 @@ export function migratePracticeMarketDataSettings(
     byFirm[activeId] = {
       accountId: settings.accountId,
       accountLabel: settings.accountLabel || '',
-      ...(settings.offlineModePositions !== undefined
-        ? { offlineModePositions: settings.offlineModePositions }
-        : {}),
     }
   }
 
@@ -62,9 +52,6 @@ export function getFirmMarketDataSelection(
     return {
       accountId: migrated.accountId || '',
       accountLabel: migrated.accountLabel || '',
-      ...(migrated.offlineModePositions !== undefined
-        ? { offlineModePositions: migrated.offlineModePositions }
-        : {}),
     }
   }
 
@@ -83,21 +70,14 @@ export function applyActiveFirmToMarketDataSettings(
   byFirm[currentFirmId] = {
     accountId: md.accountId || '',
     accountLabel: md.accountLabel || '',
-    ...(md.offlineModePositions !== undefined ? { offlineModePositions: md.offlineModePositions } : {}),
   }
 
   const nextSelection = byFirm[nextId] ?? { accountId: '', accountLabel: '' }
-  const firm = getPracticePropFirmConfig(nextId)
-  const offlineModePositions = resolveOfflineModePositionsForFirm(
-    nextId,
-    nextSelection.offlineModePositions ?? md.offlineModePositions
-  )
 
   return {
     propFirmId: nextId,
     accountId: nextSelection.accountId || '',
     accountLabel: nextSelection.accountLabel || '',
-    offlineModePositions: firm.supportsOfflineBracketWatcher ? offlineModePositions : false,
     byFirm,
   }
 }
@@ -118,17 +98,10 @@ export function updateFirmMarketDataSelection(
     return { ...md, byFirm }
   }
 
-  const firm = getPracticePropFirmConfig(id)
-  const offlineModePositions = resolveOfflineModePositionsForFirm(
-    id,
-    byFirm[id].offlineModePositions ?? md.offlineModePositions
-  )
-
   return {
     ...md,
     byFirm,
     accountId: byFirm[id].accountId,
     accountLabel: byFirm[id].accountLabel,
-    offlineModePositions: firm.supportsOfflineBracketWatcher ? offlineModePositions : false,
   }
 }

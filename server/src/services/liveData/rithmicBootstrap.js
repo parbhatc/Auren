@@ -1,12 +1,10 @@
-import Database from '../../config/Database.js'
-import PropsController from '../../controllers/PropsController.js'
 import { getRithmicLiveDataConfig } from '../../config/liveDataConfig.js'
-import { testRithmicLogin } from '../rithmic/RithmicLoginService.js'
-import { upsertRithmicCredentials } from '../rithmic/RithmicCredentialsStore.js'
-import { setBootstrapRithmicCredentials } from '../rithmic/RithmicBootstrapState.js'
-import { startRithmicLiveTicker } from './rithmicLiveTickerHub.js'
 import {
-  logLiveDataConnected,
+  openRithmicChartLive,
+  subscribeRithmicChartLive,
+} from './rithmicChartLive.js'
+import { startPracticeBracketEngine } from '../practice/PracticeBracketEngine.js'
+import {
   logLiveDataError,
   logLiveDataInfo,
   logLiveDataWarn,
@@ -28,16 +26,7 @@ export function whenRithmicLiveDataReady() {
   return liveDataBootstrapTask ?? Promise.resolve({ ok: false, skipped: true, provider: 'rithmic' })
 }
 
-async function seedBootstrapCredentialsToAdmins(credentials) {
-  await PropsController.initializeTable()
-  const admins = await Database.findUsersByRole('admin')
-  if (!admins.length) return
-  for (const admin of admins) {
-    await upsertRithmicCredentials(admin.id, credentials)
-  }
-}
-
-/** Connect Rithmic on server start using `live_data.rithmic` from config.json. */
+/** Connect ChartLive on server start using `live_data.rithmic` from config.json. */
 export async function bootstrapRithmicLiveData() {
   const cfg = getRithmicLiveDataConfig()
   if (!cfg.enabled) {
@@ -56,49 +45,20 @@ export async function bootstrapRithmicLiveData() {
   }
 
   try {
-    const login = await testRithmicLogin({
-      username: cfg.username,
-      password: cfg.password,
-      systemName: cfg.systemName,
-      gatewayName: cfg.gatewayName,
-    })
-
-    if (!login.passed) {
-      logLiveDataError(PROVIDER, `Connection failed: ${login.message}`)
-      setBootstrapRithmicCredentials(null)
-      return { ok: false, message: login.message, provider: 'rithmic' }
-    }
-
-    const credentials = {
-      username: cfg.username,
-      password: cfg.password,
-      systemName: login.system_name || cfg.systemName,
-      gatewayName: login.gateway_name || cfg.gatewayName,
-      gatewayUri: login.gateway_uri || null,
-      loginPassed: true,
-      fcmId: login.fcm_id || undefined,
-      ibId: login.ib_id || undefined,
-      uniqueUserId: login.unique_user_id || undefined,
-    }
-
-    setBootstrapRithmicCredentials(credentials)
-    logLiveDataConnected(PROVIDER)
-
-    if (cfg.seedAdminCredentials) {
-      await seedBootstrapCredentialsToAdmins(credentials)
+    const openResult = await openRithmicChartLive(cfg)
+    if (!openResult.ok) {
+      return { ok: false, message: 'ChartLive open failed', provider: 'rithmic' }
     }
 
     if (cfg.subscribeOnStartup && cfg.ticker) {
-      const tickerResult = await startRithmicLiveTicker(credentials, cfg.ticker)
-      if (!tickerResult.ok) {
-        logLiveDataError(PROVIDER, `Ticker subscribe failed: ${tickerResult.message || 'unknown'}`)
-        return { ok: false, message: tickerResult.message, provider: 'rithmic' }
-      }
+      const { symbol, exchange, resolution } = cfg.ticker
+      await subscribeRithmicChartLive(symbol, exchange, resolution, true)
     }
+
+    await startPracticeBracketEngine()
 
     return { ok: true, provider: 'rithmic' }
   } catch (error) {
-    setBootstrapRithmicCredentials(null)
     const message = error instanceof Error ? error.message : String(error)
     logLiveDataError(PROVIDER, `Connection error: ${message}`)
     return { ok: false, message, provider: 'rithmic' }

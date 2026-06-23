@@ -19,9 +19,6 @@ import {
   getPracticePropFirmConfig,
   normalizePracticePropFirmId,
   practiceFirmHasExclusiveMdsSlot,
-  practiceFirmShowsOfflineModeSection,
-  practiceFirmSupportsOfflineBracketWatcher,
-  resolveOfflineModePositionsForFirm,
   type PracticePropFirmConfigId,
 } from './practicePropFirms'
 
@@ -30,9 +27,6 @@ export {
   getPracticePropFirmConfig,
   normalizePracticePropFirmId,
   practiceFirmHasExclusiveMdsSlot,
-  practiceFirmShowsOfflineModeSection,
-  practiceFirmSupportsOfflineBracketWatcher,
-  resolveOfflineModePositionsForFirm,
   type PracticePropFirmConfigId,
   type PracticeMarketDataSlotPolicy,
   type PracticePropFirmMarketDataConfig,
@@ -153,18 +147,7 @@ function loadLocalMarketData(): PracticeMarketDataSettings {
     propFirmId,
     accountId: localStorage.getItem(PRACTICE_ACCOUNT_ID_KEY) || '',
     accountLabel: localStorage.getItem(PRACTICE_ACCOUNT_LABEL_KEY) || '',
-    offlineModePositions: getPracticePropFirmConfig(propFirmId).defaultOfflineModePositions,
   }
-}
-
-/** Effective offline bracket mode for the selected prop firm. */
-export function resolveOfflineModePositions(
-  settings?: PracticeMarketDataSettings | null
-): boolean {
-  return resolveOfflineModePositionsForFirm(
-    settings?.propFirmId,
-    settings?.offlineModePositions
-  )
 }
 
 async function migrateLocalToApiIfNeeded(): Promise<void> {
@@ -232,7 +215,6 @@ export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
   const migrated = migratePracticeMarketDataSettings({
     ...raw,
     propFirmId,
-    offlineModePositions: resolveOfflineModePositions({ ...raw, propFirmId }),
   })
   const selection = getFirmMarketDataSelection(migrated, propFirmId)
   return {
@@ -240,11 +222,6 @@ export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
     propFirmId,
     accountId: selection.accountId,
     accountLabel: selection.accountLabel,
-    offlineModePositions: resolveOfflineModePositions({
-      ...migrated,
-      propFirmId,
-      offlineModePositions: selection.offlineModePositions ?? migrated.offlineModePositions,
-    }),
   }
 }
 
@@ -284,6 +261,16 @@ export function getPracticeAccounts(): PracticeAccount[] {
 
 export function getPracticeAccountById(id: string): PracticeAccount | undefined {
   return getPracticeAccounts().find((a) => a.id === id)
+}
+
+/** Apply a single account row from WS without refetching all practice data. */
+export function patchPracticeAccount(account: PracticeAccount): void {
+  const list = accountsCache ? [...accountsCache] : loadLocalAccounts()
+  const idx = list.findIndex((a) => a.id === account.id)
+  if (idx >= 0) list[idx] = account
+  else list.push(account)
+  accountsCache = list
+  notifyPracticeDataChanged()
 }
 
 export async function createPracticeAccount(

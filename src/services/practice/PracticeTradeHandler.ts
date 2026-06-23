@@ -1,7 +1,8 @@
 import { aurenToast } from '../../utils/aurenToast'
-import { practiceAPI, type PracticePosition } from '../../api/practice.api'
+import { type PracticePosition } from '../../api/practice.api'
 import {
   getPracticeAccountById,
+  patchPracticeAccount,
   refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../constants/practice'
@@ -30,14 +31,17 @@ import { evaluatePracticeRules } from './practiceRules'
 import { evaluatePracticeLockout } from './practiceLockout'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
-import { getPracticeMarketDataSettings } from '../../constants/practice'
-import { getTradeseaConnectionGroupId } from '../tradesea/tradeseaDeviceFingerprint'
+import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
 
 export class PracticeTradeHandler {
   tradeCache: PracticeTradeCache | null = null
   private pendingOrders: PracticePendingOrder[] = []
   private widget: unknown = null
   private upl = 0
+  private disconnectAccountWs: (() => void) | null = null
+  private accountWs: PracticeAccountWsClient | null = null
+  private accountPositionsHydrated = false
+  private marketBookUnsub: (() => void) | null = null
   private blownEnforcing = false
   private blownModalShown = false
   private passedModalShown = false
@@ -126,14 +130,94 @@ export class PracticeTradeHandler {
       void this.attachPendingOrderLine(order)
     }
 
+    this.connectAccountStream()
+    this.attachLiveBracketWatcher(df)
     void this.loadState()
+  }
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('pagehide', () => {
-        if (!getPracticeMarketDataSettings().offlineModePositions) return
-        void this.tradeCache?.saveBracketSnapshotsForOpenPositions('page_hide')
-      })
+  /** Watch MDS LTP for fast SL/TP fills while the chart session is online. */
+  private attachLiveBracketWatcher(datafeed: TradeseaDatafeed | null): void {
+    this.marketBookUnsub?.()
+    this.marketBookUnsub = null
+    if (!datafeed?.subscribeMarketBook) return
+    this.marketBookUnsub = datafeed.subscribeMarketBook((streamId) => {
+      this.tradeCache?.onMarketBookTick(streamId)
+    })
+  }
+
+  /** Send position mutations over practice-account-ws (not REST). */
+  getAccountWs(): PracticeAccountWsClient | null {
+    return this.accountWs
+  }
+
+  /** Practice sim account WS (positions, balance) — separate from Tradesea MDS market data. */
+  private connectAccountStream(): void {
+    this.accountWs?.close()
+    this.accountWs = null
+    this.disconnectAccountWs = null
+
+    const client = connectPracticeAccountWs(this.practiceAccountId, {
+      onSnapshot: (event) => {
+        if (event.account) patchPracticeAccount(event.account)
+        if (!this.accountPositionsHydrated) {
+          this.ensureMarketBooksForPositions(event.positions)
+          void this.tradeCache?.loadPositionsFromServer(event.positions).then(() => {
+            this.tradeCache?.scheduleReconcilePositionLines()
+          })
+          this.accountPositionsHydrated = true
+        }
+        this.refreshUnrealizedPl()
+        this.onAccountUpdated?.()
+      },
+      onOpenPosition: (event) => {
+        if (event.account) patchPracticeAccount(event.account)
+        this.ensureMarketBooksForPositions([event.position])
+        this.tradeCache?.applyServerPositionUpdate(event.position)
+        this.onAccountUpdated?.()
+        this.syncAccountBlownState()
+      },
+      onModifyPosition: (event) => {
+        if (event.account) patchPracticeAccount(event.account)
+        this.tradeCache?.applyServerPositionUpdate(event.position)
+        this.onAccountUpdated?.()
+        this.syncAccountBlownState()
+      },
+      onClosePosition: (event) => {
+        if (event.account) patchPracticeAccount(event.account)
+        if (
+          event.reason === 'stop_loss' ||
+          event.reason === 'take_profit'
+        ) {
+          if (event.symbol != null && event.exitPrice != null && event.exitTime != null) {
+            this.tradeCache?.applyServerBracketClose(
+              event.symbol,
+              event.exitPrice,
+              event.exitTime,
+              event.reason,
+              event.positionId
+            )
+          }
+        } else {
+          this.tradeCache?.applyServerPositionClose(event.symbol, event.positionId)
+        }
+        this.onAccountUpdated?.()
+        this.syncAccountBlownState()
+        this.checkPassedWhileTrading()
+      },
+    })
+
+    if (client) {
+      this.accountWs = client
+      this.disconnectAccountWs = () => client.close()
     }
+  }
+
+  dispose(): void {
+    this.marketBookUnsub?.()
+    this.marketBookUnsub = null
+    this.disconnectAccountWs?.()
+    this.disconnectAccountWs = null
+    this.accountWs = null
   }
 
   hasAnyOpenPosition(): boolean {
@@ -267,14 +351,6 @@ export class PracticeTradeHandler {
 
   private async loadState(): Promise<void> {
     await refreshPracticeFromApi()
-    try {
-      const { positions } = await practiceAPI.getPositions(this.practiceAccountId)
-      this.ensureMarketBooksForPositions(positions)
-      await this.tradeCache?.loadPositionsFromServer(positions)
-      this.refreshUnrealizedPl()
-    } catch {
-      /* ignore */
-    }
     this.onAccountUpdated?.()
     this.onUnrealizedPnLUpdate?.(this.upl)
     this.checkBlownWhileTrading()
@@ -284,42 +360,8 @@ export class PracticeTradeHandler {
   attachToDatafeed(chartDatafeed?: PracticeChartDatafeed | null): void {
     const df = chartDatafeed ?? (this.propFirm.chartServices?.datafeed as PracticeChartDatafeed | undefined) ?? null
     df?.setTradeHandler(this as never)
-  }
-
-  async onMdsDisconnected(): Promise<void> {
-    await this.tradeCache?.saveBracketSnapshotsForOpenPositions('ws_disconnect')
-
-    const md = getPracticeMarketDataSettings()
-    if (!md.offlineModePositions || !this.tradeCache?.hasAnyOpenPosition()) return
-
-    const streamConfig = this.propFirm.chartServices?.streamConfig as
-      | { userId?: string; accountId?: string }
-      | undefined
-    const mdsUserId = streamConfig?.userId
-    const marketAccountId = md.accountId || streamConfig?.accountId || ''
-    if (!mdsUserId || !marketAccountId) {
-      console.warn('[Practice] offline bracket: missing market account or stream user id')
-      return
-    }
-
-    try {
-      const connectionGroupId = await getTradeseaConnectionGroupId(mdsUserId)
-      const res = await practiceAPI.startOfflineBracketWatcher({
-        practiceAccountId: this.practiceAccountId,
-        connectionGroupId,
-        marketAccountId,
-      })
-      console.info('[Practice] offline bracket watcher', res)
-    } catch (err) {
-      console.warn('[Practice] offline bracket start failed', err)
-    }
-  }
-
-  async onMdsReconnected(): Promise<void> {
-    try {
-      await practiceAPI.stopOfflineBracketWatcher('client_connected')
-    } catch {
-      /* ignore */
+    if (df && 'subscribeMarketBook' in df) {
+      this.attachLiveBracketWatcher(df as TradeseaDatafeed)
     }
   }
 
@@ -540,7 +582,6 @@ export class PracticeTradeHandler {
       prevFirmChartSymbol: prevFirm,
     }, { force: true })
     this.tradeCache?.onSymbolChange(symbol)
-    this.tradeCache?.reconcilePositionLines()
     this.refreshUnrealizedPl()
   }
 

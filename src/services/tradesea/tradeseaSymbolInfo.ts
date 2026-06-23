@@ -4,6 +4,7 @@ import {
   TRADESEA_SECONDS_MULTIPLIERS,
   TRADESEA_SUPPORTED_RESOLUTIONS,
 } from './tradeseaResolutions'
+import { toTradeseaProdTicker } from './tradeseaStreamSymbol'
 
 export interface TradeseaInstrumentRow {
   description: string
@@ -53,9 +54,16 @@ export function instrumentDisplaySymbol(row: TradeseaInstrumentRow): string {
   return root || String(row.ticker || row.symbol || '').trim()
 }
 
-/** Stream/API ticker (CME-Delayed:MNQ). */
+/** Stream/API ticker (CME-Delayed:MNQ or CME:MNQ). */
 export function instrumentStreamTicker(row: TradeseaInstrumentRow): string {
   return String(row.ticker || row.symbol || '').trim()
+}
+
+/** Toolbar/search label — prod shows CME:MNQ even when catalog stores CME-Delayed:MNQ. */
+export function instrumentUiTicker(row: TradeseaInstrumentRow, delayed = true): string {
+  const stream = instrumentStreamTicker(row)
+  if (!stream) return instrumentDisplaySymbol(row)
+  return delayed ? stream : toTradeseaProdTicker(stream)
 }
 
 export function instrumentToLibrarySymbolInfo(
@@ -98,26 +106,39 @@ export function instrumentToLibrarySymbolInfo(
 export interface TradeseaSearchSymbolResult {
   symbol: string
   full_name: string
+  /** BWC symbol search UI label */
+  name: string
   description: string
   exchange: string
   type: string
   ticker?: string
+  /** Wire ticker for MDS/UDF (may differ from toolbar `ticker`). */
+  streamTicker?: string
 }
 
-export function instrumentToSearchSymbolResult(row: TradeseaInstrumentRow): TradeseaSearchSymbolResult {
+export function instrumentToSearchSymbolResult(
+  row: TradeseaInstrumentRow,
+  delayed = true
+): TradeseaSearchSymbolResult {
   const streamTicker = instrumentStreamTicker(row)
   const display = instrumentDisplaySymbol(row)
+  const label = row.description || display
   return {
     symbol: display,
     full_name: display,
-    description: row.description || display,
+    name: label,
+    description: label,
     exchange: row.exchange || 'CME',
     type: 'futures',
-    ticker: streamTicker,
+    ticker: instrumentUiTicker(row, delayed),
+    streamTicker,
   }
 }
 
-export function searchRowToSearchSymbolResult(row: TradeseaSearchRow): TradeseaSearchSymbolResult {
+export function searchRowToSearchSymbolResult(
+  row: TradeseaSearchRow,
+  delayed = true
+): TradeseaSearchSymbolResult {
   const streamTicker = String(row.ticker || row.full_name || row.symbol || '').trim()
   const display =
     chartSymbolToProductRoot(streamTicker) ||
@@ -125,13 +146,16 @@ export function searchRowToSearchSymbolResult(row: TradeseaSearchRow): TradeseaS
     streamTicker
   const exchange =
     row.exchange || (streamTicker.includes(':') ? streamTicker.split(':')[0].replace(/-Delayed$/i, '') : 'CME')
+  const label = row.description || display
   return {
     symbol: display,
     full_name: display,
-    description: row.description || display,
+    name: label,
+    description: label,
     exchange,
     type: 'futures',
-    ticker: streamTicker || undefined,
+    ticker: streamTicker ? (delayed ? streamTicker : toTradeseaProdTicker(streamTicker)) : undefined,
+    streamTicker: streamTicker || undefined,
   }
 }
 

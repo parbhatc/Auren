@@ -8,8 +8,6 @@ import {
   getPracticeAccountDisplayTitle,
   getPracticeAccounts,
   getPracticeMarketDataSettings,
-  getPracticePropFirmConfig,
-  resolveOfflineModePositions,
   refreshPracticeFromApi,
   resetAllPracticeAccounts,
   resetPracticeAccount,
@@ -21,7 +19,6 @@ import {
   type PracticeAccountRules,
 } from '../../../constants/practice'
 import { getDefaultPracticeRules, type PracticeAccountSize } from '../../../services/practice/practicePlans'
-import { practiceAPI } from '../../../api/practice.api'
 import { tradeseaAPI } from '../../../api/tradesea.api'
 import type { BrokerAccountOption } from '../../../propfirms/marketData/types'
 import type { PropFirmCredentials } from '../../../types/props'
@@ -63,7 +60,6 @@ export default function Hub() {
   const [accounts, setAccounts] = useState<PracticeAccount[]>([])
   const [propFirmId, setPropFirmId] = useState(getDefaultPropFirmId())
   const [marketAccountId, setMarketAccountId] = useState('')
-  const [offlineModePositions, setOfflineModePositions] = useState(true)
   const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccountOption[]>([])
   const [brokerSessionExpired, setBrokerSessionExpired] = useState(false)
   const [credentialsByFirm, setCredentialsByFirm] = useState<
@@ -109,7 +105,6 @@ export default function Hub() {
     setAccounts(getPracticeAccounts())
     setPropFirmId(firmId)
     setMarketAccountId(firmPersistsMarketAccountId(firmId) ? md.accountId : '')
-    setOfflineModePositions(resolveOfflineModePositions(md))
   }, [])
 
   const reload = useCallback(async () => {
@@ -229,7 +224,6 @@ export default function Hub() {
   const persistMarketData = async (opts: {
     propFirmId?: string
     accountId?: string
-    offlineModePositions?: boolean
   }) => {
     let md = getPracticeMarketDataSettings()
     const switchingFirm = opts.propFirmId != null && opts.propFirmId !== propFirmId
@@ -249,35 +243,16 @@ export default function Hub() {
     const account = usesBrokerAccount
       ? brokerAccounts.find((a) => a.id === accountId)
       : undefined
-    const firm = getPracticePropFirmConfig(nextFirmId)
-    const savedOffline =
-      opts.offlineModePositions ??
-      (switchingFirm ? md.offlineModePositions : offlineModePositions)
-    const offline = resolveOfflineModePositions({
-      propFirmId: nextFirmId,
-      accountId,
-      accountLabel: usesBrokerAccount ? (account?.label ?? md.accountLabel) : '',
-      offlineModePositions: savedOffline,
-    })
-    if (offlineModePositions && !offline) {
-      try {
-        await practiceAPI.stopOfflineBracketWatcher('setting_disabled')
-      } catch {
-        /* ignore */
-      }
-    }
 
     md = updateFirmMarketDataSelection(md, nextFirmId, {
       accountId,
       accountLabel: usesBrokerAccount ? (account?.label ?? md.accountLabel) : '',
-      offlineModePositions: firm.supportsOfflineBracketWatcher ? savedOffline : false,
     })
 
     await savePracticeMarketDataSettings(md)
     if (opts.accountId !== undefined || switchingFirm || !usesBrokerAccount) {
       setMarketAccountId(accountId)
     }
-    setOfflineModePositions(offline)
     setSuccess(t('practice.hub.marketDataSaved'))
     syncFromCache()
   }
@@ -449,7 +424,6 @@ export default function Hub() {
                   marketAccountId={marketAccountId}
                   marketConnected={marketConnected}
                   marketStatusLabel={marketAccountLabel}
-                  offlineModePositions={offlineModePositions}
                   brokerAccounts={brokerAccounts}
                   brokerSessionExpired={brokerSessionExpired}
                   loadingMd={loadingMd}
@@ -457,7 +431,6 @@ export default function Hub() {
                     void persistMarketData({ propFirmId: id })
                   }}
                   onMarketAccountChange={(id) => void persistMarketData({ accountId: id })}
-                  onOfflineModeChange={(enabled) => void persistMarketData({ offlineModePositions: enabled })}
                   onRefreshAccounts={() => void loadBrokerAccounts()}
                   onRefreshSession={() => void refreshBrokerSession()}
                 />

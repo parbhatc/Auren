@@ -105,16 +105,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         this.onMdsReconnect()
       })
     )
-    this.offMarketBook.push(
-      this.mds.on('close', () => {
-        void this.onMdsDisconnected()
-      })
-    )
-  }
-
-  private onMdsDisconnected(): void {
-    const handler = this.tradeHandler as { onMdsDisconnected?: () => void | Promise<void> } | null
-    void handler?.onMdsDisconnected?.()
   }
 
   private logSymbol(
@@ -174,8 +164,12 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return this.marketBook.get(streamId)
   }
 
-  subscribeMarketBook(listener: () => void): () => void {
-    return this.marketBook.subscribe(() => listener())
+  getMarketBookForStream(streamId: string): TradeseaMarketBook | null {
+    return this.marketBook.get(streamId)
+  }
+
+  subscribeMarketBook(listener: (streamId: string) => void): () => void {
+    return this.marketBook.subscribe(listener)
   }
 
   /** MDS reconnected — sync bootstrap metadata; verify book subs after resubscribeAll. */
@@ -462,15 +456,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         )
       }
       await Promise.all(tasks)
-      const handler = this.tradeHandler as {
-        onMdsReconnected?: () => void | Promise<void>
-        tradeCache?: { reconcileMissedBracketFills?: () => Promise<void> }
-      } | null
-      if (handler?.onMdsReconnected) {
-        await handler.onMdsReconnected()
-      } else {
-        await handler?.tradeCache?.reconcileMissedBracketFills?.()
-      }
     })().finally(() => {
       this.refetchInFlight = null
     })
@@ -806,8 +791,26 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   private instrumentsSearch(query: string): Promise<TradeseaInstrumentRow[]> {
-    const url = tradeseaInstrumentsSearchUrl(this.accountId, query)
+    const q = query.trim() || 'NQ'
+    if (!this.delayed) {
+      return this.udfInstrumentSearch(q)
+    }
+    const url = tradeseaInstrumentsSearchUrl(this.accountId, q)
     return this.fetchJson<unknown>(url, true).then((data) =>
+      parseTradeseaJsonArray<TradeseaInstrumentRow>(data)
+    )
+  }
+
+  /** Prod UDF symbol search — same API as app.tradesea.ai (prod-market-data.tradesea.ai/v1/search). */
+  private udfInstrumentSearch(query: string, limit = 30): Promise<TradeseaInstrumentRow[]> {
+    const params = new URLSearchParams()
+    params.set('connection-user-id', this.userId)
+    params.set('connection-group-id', this.connectionGroupId)
+    params.set('query', query)
+    params.set('limit', String(limit))
+    params.set('type', '')
+    params.set('exchange', '')
+    return this.fetchJson<unknown>(this.proxyUdfUrl('search', params), true).then((data) =>
       parseTradeseaJsonArray<TradeseaInstrumentRow>(data)
     )
   }
@@ -888,14 +891,10 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     onResult: (symbols: TradeseaSearchSymbolResult[]) => void
   ): void {
     const q = userInput.trim()
-    if (!q) {
-      onResult([])
-      return
-    }
 
     void this.ensureSymbolsLoaded()
-      .then(() => this.instrumentsSearch(q))
-      .then((rows) => rows.map((row) => instrumentToSearchSymbolResult(row)))
+      .then(() => this.instrumentsSearch(q || 'NQ'))
+      .then((rows) => rows.map((row) => instrumentToSearchSymbolResult(row, this.delayed)))
       .then(onResult)
       .catch((err) => {
         console.error('[TradeseaDatafeed] searchSymbols failed:', err)
@@ -1068,22 +1067,24 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         if (bars.length > 0) {
           this.rememberLastBar(symbolInfo, String(resolution), bars[bars.length - 1])
         }
-        void saveLoadedCandlesChunk({
-          symbol: chartSymbol,
-          resolution: String(resolution),
-          from,
-          to,
-          udf: {
-            s: data.s,
-            t: data.t,
-            o: data.o,
-            h: data.h,
-            l: data.l,
-            c: data.c,
-            v: data.v,
-          },
-          note: periodParams.firstDataRequest ? 'firstDataRequest' : 'getBars',
-        })
+        if (periodParams.firstDataRequest) {
+          void saveLoadedCandlesChunk({
+            symbol: chartSymbol,
+            resolution: String(resolution),
+            from,
+            to,
+            udf: {
+              s: data.s,
+              t: data.t,
+              o: data.o,
+              h: data.h,
+              l: data.l,
+              c: data.c,
+              v: data.v,
+            },
+            note: 'firstDataRequest',
+          })
+        }
         onResult(bars, { noData: false })
       })
       .catch((err) => {

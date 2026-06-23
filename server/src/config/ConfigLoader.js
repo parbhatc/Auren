@@ -84,15 +84,11 @@ class ConfigLoader {
         rithmic: {
           enabled: false,
           connectOnStartup: true,
-          subscribeOnStartup: true,
-          seedAdminCredentials: true,
+          subscribeOnStartup: false,
           username: '',
           password: '',
           systemName: 'LucidTrading',
           gatewayName: 'Chicago Area',
-          ticker: 'MNQ',
-          exchange: 'CME',
-          resolution: '1',
         },
       },
     }

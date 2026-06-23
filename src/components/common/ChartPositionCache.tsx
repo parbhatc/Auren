@@ -311,14 +311,9 @@ class ChartPositionCache {
   }
 
   removeAll(): void {
-    this.cache.forEach((l) => {
-      let line = l.line;
-
-        if(line._line && line._line._model !== undefined){
-          line.remove()
-        }
-    })
-    this.cache.clear()
+    for (const lineType of ['position', 'stop_loss', 'take_profit'] as const) {
+      this.remove(lineType)
+    }
   }
 }
 

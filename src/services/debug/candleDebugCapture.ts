@@ -10,13 +10,10 @@ export type UdfHistoryPayload = {
   v?: number[]
 }
 
-/** On in dev unless `localStorage auren.debug.candles === '0'`. Off in prod unless `'1'`. */
+/** On only when `localStorage auren.debug.candles === '1'`. Off by default (including dev). */
 export function isCandleDebugCaptureEnabled(): boolean {
   if (typeof window === 'undefined') return false
-  const flag = localStorage.getItem('auren.debug.candles')
-  if (flag === '0') return false
-  if (flag === '1') return true
-  return import.meta.env.DEV
+  return localStorage.getItem('auren.debug.candles') === '1'
 }
 
 let lastSaveKey = ''

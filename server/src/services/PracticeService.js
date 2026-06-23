@@ -2,8 +2,7 @@ import { randomUUID } from 'crypto'
 import Database from '../config/Database.js'
 import {
   normalizePracticePropFirmId,
-  offlineModeToDbValue,
-  resolveOfflineModePositionsFromDb,
+  resolveMarketDataFromDb,
 } from '../utils/practicePropFirms.js'
 import {
   getDefaultRules,
@@ -11,11 +10,28 @@ import {
   getMaxContractsForSymbol,
   getCommissionPerContract,
 } from '../utils/practiceRules.js'
+import { calcPracticePnL } from '../utils/practiceInstrumentTicks.js'
 import {
   evaluatePracticeLockout,
   getPracticeSessionDayKey,
   countTradesInSession,
 } from '../utils/practiceLockout.js'
+import {
+  broadcastOpenPosition,
+  broadcastModifyPosition,
+  broadcastClosePosition,
+} from './practice/PracticeAccountHub.js'
+
+function notifyBracketEngine(method, ...args) {
+  void import('./practice/PracticeBracketEngine.js')
+    .then((mod) => {
+      const fn = mod[method]
+      if (typeof fn === 'function') return fn(...args)
+    })
+    .catch((err) => {
+      console.warn('[Practice] bracket engine notify failed', err?.message || err)
+    })
+}
 
 function normalizeTradeSymbol(symbol) {
   let s = String(symbol || '').trim()
@@ -25,6 +41,22 @@ function normalizeTradeSymbol(symbol) {
   }
   s = s.replace(/[0-9!]+$/g, '').trim()
   return s.toUpperCase()
+}
+
+function rowToPosition(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    symbol: row.symbol,
+    instrument: row.instrument,
+    contracts: row.contracts,
+    entry: row.entry,
+    stopLoss: row.stop_loss,
+    takeProfit: row.take_profit,
+    entryTime: row.entry_time,
+    type: row.type,
+  }
 }
 
 function newId(prefix = 'pa') {
@@ -72,16 +104,12 @@ class PracticeService {
       'SELECT * FROM practice_market_data WHERE user_id = ?',
       [userId]
     )
-    return resolveOfflineModePositionsFromDb(row)
+    return resolveMarketDataFromDb(row)
   }
 
   async saveMarketData(userId, settings) {
     await Database.initialize()
     const propFirmId = normalizePracticePropFirmId(settings.propFirmId)
-    const offlineMode = offlineModeToDbValue(
-      propFirmId,
-      settings.offlineModePositions
-    )
     const firmSelections =
       settings.byFirm && typeof settings.byFirm === 'object'
         ? JSON.stringify(settings.byFirm)
@@ -102,7 +130,7 @@ class PracticeService {
         propFirmId,
         settings.accountId || '',
         settings.accountLabel || '',
-        offlineMode,
+        0,
         firmSelections,
       ]
     )
@@ -377,64 +405,42 @@ class PracticeService {
     if (!account) return []
     await Database.initialize()
     const rows = await Database.query(
-      'SELECT * FROM practice_positions WHERE account_id = ?',
+      'SELECT * FROM practice_positions WHERE account_id = ? AND contracts != 0 ORDER BY updated_at DESC',
       [accountId]
     )
-    return rows.map((r) => ({
-      id: r.id,
-      accountId: r.account_id,
-      symbol: r.symbol,
-      instrument: r.instrument,
-      contracts: r.contracts,
-      entry: r.entry,
-      stopLoss: r.stop_loss,
-      takeProfit: r.take_profit,
-      entryTime: r.entry_time,
-      type: r.type,
-      bracketSnapshot: (() => {
-        if (!r.bracket_snapshot) return null
-        try {
-          return JSON.parse(r.bracket_snapshot)
-        } catch {
-          return null
-        }
-      })(),
+    return rows.map(rowToPosition)
+  }
+
+  /** All open practice positions with brackets (for server-side Rithmic monitoring). */
+  async listBracketPositions() {
+    await Database.initialize()
+    const rows = await Database.query(
+      `SELECT p.*, a.user_id
+       FROM practice_positions p
+       INNER JOIN practice_accounts a ON a.id = p.account_id
+       WHERE a.status = 'active'
+         AND p.contracts != 0
+         AND (p.stop_loss IS NOT NULL OR p.take_profit IS NOT NULL)`
+    )
+    return rows.map((row) => ({
+      ...rowToPosition(row),
+      userId: row.user_id,
     }))
   }
 
-  async saveBracketSnapshot(userId, accountId, positionId, snapshot) {
-    const account = await this.getAccount(userId, accountId)
-    if (!account) return null
-
+  /** Open position counts per symbol — drives Rithmic ChartLive subscriptions (offline monitoring). */
+  async listActivePositionSymbolCounts() {
     await Database.initialize()
-    const row = await Database.get(
-      'SELECT id FROM practice_positions WHERE id = ? AND account_id = ?',
-      [positionId, accountId]
+    const rows = await Database.query(
+      `SELECT symbol, COUNT(*) AS cnt
+       FROM practice_positions
+       WHERE contracts != 0
+       GROUP BY symbol`
     )
-    if (!row) {
-      const err = new Error('Position not found')
-      err.statusCode = 404
-      throw err
-    }
-
-    const payload = JSON.stringify(snapshot)
-    await Database.run(
-      `UPDATE practice_positions SET bracket_snapshot = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND account_id = ?`,
-      [payload, positionId, accountId]
-    )
-
-    console.info('[Practice] bracket snapshot saved', {
-      accountId,
-      positionId,
-      barTimeSec: snapshot?.barTimeSec,
-      time: snapshot?.barTimeLabel,
-      reason: snapshot?.reason,
-      ohlc: snapshot
-        ? { o: snapshot.open, h: snapshot.high, l: snapshot.low, c: snapshot.close }
-        : null,
-    })
-
-    return { positionId, snapshot }
+    return rows.map((row) => ({
+      symbol: normalizeTradeSymbol(row.symbol),
+      count: Number(row.cnt) || 0,
+    }))
   }
 
   async chargeFillCommission(userId, accountId, fillContracts, symbol) {
@@ -450,7 +456,99 @@ class PracticeService {
     return this.applyBalanceChange(userId, accountId, -fee, false)
   }
 
+  async openPosition(userId, accountId, position) {
+    const saved = await this._savePosition(userId, accountId, position, { requireNew: true })
+    const account = await this.getAccount(userId, accountId)
+    if (account) broadcastOpenPosition(userId, accountId, account, saved)
+    notifyBracketEngine('trackOpenPositionSymbol', saved.symbol)
+    notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
+    return saved
+  }
+
+  async modifyPosition(userId, accountId, position) {
+    const saved = await this._savePosition(userId, accountId, position, { requireExisting: true })
+    const account = await this.getAccount(userId, accountId)
+    if (account) broadcastModifyPosition(userId, accountId, account, saved)
+    notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
+    return saved
+  }
+
+  /** Manual close from client (market flatten / close line). */
+  async closePosition(userId, accountId, positionId, { exitPrice, exitTime, fees, forcedExit } = {}) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account || account.status !== 'active') {
+      const err = new Error('Practice account is not active')
+      err.statusCode = 400
+      throw err
+    }
+
+    await Database.initialize()
+    const row = await Database.get(
+      'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
+      [positionId, accountId]
+    )
+    if (!row) {
+      const account = await this.getAccount(userId, accountId)
+      return { trade: null, account, alreadyClosed: true }
+    }
+
+    const symbol = normalizeTradeSymbol(row.symbol)
+    const contracts = Math.abs(Number(row.contracts) || 0)
+    let trade = null
+    if (exitPrice != null && Number.isFinite(Number(exitPrice)) && contracts) {
+      const pnl = calcPracticePnL(Number(row.entry), Number(exitPrice), Number(row.contracts), symbol)
+      trade = await this.recordTrade(userId, accountId, {
+        symbol,
+        direction: row.type,
+        entryPrice: row.entry,
+        exitPrice: Number(exitPrice),
+        contracts,
+        pnl,
+        fees,
+        entryTime: row.entry_time,
+        exitTime: exitTime ?? Math.floor(Date.now() / 1000),
+        stopLoss: row.stop_loss,
+        takeProfit: row.take_profit,
+        forcedExit: Boolean(forcedExit),
+      })
+    }
+
+    await Database.run(
+      'DELETE FROM practice_positions WHERE id = ? AND account_id = ?',
+      [positionId, accountId]
+    )
+    notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
+
+    const updatedAccount = await this.getAccount(userId, accountId)
+    broadcastClosePosition(userId, accountId, {
+      account: updatedAccount,
+      positionId,
+      symbol,
+      exitPrice: exitPrice != null ? Number(exitPrice) : null,
+      exitTime: exitTime ?? null,
+      trade,
+    })
+    return { trade, account: updatedAccount }
+  }
+
+  /** REST compat — picks open vs modify from existing row. */
   async upsertPosition(userId, accountId, position) {
+    await Database.initialize()
+    const symbol = normalizeTradeSymbol(position.symbol || position.instrument)
+    const existingRow = position.id
+      ? await Database.get('SELECT * FROM practice_positions WHERE id = ? AND account_id = ?', [
+          position.id,
+          accountId,
+        ])
+      : await Database.get(
+          'SELECT * FROM practice_positions WHERE account_id = ? AND symbol = ?',
+          [accountId, symbol]
+        )
+    if (existingRow) return this.modifyPosition(userId, accountId, position)
+    return this.openPosition(userId, accountId, position)
+  }
+
+  async _savePosition(userId, accountId, position, { requireNew = false, requireExisting = false } = {}) {
     const account = await this.getAccount(userId, accountId)
     if (!account || account.status !== 'active') {
       const err = new Error('Practice account is not active')
@@ -478,6 +576,17 @@ class PracticeService {
           [accountId, symbol]
         )
 
+    if (requireNew && existingRow) {
+      const err = new Error('Position already open for this symbol')
+      err.statusCode = 400
+      throw err
+    }
+    if (requireExisting && !existingRow) {
+      const err = new Error('Position not found')
+      err.statusCode = 404
+      throw err
+    }
+
     const prevAbs = existingRow ? Math.abs(Number(existingRow.contracts) || 0) : 0
     const nextAbs = Math.abs(nextContracts)
     const fillContracts = Math.max(0, nextAbs - prevAbs)
@@ -486,45 +595,115 @@ class PracticeService {
     }
 
     const id = position.id || existingRow?.id || newId('pp')
+    const instrument = normalizeTradeSymbol(position.instrument || position.symbol)
+    const entryTime = Number(position.entryTime) || existingRow?.entry_time || Math.floor(Date.now() / 1000)
+    const type =
+      position.type === 'short' || Number(position.contracts) < 0 ? 'short' : 'long'
+
     await Database.initialize()
     await Database.run(
       `INSERT INTO practice_positions (
         id, account_id, symbol, instrument, contracts, entry, stop_loss, take_profit, entry_time, type, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
+        symbol = excluded.symbol,
+        instrument = excluded.instrument,
         contracts = excluded.contracts,
         entry = excluded.entry,
         stop_loss = excluded.stop_loss,
         take_profit = excluded.take_profit,
+        entry_time = excluded.entry_time,
+        type = excluded.type,
         updated_at = CURRENT_TIMESTAMP`,
       [
         id,
         accountId,
-        normalizeTradeSymbol(position.symbol),
-        normalizeTradeSymbol(position.instrument || position.symbol),
-        position.contracts,
-        position.entry,
+        symbol,
+        instrument,
+        nextContracts,
+        Number(position.entry),
         position.stopLoss ?? null,
         position.takeProfit ?? null,
-        position.entryTime,
-        position.type,
+        entryTime,
+        type,
       ]
     )
-    return { ...position, id, accountId }
+    const saved = {
+      id,
+      accountId,
+      symbol,
+      instrument,
+      contracts: nextContracts,
+      entry: Number(position.entry),
+      stopLoss: position.stopLoss ?? null,
+      takeProfit: position.takeProfit ?? null,
+      entryTime,
+      type,
+    }
+    return saved
   }
 
-  async deletePosition(userId, accountId, positionId) {
+  /**
+   * Close an open position when backend Rithmic detects SL/TP fill.
+   * Records trade, deletes row, returns updated account.
+   */
+  async closePositionByBracket(userId, accountId, positionId, { exitPrice, exitTime, reason }) {
+    const account = await this.getAccount(userId, accountId)
+    if (!account || account.status !== 'active') return null
+
     await Database.initialize()
+    const row = await Database.get(
+      'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
+      [positionId, accountId]
+    )
+    if (!row) return null
+
+    const symbol = normalizeTradeSymbol(row.symbol)
+    const contracts = Math.abs(Number(row.contracts) || 0)
+    if (!contracts) return null
+
+    const pnl = calcPracticePnL(Number(row.entry), Number(exitPrice), Number(row.contracts), symbol)
+    const trade = await this.recordTrade(userId, accountId, {
+      symbol,
+      direction: row.type,
+      entryPrice: row.entry,
+      exitPrice,
+      contracts,
+      pnl,
+      entryTime: row.entry_time,
+      exitTime,
+      stopLoss: row.stop_loss,
+      takeProfit: row.take_profit,
+    })
+
     await Database.run(
       'DELETE FROM practice_positions WHERE id = ? AND account_id = ?',
       [positionId, accountId]
     )
-    return true
+
+    notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
+
+    const updatedAccount = await this.getAccount(userId, accountId)
+    broadcastClosePosition(userId, accountId, {
+      account: updatedAccount,
+      positionId,
+      symbol,
+      exitPrice: Number(exitPrice),
+      exitTime,
+      reason,
+      trade,
+    })
+    return { trade, account: updatedAccount, reason }
+  }
+
+  async deletePosition(userId, accountId, positionId) {
+    return this.closePosition(userId, accountId, positionId)
   }
 
   async clearPositions(userId, accountId) {
     await Database.initialize()
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
+    notifyBracketEngine('clearAccountWatches', accountId)
     return true
   }
 

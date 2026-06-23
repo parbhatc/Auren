@@ -9,9 +9,6 @@ export {
   getPracticePropFirmConfig,
   normalizePracticePropFirmId,
   practiceFirmHasExclusiveMdsSlot,
-  practiceFirmShowsOfflineModeSection,
-  practiceFirmSupportsOfflineBracketWatcher,
-  resolveOfflineModePositionsForFirm,
 } from '../../constants/practicePropFirms'
 
 /** Build registry entries from practice MDS configs; extend with live flags per firm. */

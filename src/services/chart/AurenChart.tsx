@@ -165,6 +165,14 @@ export default function AurenChart(props: AurenChartProps) {
         await registerAurenChartIndicators()
         if (cancelled) return
 
+        const handler = propsRef.current.tradeseaTradeHandler
+
+        const notifySymbolChange = (sym: string) => {
+          if (cancelled) return
+          handler?.handleSymbolChange(sym)
+          propsRef.current.onSymbolChange?.(sym)
+        }
+
         const datafeed = createBwcDatafeed(datafeedSource)
         const widget = (await bootChart({
           mount,
@@ -175,6 +183,7 @@ export default function AurenChart(props: AurenChartProps) {
           chrome: true,
           replay: false,
           datafeed,
+          onSymbolChange: notifySymbolChange,
         })) as BwcWidget
 
         if (cancelled) {
@@ -195,7 +204,6 @@ export default function AurenChart(props: AurenChartProps) {
           )
         }
 
-        const handler = propsRef.current.tradeseaTradeHandler
         if (handler) {
           wireTradeContextActions(handler)
         }
@@ -204,20 +212,7 @@ export default function AurenChart(props: AurenChartProps) {
         setupChartKeyboardShortcuts(widget)
 
         const sym = widget.getSymbol?.() ?? initialSymbol
-        handler?.handleSymbolChange(sym)
-        propsRef.current.onSymbolChange?.(sym)
-
-        const prevSetSymbol = widget.setSymbol?.bind(widget)
-        if (prevSetSymbol) {
-          widget.setSymbol = async (next: string) => {
-            await prevSetSymbol(next)
-            if (!cancelled) {
-              const h = propsRef.current.tradeseaTradeHandler
-              h?.handleSymbolChange(next)
-              propsRef.current.onSymbolChange?.(next)
-            }
-          }
-        }
+        notifySymbolChange(sym)
 
         await propsRef.current.onChartReady?.()
       } catch (err) {

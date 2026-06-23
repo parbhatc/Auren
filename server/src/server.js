@@ -3,9 +3,10 @@ import Database from './config/Database.js'
 import RoleLoader from './config/RoleLoader.js'
 import EconomicNewsScheduler from './services/EconomicNewsScheduler.js'
 import { bootstrapLiveDataOnStartup } from './services/liveData/StartupService.js'
-import { stopRithmicLiveTicker } from './services/liveData/rithmicLiveTickerHub.js'
+import { closeRithmicChartLive } from './services/liveData/rithmicChartLive.js'
 import tradeseaTradesWebSocket from './websocket/TradeseaTradesWebSocket.js'
 import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
+import practiceAccountWebSocket from './websocket/PracticeAccountWebSocket.js'
 import webSocketManager from './websocket/WebSocketManager.js'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
@@ -91,6 +92,7 @@ class Server {
 
       tradeseaTradesWebSocket.initialize(this.server)
       tradeseaMdsWebSocket.initialize(this.server)
+      practiceAccountWebSocket.initialize(this.server)
 
       webSocketManager.initialize(this.server, [])
 
@@ -119,7 +121,7 @@ class Server {
       process.on('SIGINT', async () => {
         console.log('\n🛑 Shutting down server...')
         economicNewsScheduler.stop()
-        await stopRithmicLiveTicker()
+        await closeRithmicChartLive()
         webSocketManager.closeAll()
         await Database.close()
         if (this.server) {

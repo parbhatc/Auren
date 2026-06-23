@@ -76,11 +76,6 @@ class PracticeRoutes {
       AuthMiddleware.authenticate(),
       PracticeController.deletePosition.bind(PracticeController)
     )
-    this.router.put(
-      '/accounts/:id/positions/:positionId/bracket-snapshot',
-      AuthMiddleware.authenticate(),
-      PracticeController.saveBracketSnapshot.bind(PracticeController)
-    )
 
     this.router.post(
       '/accounts/:id/trades',
@@ -108,16 +103,6 @@ class PracticeRoutes {
       PracticeController.clearLockout.bind(PracticeController)
     )
 
-    this.router.post(
-      '/offline-bracket/start',
-      AuthMiddleware.authenticate(),
-      PracticeController.startOfflineBracketWatcher.bind(PracticeController)
-    )
-    this.router.post(
-      '/offline-bracket/stop',
-      AuthMiddleware.authenticate(),
-      PracticeController.stopOfflineBracketWatcher.bind(PracticeController)
-    )
   }
 
   getRouter() {

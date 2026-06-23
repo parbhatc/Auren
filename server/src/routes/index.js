@@ -9,7 +9,6 @@ import NewsRoutes from './NewsRoutes.js'
 import TradingJournalRoutes from './TradingJournalRoutes.js'
 import TradingViewRoutes from './TradingViewRoutes.js'
 import TradeseaRoutes from './TradeseaRoutes.js'
-import RithmicRoutes from './RithmicRoutes.js'
 import PracticeRoutes from './PracticeRoutes.js'
 import DebugRoutes from './DebugRoutes.js'
 import RoleController from '../controllers/RoleController.js'
@@ -81,10 +80,6 @@ class Routes {
     // Tradesea routes (OTP login, connection status)
     const tradeseaRoutes = new TradeseaRoutes()
     this.router.use('/tradesea', tradeseaRoutes.getRouter())
-
-    // Rithmic mobile discovery & protocol helpers
-    const rithmicRoutes = new RithmicRoutes()
-    this.router.use('/rithmic', rithmicRoutes.getRouter())
 
     // Practice sim accounts (eval/funded)
     const practiceRoutes = new PracticeRoutes()

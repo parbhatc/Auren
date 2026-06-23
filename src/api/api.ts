@@ -15,18 +15,13 @@ export const getApiBaseUrl = (): string => {
 const API_BASE_URL = getApiBaseUrl()
 
 /**
- * WebSocket URL for Tradesea MDS / trades streams.
- * Production: same host + port as the page (Nginx proxies /tradesea-*-ws → :3001).
- * Dev: backend on :3001 (WS paths are not under /api).
+ * WebSocket URL for Tradesea MDS / trades / practice account streams.
+ * Dev and production both use the page origin (Vite or Nginx proxy WS → backend).
  */
 export const getWebSocketUrl = (path: string = ''): string => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const { hostname, port, protocol } = window.location
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
-
-  if (import.meta.env.DEV) {
-    return `${wsProtocol}//${hostname}:3001${normalizedPath}`
-  }
 
   const portSuffix =
     port && port !== '80' && port !== '443' ? `:${port}` : ''
