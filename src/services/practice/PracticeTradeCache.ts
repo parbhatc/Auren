@@ -213,7 +213,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   ) {
 
-    const cacheKey = this.activeChartSymbol() || symbol
+    const cacheKey = String(symbol || '').trim() || this.activeChartSymbol()
 
     const datafeed = this.getDatafeed()
 

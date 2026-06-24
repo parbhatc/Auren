@@ -20,6 +20,8 @@ export interface TradingProps {
 
 export interface TradingRendererState {
   selectedSymbol: string
+  /** Product root for DOM / order pad; null = same as chart symbol. */
+  tradePadSymbol: string | null
   contractQuantity: number | string
   selectedAccount: string
   showAccountDropdown: boolean

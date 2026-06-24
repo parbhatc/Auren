@@ -10,6 +10,7 @@ import {
 } from '../../../../constants/tradePanelSettings'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
+import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 
 const QTY_CHIP_LIMIT = 6
 
@@ -60,9 +61,12 @@ export function QuickTradeCard({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
               Quick trade
             </p>
-            <p className="text-[10px] text-[#7d8590]">
-              {tradeDisabled ? 'Market data offline' : 'Tap size, then side'}
-            </p>
+            <div className="mt-1">
+              <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+            </div>
+            {tradeDisabled ? (
+              <p className="mt-1 text-[10px] text-[#7d8590]">Market data offline</p>
+            ) : null}
           </div>
           {headerActions ? (
             <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
@@ -150,9 +154,12 @@ export function QuickTradeCard({
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             Quick trade
           </p>
-          <p className="text-[10px] text-slate-400">
-            {tradeDisabled ? 'Market data offline' : 'Tap size, then side'}
-          </p>
+          <div className="mt-1">
+            <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+          </div>
+          {tradeDisabled ? (
+            <p className="mt-1 text-[10px] text-slate-400">Market data offline</p>
+          ) : null}
         </div>
         {headerActions ? (
           <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>

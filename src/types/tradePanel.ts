@@ -1,6 +1,7 @@
 import type { OrderSide, OrderType } from './order'
 import type { TradeseaMarketBook } from '../services/tradesea/tradeseaMarketBook'
 import type { DomPositionContext } from '../services/tradesea/tradeseaPnL'
+import type { TradeseaSearchSymbolResult } from '../services/tradesea/tradeseaSymbolInfo'
 import type { TradingMode } from './tradingMode'
 
 export type TradePanelTab = 'quick' | 'dom' | 'ticket'
@@ -45,7 +46,11 @@ export type TradePanelProps = {
   mode?: TradingMode
   isDark: boolean
   chartSymbol?: string
+  /** Chart ticker when it differs from the pad trade symbol (e.g. chart NQ, pad MNQ). */
+  chartSymbolHint?: string
   onChartSymbolChange?: (symbol: string) => void
+  /** Same Tradesea instrument search used by the chart datafeed. */
+  searchSymbols?: (query: string) => Promise<TradeseaSearchSymbolResult[]>
   quantity: string | number
   onQuantityChange: (delta: number) => void
   onQuantityUpdate: (n: number) => void

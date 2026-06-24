@@ -22,6 +22,7 @@ import { formatStatMoney } from '../../account/AccountStatsBar'
 import { DomActionButtons } from '../DomActionButtons'
 import type { TradeseaMarketBook } from '../../../../../services/tradesea/tradeseaMarketBook'
 import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
+import { PadTradeSymbolPicker } from '../TradeContractPicker'
 
 /** Must match LadderRow minHeight (22px row + 1px separator). */
 const DOM_ROW_HEIGHT_PX = 23
@@ -203,9 +204,7 @@ export function DomTab({
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#475569]/40 py-2">
         <div className="flex items-start justify-between gap-2 rounded-lg border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-[#0f172a] to-[#0f172a] px-2.5 py-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-medium uppercase tracking-wide text-[#7d8590]">
-              {chartSymbol}
-            </p>
+            <PadTradeSymbolPicker props={props} disabled={tradeDisabled} />
             <p
               className="mt-1 text-2xl font-bold tabular-nums leading-none tracking-tight text-[#f0c040]"
               aria-live="polite"

@@ -7,7 +7,7 @@ import {
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { getTradePanelSettings } from '../../../../constants/tradePanelSettings'
-import { PRACTICE_CONTRACT_SYMBOL_PRESETS } from '../../../../constants/practice'
+import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 
 const fmtPrice = (p: number) =>
   p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -50,17 +50,6 @@ export function ScalpFloat({
   }, [props.getMarketBook, bookTick])
   const { bid, ask } = resolveTradePanelBidAsk(book)
 
-  const activeRoot = useMemo(() => {
-    const s = chartSymbol.trim().toUpperCase()
-    const colon = s.indexOf(':')
-    return colon >= 0 ? s.slice(colon + 1) : s
-  }, [chartSymbol])
-
-  const pickContract = (root: string) => {
-    const sym = root.includes(':') ? root : `CME:${root}`
-    props.onChartSymbolChange?.(sym)
-  }
-
   return (
     <div
       className="pointer-events-auto select-none rounded-2xl border border-[#475569] bg-[#0f172a] p-3 shadow-2xl w-[346px]"
@@ -75,7 +64,7 @@ export function ScalpFloat({
             if (t) onDragStart?.(t.clientX, t.clientY)
           }}
         >
-          <span className="text-base text-[#7d8590] tabular-nums">{chartSymbol}</span>
+          <PadTradeSymbolPicker props={props} disabled={tradeDisabled} />
           <button
             type="button"
             onClick={onDock}

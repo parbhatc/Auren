@@ -384,7 +384,8 @@ export class PracticeTradeHandler {
     side: 'buy' | 'sell',
     quantity: number,
     limitPrice: number,
-    brackets?: { stopLoss?: number | null; takeProfit?: number | null }
+    brackets?: { stopLoss?: number | null; takeProfit?: number | null },
+    tradeSymbolOverride?: string
   ): Promise<void> {
     const lockMsg = this.getTradingLockMessage()
     if (lockMsg) {
@@ -395,8 +396,8 @@ export class PracticeTradeHandler {
     const account = this.getAccount()
     if (!account) return
 
-    const chartSymbol = this.getChartSymbol()
-    const closedMsg = this.getMarketClosedMessage(chartSymbol)
+    const tradeSymbol = this.resolveTradeSymbol(tradeSymbolOverride)
+    const closedMsg = this.getMarketClosedMessage(tradeSymbol)
     if (closedMsg) {
       aurenToast.error(closedMsg)
       return
@@ -412,23 +413,23 @@ export class PracticeTradeHandler {
       return
     }
 
-    const mark = this.getMarkPrice(chartSymbol)
+    const mark = this.getMarkPrice(tradeSymbol)
     if (mark == null) {
       aurenToast.error('Waiting for market data…')
       return
     }
 
     const datafeed = this.propFirm.chartServices?.datafeed ?? null
-    const tickSize = datafeed?.getTickSize?.(chartSymbol) ?? 0.25
+    const tickSize = datafeed?.getTickSize?.(tradeSymbol) ?? 0.25
     const cache = this.tradeCache
     if (!cache) return
 
     const signed = side === 'buy' ? qty : -qty
-    const currentPos = cache.getPosition(chartSymbol)
+    const currentPos = cache.getPosition(tradeSymbol)
     const currentContracts = Number(currentPos?.contracts) || 0
     const sizeErr = validatePracticePositionSize(
       account,
-      chartSymbol,
+      tradeSymbol,
       Math.abs(currentContracts + signed),
       datafeed
     )
@@ -442,7 +443,7 @@ export class PracticeTradeHandler {
 
     const order: PracticePendingOrder = {
       id: `po-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      symbol: chartSymbol,
+      symbol: tradeSymbol,
       side,
       contracts: qty,
       limitPrice,
@@ -453,7 +454,7 @@ export class PracticeTradeHandler {
     }
     this.pendingOrders.push(order)
     void this.attachPendingOrderLine(order)
-    const product = practiceOrderProductSymbol(chartSymbol, datafeed)
+    const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
     showPracticeOrderToast(
       'pending',
       practiceOrderLine(side, qty, product, limitPrice, { limitWorking: true })
@@ -609,6 +610,12 @@ export class PracticeTradeHandler {
     return datafeed?.resolveStreamInstrument?.(`CME:${raw}`) ?? `CME:${raw}`
   }
 
+  private resolveTradeSymbol(override?: string): string {
+    const raw = String(override || '').trim()
+    if (raw) return this.resolveStreamLabel(raw)
+    return this.getChartSymbol()
+  }
+
   getMarkPriceForPositionKey(cacheKey: string): number | null {
     const datafeed = this.propFirm.chartServices?.datafeed
     const stream = this.resolveStreamLabel(cacheKey)
@@ -670,23 +677,48 @@ export class PracticeTradeHandler {
     return this.getMarkPrice(this.getChartSymbol())
   }
 
-  private getActiveChartDomPositionContext(): DomPositionContext | null {
+  private getDomPositionContextFor(symbolKey: string): DomPositionContext | null {
     const cache = this.tradeCache
     if (!cache) return null
-    const chartSymbol = this.getChartSymbol()
-    const position = cache.getPosition(chartSymbol)
+    const tradeSymbol = this.resolveStreamLabel(symbolKey)
+    const position = cache.getPosition(tradeSymbol)
     const contracts = Number(position?.contracts)
     if (!position || !contracts) return null
     const datafeed = this.propFirm.chartServices?.datafeed
-    const tickSize = datafeed?.getTickSize?.(chartSymbol) ?? 0.25
+    const tickSize = datafeed?.getTickSize?.(tradeSymbol) ?? 0.25
     const tickValue =
-      datafeed?.getTickValue?.(chartSymbol) ?? datafeed?.getTickValue?.(`CME:${chartSymbol}`) ?? tickSize * 2
+      datafeed?.getTickValue?.(tradeSymbol) ??
+      datafeed?.getTickValue?.(`CME:${tradeSymbol}`) ??
+      tickSize * 2
     return {
       entry: position.entry as number,
       signedContracts: contracts,
       tickSize,
       tickValue,
     }
+  }
+
+  private getActiveChartDomPositionContext(): DomPositionContext | null {
+    return this.getDomPositionContextFor(this.getChartSymbol())
+  }
+
+  getDomPositionFor(symbolKey: string): DomPositionContext | null {
+    return this.getDomPositionContextFor(symbolKey)
+  }
+
+  getPositionUplFor(symbolKey: string): number | null {
+    const ctx = this.getDomPositionContextFor(symbolKey)
+    if (!ctx) return null
+    const tradeSymbol = this.resolveStreamLabel(symbolKey)
+    const mark = this.getMarkPrice(tradeSymbol)
+    if (mark == null) return null
+    return calcTradeseaTickPnL(
+      ctx.entry,
+      mark,
+      ctx.signedContracts,
+      ctx.tickSize,
+      ctx.tickValue
+    )
   }
 
   /** UP&L for the position on the active chart symbol (null if flat). */
@@ -734,8 +766,8 @@ export class PracticeTradeHandler {
     const account = this.getAccount()
     if (!account) return
 
-    const chartSymbol = this.getChartSymbol()
-    const closedMsg = this.getMarketClosedMessage(data?.symbol || chartSymbol)
+    const tradeSymbol = this.resolveTradeSymbol(data?.symbol)
+    const closedMsg = this.getMarketClosedMessage(tradeSymbol)
     if (closedMsg) {
       aurenToast.error(closedMsg)
       return
@@ -752,7 +784,7 @@ export class PracticeTradeHandler {
       }
     }
 
-    const mark = this.getMarkPrice(chartSymbol)
+    const mark = this.getMarkPrice(tradeSymbol)
     if (mark == null) {
       aurenToast.error('Waiting for market data…')
       return
@@ -770,7 +802,7 @@ export class PracticeTradeHandler {
         ? data.entryPrice
         : null
 
-    const currentPos = cache.getPosition(chartSymbol)
+    const currentPos = cache.getPosition(tradeSymbol)
     const currentContracts = Number(currentPos?.contracts) || 0
 
     const projectedAbs = (side: 'buy' | 'sell') => {
@@ -784,17 +816,17 @@ export class PracticeTradeHandler {
           await this.placeLimitOrder('buy', qty, limitPrice, {
             stopLoss: data?.stopLoss ?? null,
             takeProfit: data?.takeProfit ?? null,
-          })
+          }, data?.symbol)
           break
         }
-        const sizeErr = validatePracticePositionSize(account, chartSymbol, projectedAbs('buy'), datafeed)
+        const sizeErr = validatePracticePositionSize(account, tradeSymbol, projectedAbs('buy'), datafeed)
         if (sizeErr) {
           aurenToast.error(sizeErr)
           return
         }
-        cache.onOpenPosition(chartSymbol, mark, qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
+        cache.onOpenPosition(tradeSymbol, mark, qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
         if (currentContracts + qty !== 0) {
-          const product = practiceOrderProductSymbol(chartSymbol, datafeed)
+          const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
           showPracticeOrderToast(
             'buy',
             practiceOrderLine('buy', qty, product, mark),
@@ -811,17 +843,17 @@ export class PracticeTradeHandler {
           await this.placeLimitOrder('sell', qty, limitPrice, {
             stopLoss: data?.stopLoss ?? null,
             takeProfit: data?.takeProfit ?? null,
-          })
+          }, data?.symbol)
           break
         }
-        const sizeErr = validatePracticePositionSize(account, chartSymbol, projectedAbs('sell'), datafeed)
+        const sizeErr = validatePracticePositionSize(account, tradeSymbol, projectedAbs('sell'), datafeed)
         if (sizeErr) {
           aurenToast.error(sizeErr)
           return
         }
-        cache.onOpenPosition(chartSymbol, mark, -qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
+        cache.onOpenPosition(tradeSymbol, mark, -qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
         if (currentContracts - qty !== 0) {
-          const product = practiceOrderProductSymbol(chartSymbol, datafeed)
+          const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
           showPracticeOrderToast(
             'sell',
             practiceOrderLine('sell', qty, product, mark),
@@ -834,27 +866,27 @@ export class PracticeTradeHandler {
         break
       }
       case 'Close Position': {
-        const resolved = cache.getPosition(chartSymbol)
+        const resolved = cache.getPosition(tradeSymbol)
         if (!resolved?.contracts) {
           aurenToast.error('No open position')
           return
         }
-        cache.onClosePosition(chartSymbol, Math.abs(resolved.contracts as number), mark)
+        cache.onClosePosition(tradeSymbol, Math.abs(resolved.contracts as number), mark)
         break
       }
       case 'Reverse Position': {
-        const resolved = cache.getPosition(chartSymbol)
+        const resolved = cache.getPosition(tradeSymbol)
         if (!resolved?.contracts) {
           aurenToast.error('No open position')
           return
         }
         const c = resolved.contracts as number
-        const product = practiceOrderProductSymbol(chartSymbol, datafeed)
+        const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
         const exitSide = practiceExitSide(c)
         const entrySide = c > 0 ? 'sell' : 'buy'
         this.suppressCloseToasts = true
-        cache.onClosePosition(chartSymbol, Math.abs(c), mark)
-        cache.onOpenPosition(chartSymbol, mark, c > 0 ? -qty : qty, null, null)
+        cache.onClosePosition(tradeSymbol, Math.abs(c), mark)
+        cache.onOpenPosition(tradeSymbol, mark, c > 0 ? -qty : qty, null, null)
         showPracticeOrderToast(
           exitSide,
           practiceOrderLine(exitSide, Math.abs(c), product, mark)

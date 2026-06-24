@@ -34,11 +34,13 @@ import {
 import { aurenToast } from '../../../utils/aurenToast'
 import { dismissMdsConnectionToast } from '../../../services/tradesea/mdsConnectionToast'
 import { chartSymbolToProductRoot } from '../../../services/tradesea/tradeseaSymbolInfo'
+import type { TradeseaSearchSymbolResult } from '../../../services/tradesea/tradeseaSymbolInfo'
 import { debugPracticeChartSymbol } from '../../../services/tradesea/practiceChartSymbolDebug'
 import {
   getInitialPracticeShowNav,
   savePracticeShowNav,
 } from '../../../utils/practiceTradePreferences'
+import { getTradePadSymbol, saveTradePadSymbol } from '../../../utils/tradePadSymbol'
 import { MobileScalpBar } from '../shared/mobile/MobileScalpBar'
 import { MobileOrderSheet } from '../shared/mobile/MobileOrderSheet'
 import {
@@ -58,6 +60,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
   state: TradingRendererState = {
     selectedSymbol: 'MNQ',
+    tradePadSymbol: null,
     contractQuantity: 1 as number | string,
     selectedAccount: this.props.selectedAccount || 'Account 1',
     showAccountDropdown: false,
@@ -247,9 +250,17 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     }
 
     this.bindMdsConnectionState()
+
+    if (
+      this.props.practiceAccountId &&
+      this.props.practiceAccountId !== prevProps.practiceAccountId
+    ) {
+      this.syncTradePadSymbolFromStorage(this.props.practiceAccountId)
+    }
   }
 
   componentDidMount() {
+    this.syncTradePadSymbolFromStorage()
     document.addEventListener('mousedown', this.handleClickOutside)
 
     // Initialize last balance, rpl, and upl values
@@ -411,14 +422,50 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     }
   }
 
+  private searchPadSymbols = (query: string): Promise<TradeseaSearchSymbolResult[]> => {
+    const datafeed = this.getActivePropFirm()?.chartServices?.datafeed as
+      | TradeseaDatafeed
+      | undefined
+    if (!datafeed) return Promise.resolve([])
+    return new Promise((resolve) => {
+      datafeed.searchSymbols(query, '', '', resolve)
+    })
+  }
+
+  private getTradePadRoot(): string {
+    return this.state.tradePadSymbol || this.state.selectedSymbol || 'MNQ'
+  }
+
+  private resolveTradePadStreamLabel(
+    datafeed?: TradeseaDatafeed | null
+  ): string {
+    const root = this.getTradePadRoot()
+    return datafeed?.resolveStreamInstrument?.(`CME:${root}`) ?? `CME:${root}`
+  }
+
+  private resolveChartStreamLabel(
+    datafeed?: TradeseaDatafeed | null
+  ): string {
+    const root = this.state.selectedSymbol || 'MNQ'
+    return datafeed?.resolveStreamInstrument?.(`CME:${root}`) ?? `CME:${root}`
+  }
+
+  private syncTradePadSymbolFromStorage(accountId?: string): void {
+    const id = accountId ?? this.props.practiceAccountId
+    if (!id) return
+    const saved = getTradePadSymbol(id)
+    if (saved && saved !== this.state.tradePadSymbol) {
+      this.setState({ tradePadSymbol: saved })
+    }
+  }
+
   private getPracticeMaxQty(): number | null {
     const { practiceMode, practiceAccountId } = this.props
     if (!practiceMode || !practiceAccountId) return null
     const account = getPracticeAccountById(practiceAccountId)
     if (!account) return null
     const activeFirm = this.getActivePropFirm()
-    const symbolForLimit =
-      (activeFirm?.chartSymbol as string | undefined) || this.state.selectedSymbol
+    const symbolForLimit = this.getTradePadRoot()
     const datafeed = activeFirm?.chartServices?.datafeed
     const product = resolvePracticeProductSymbol(symbolForLimit, datafeed)
     return getMaxContractsForSymbol(account.size, product)
@@ -862,11 +909,12 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 }
                 const qty = Number(contractQuantity) || 1
                 const handler = this.getTradeHandler()
+                const tradeRoot = this.getTradePadRoot()
                 const payload =
                   practiceMode && practiceAccountId
                     ? {
                         quantity: qty,
-                        symbol: selectedSymbol,
+                        symbol: tradeRoot,
                         ...(action === 'Buy' || action === 'Sell'
                           ? {
                               orderType: extra?.orderType,
@@ -879,7 +927,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     : action === 'Buy' || action === 'Sell'
                       ? {
                           quantity: qty,
-                          symbol: selectedSymbol,
+                          symbol: tradeRoot,
                           orderType: extra?.orderType,
                           entryPrice: extra?.entryPrice,
                           stopLoss: extra?.stopLoss ?? null,
@@ -899,11 +947,13 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                 const padDetached = isPracticePadDetached(practiceAccountId)
                 const tsDatafeed = activeFirm?.chartServices?.datafeed as TradeseaDatafeed | undefined
                 const tradeHandler = this.getTradeHandler()
-                const padRoot =
-                  (activeFirm?.chartSymbol as string | undefined) ||
-                  selectedSymbol
-                const chartSymbolLabel =
-                  tsDatafeed?.resolveStreamInstrument?.(`CME:${padRoot}`) ?? `CME:${padRoot}`
+                const padRoot = this.getTradePadRoot()
+                const chartSymbolLabel = this.resolveTradePadStreamLabel(tsDatafeed)
+                const chartStreamLabel = this.resolveChartStreamLabel(tsDatafeed)
+                const chartSymbolHint =
+                  chartStreamLabel.trim().toUpperCase() !== chartSymbolLabel.trim().toUpperCase()
+                    ? chartStreamLabel
+                    : undefined
                 const practiceMaxQty = this.getPracticeMaxQty() ?? 10
                 const resolvePracticeBook = () => {
                   if (tradeHandler && 'getActiveMarketBook' in tradeHandler) {
@@ -931,7 +981,13 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     return
                   }
                   if (tradeHandler instanceof PracticeTradeHandler) {
-                    void tradeHandler.placeLimitOrder(side, Number(contractQuantity) || 1, price)
+                    void tradeHandler.placeLimitOrder(
+                      side,
+                      Number(contractQuantity) || 1,
+                      price,
+                      undefined,
+                      padRoot
+                    )
                     return
                   }
                   runTrade(side === 'buy' ? 'Buy' : 'Sell', { entryPrice: price })
@@ -942,6 +998,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                   isDark,
                   marketDataLive,
                   chartSymbol: chartSymbolLabel,
+                  chartSymbolHint,
+                  searchSymbols: tsDatafeed ? this.searchPadSymbols : undefined,
                   onChartSymbolChange: (sym: string) => {
                     const root = chartSymbolToProductRoot(sym)
                     if (!root) return
@@ -950,8 +1008,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                         `CME:${root}`
                       ) ?? `CME:${root}`
                     void activeFirm?.chartServices?.datafeed?.ensureMarketBookSubscription?.(label)
-                    if (root !== selectedSymbol) {
-                      this.setState({ selectedSymbol: root })
+                    if (practiceAccountId) saveTradePadSymbol(practiceAccountId, root)
+                    if (root !== this.state.tradePadSymbol) {
+                      this.setState({ tradePadSymbol: root })
                     }
                   },
                   quantity: contractQuantity,
@@ -986,11 +1045,11 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     : undefined,
                   getChartPositionUpl:
                     tradeHandler instanceof PracticeTradeHandler
-                      ? () => tradeHandler.getActiveChartPositionUpl()
+                      ? () => tradeHandler.getPositionUplFor(chartSymbolLabel)
                       : undefined,
                   getDomPositionContext:
                     tradeHandler instanceof PracticeTradeHandler
-                      ? () => tradeHandler.getActiveChartDomPosition()
+                      ? () => tradeHandler.getDomPositionFor(chartSymbolLabel)
                       : undefined,
                   tickSize: activeFirm?.chartServices?.datafeed?.getTickSize?.(padRoot) ?? 0.25,
                   onDetach: () => {
@@ -1015,7 +1074,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                         {
                           stopLoss: brackets.stopLoss,
                           takeProfit: brackets.takeProfit,
-                        }
+                        },
+                        padRoot
                       )
                       return
                     }

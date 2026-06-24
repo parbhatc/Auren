@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
+import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 import { QuickTradeCard } from './QuickTradeCard'
 import { FloatingTradePadIcon } from './MobileTradeIcons'
 import {
@@ -42,13 +43,9 @@ function CompactQuickTrade({
         >
           <ChevronUp className="w-4 h-4" aria-hidden />
         </button>
-        <span
-          className={`shrink-0 text-[10px] font-semibold uppercase tracking-wider ${
-            isDark ? 'text-[#64748b]' : 'text-slate-500'
-          }`}
-        >
-          Quick
-        </span>
+        <div className="min-w-0 shrink">
+          <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+        </div>
         <div
           className={`flex shrink-0 items-stretch rounded-lg border overflow-hidden ${
             isDark ? 'border-[#475569] bg-[#020617]' : 'border-slate-200 bg-slate-50'
