@@ -1,6 +1,12 @@
 import type { PracticeAccount, PracticeDayPnL } from '../../constants/practice'
 import type { PracticeAccountRules } from './practicePlans'
 import { t } from '../../utils/translator'
+import {
+  computeSessionDailyLossLimit,
+  getNextSessionResetDate,
+  getPracticeSessionDayKey,
+  getSessionDayPnl,
+} from './practiceSessionReset'
 
 export type PracticeLockoutReason =
   | 'daily_loss'
@@ -28,87 +34,25 @@ export interface PracticeLockoutStatus {
   nextSessionResetLabel: string
 }
 
-const ET = 'America/New_York'
-const SESSION_RESET_HOUR = 18
-
-export function getPracticeSessionDayKey(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: ET,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now)
-
-  const pick = (type: string) => parts.find((p) => p.type === type)?.value ?? '0'
-  let y = Number(pick('year'))
-  let m = Number(pick('month'))
-  let d = Number(pick('day'))
-  const hour = Number(pick('hour'))
-
-  if (hour < SESSION_RESET_HOUR) {
-    const dt = new Date(Date.UTC(y, m - 1, d))
-    dt.setUTCDate(dt.getUTCDate() - 1)
-    y = dt.getUTCFullYear()
-    m = dt.getUTCMonth() + 1
-    d = dt.getUTCDate()
-  }
-
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-export function getNextSessionResetDate(now = new Date()): { iso: string; label: string } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: ET,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now)
-
-  const pick = (type: string) => parts.find((p) => p.type === type)?.value ?? '0'
-  const y = Number(pick('year'))
-  const m = Number(pick('month'))
-  const d = Number(pick('day'))
-  const hour = Number(pick('hour'))
-
-  let targetY = y
-  let targetM = m
-  let targetD = d
-  if (hour >= SESSION_RESET_HOUR) {
-    const dt = new Date(Date.UTC(y, m - 1, d))
-    dt.setUTCDate(dt.getUTCDate() + 1)
-    targetY = dt.getUTCFullYear()
-    targetM = dt.getUTCMonth() + 1
-    targetD = dt.getUTCDate()
-  }
-
-  const guessUtc = Date.UTC(targetY, targetM - 1, targetD, SESSION_RESET_HOUR + 5, 0, 0)
-  const label = new Intl.DateTimeFormat('en-US', {
-    timeZone: ET,
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(guessUtc))
-
-  return { iso: new Date(guessUtc).toISOString(), label: `${label} ET` }
-}
+export {
+  getNextSessionResetDate,
+  getPracticeSessionDayKey,
+  getSessionDayPnl,
+} from './practiceSessionReset'
 
 export function defaultDailyLossLimit(rules: PracticeAccountRules): number | null {
   if (rules.lockoutEnabled !== true) return null
+  if (
+    rules.sessionDailyLossLimit != null &&
+    Number.isFinite(rules.sessionDailyLossLimit) &&
+    rules.sessionDailyLossLimit > 0
+  ) {
+    return rules.sessionDailyLossLimit
+  }
   if (rules.dailyLossLimit != null && Number.isFinite(rules.dailyLossLimit) && rules.dailyLossLimit > 0) {
     return rules.dailyLossLimit
   }
   return null
-}
-
-function getSessionDayPnl(dayPnL: PracticeDayPnL[] | undefined, sessionKey: string): number {
-  if (!dayPnL?.length) return 0
-  const row = dayPnL.find((d) => d.date === sessionKey)
-  return row ? Number(row.pnl) || 0 : 0
 }
 
 export function lockoutExpired(until: string | null | undefined): boolean {
@@ -123,7 +67,11 @@ export function evaluatePracticeLockout(
 ): PracticeLockoutStatus {
   const rules = account?.rules
   const sessionKey = getPracticeSessionDayKey()
-  const dailyLossLimit = rules ? defaultDailyLossLimit(rules) : null
+  const dailyLossLimit =
+    (rules ? defaultDailyLossLimit(rules) : null) ??
+    (rules?.lockoutEnabled === true && account?.balance != null
+      ? computeSessionDailyLossLimit(rules, account.balance)
+      : null)
   const maxTradesPerDay =
     rules?.maxTradesPerDay != null && Number.isFinite(rules.maxTradesPerDay)
       ? rules.maxTradesPerDay

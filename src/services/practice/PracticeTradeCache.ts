@@ -555,7 +555,7 @@ export class PracticeTradeCache extends ChartTradeCache {
     return colon >= 0 ? s.slice(colon + 1) : s
   }
 
-  /** On each LTP: long TP when mark >= target, SL when mark <= stop — exit at current mark. */
+  /** On each LTP: SL on adverse cross; TP on rise or pullback target hit. */
   private checkLiveBracketFills(
     cacheKey: string,
     price: number,

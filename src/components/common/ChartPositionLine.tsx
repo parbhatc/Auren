@@ -7,6 +7,7 @@ import {
 } from '../../constants/tradingSide'
 import { debugTradeseaSl } from '../../services/tradesea/tradeseaDebug'
 import type { OrderSide } from '../../types/order'
+import { resolvePositionLineBracketType } from '../../utils/practiceBracketMath'
 
 /**
  * Chart Position Line Utility
@@ -18,10 +19,9 @@ class ChartPositionLine {
   private props: ChartPositionLineProps
   private RIGHT_PLOT_SIDE: number
   private ORDER_RIGHT_PLOT_SIDE: number
-  private readonly PILL_FONT_WEIGHT = 900
-  private readonly PILL_FONT_SIZE = 12
-  private readonly PILL_FONT_FAMILY = "'Trebuchet MS', Roboto, Ubuntu, sans-serif"
-  private readonly PILL_TEXT_COLOR = '#000000'
+  private readonly PILL_FONT_WEIGHT = 600
+  private readonly PILL_FONT_FAMILY =
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
   private line: any
   /** Prevents duplicate TV order lines while createOrderLine is in flight. */
   private orderLineCreatePromise: Promise<any> | null = null
@@ -139,7 +139,19 @@ class ChartPositionLine {
         this.props.onCancel?.();
     })
     line.onMove(async () => {
-        let target = line.target;
+        const datafeed = this.props.datafeed
+        let target = line.target ?? { price: line.getPrice(), type: null as 'stop_loss' | 'take_profit' | null }
+        if (!target.type) {
+          const mark = datafeed?.getLastBarForChart(this.props.chart)?.close ?? null
+          const tickSize = datafeed?.getTickSize(this.getSymbol()) ?? null
+          target.type = resolvePositionLineBracketType(
+            this.getContracts(),
+            this.getEntryPrice(),
+            target.price ?? line.getPrice(),
+            mark,
+            tickSize
+          )
+        }
         line.isMoving = false;
         this.updatePositionLine(this.props.contracts);
         this.props.onUpdate?.(target.price, target.type);
@@ -155,34 +167,27 @@ class ChartPositionLine {
         let symbol = this.getSymbol();
         let datafeed = this.props.datafeed;
         let lastBar = datafeed.getLastBarForChart(this.props.chart);
+        let mark = lastBar?.close ?? null;
         let tickSize = datafeed.getTickSize(symbol);
         let tickValue = datafeed.getTickValue(symbol);
         let pnl = this.calcPnL(entry, target_price, size, tickSize, tickValue);
         let text = this.formatDollar(pnl, "-")
-        const eps = (tickSize || 0.25) / 1000
 
-        if(size > 0){
-          // Long: below/equal entry = stop loss, above entry = take profit
-          if(target_price <= entry + eps){
-            line.setText('Set Stop Market ' + text);
-            this.setLineColor(line, false);
-            line.target.type = 'stop_loss';
-          }else{
-            line.setText('Set Take Profit ' + text);
-            this.setLineColor(line);
-            line.target.type = 'take_profit';
-          }
-        }else if(size < 0){
-          // Short: above/equal entry = stop loss, below entry = take profit
-          if(target_price >= entry - eps){
-            line.setText('Set Stop Market ' + text);
-            this.setLineColor(line, false);
-            line.target.type = 'stop_loss';
-          }else{
-            line.setText('Set Take Profit ' + text);
-            this.setLineColor(line);
-            line.target.type = 'take_profit';
-          }
+        const bracketType = resolvePositionLineBracketType(
+          size,
+          entry,
+          target_price,
+          mark,
+          tickSize
+        )
+        line.target.type = bracketType
+
+        if (bracketType === 'stop_loss') {
+          line.setText('Set Stop Market ' + text);
+          this.setLineColor(line, this.isStopLossInProfitZone(entry, target_price, size, tickSize));
+        } else {
+          line.setText('Set Take Profit ' + text);
+          this.setLineColor(line);
         }
     })
     line.setPrice(entryPrice);
@@ -192,13 +197,42 @@ class ChartPositionLine {
     this.applyFullWidthLine(line);
     this.applyPositionPillOffset(line);
     this.applyPillTextStyle(line);
-    const qtyColors = chartQtyColors(this.getContracts() > 0 ? 'buy' : 'sell');
-    line.setQuantityBackgroundColor(qtyColors.fill);
+    this.applyPillChrome(line, true);
     line.setCancelTooltip('Close position');
   }
 
   private bracketExitQuantity(size: number): string {
     return (size * -1).toString()
+  }
+
+  /** Long: SL at/above entry locks profit (green). Short: SL at/below entry (green). */
+  private isStopLossInProfitZone(
+    entryPrice: number,
+    price: number,
+    size: number,
+    tickSize?: number | null
+  ): boolean {
+    const eps = tickSize && tickSize > 0 ? tickSize / 1000 : 1e-6
+    if (size > 0) return price >= entryPrice - eps
+    if (size < 0) return price <= entryPrice + eps
+    return false
+  }
+
+  private applyStopLossBracketColors(
+    line: any,
+    entryPrice: number,
+    price: number,
+    size: number,
+    tickSize: number | null | undefined,
+    tickValue: number | null | undefined
+  ): void {
+    if (!line) return
+    const inProfitZone = this.isStopLossInProfitZone(entryPrice, price, size, tickSize)
+    this.applyChartLineColor(line, inProfitZone)
+    if (tickSize != null && tickValue != null) {
+      const pnl = this.calcPnL(entryPrice, price, size, tickSize, tickValue)
+      this.setTvLineText(line, this.formatDollar(pnl))
+    }
   }
 
   private refreshBracketQuantity(line: any, size: number): void {
@@ -299,10 +333,15 @@ class ChartPositionLine {
     line.onMoving(() => {
       const liveSize = this.getContracts();
       let target_price = line.getPrice();
-      let pnl = this.calcPnL(entryPrice, target_price, liveSize, tickSize, tickValue);
-      let text = this.formatDollar(pnl, "-")
-      this.setTvLineText(line, text);
       this.refreshBracketQuantity(line, liveSize);
+      this.applyStopLossBracketColors(
+        line,
+        entryPrice,
+        target_price,
+        liveSize,
+        tickSize,
+        tickValue
+      );
       this.props.onMoving?.(target_price);
     })
     line.setPrice(price);
@@ -313,9 +352,7 @@ class ChartPositionLine {
     this.applyFullWidthLine(line);
     this.applyBracketPillOffset(line);
     this.applyPillTextStyle(line);
-    const slQty = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
-    line.setQuantityBackgroundColor(slQty.fill);
-    this.applyChartLineColor(line, pnl >= 0);
+    this.applyStopLossBracketColors(line, entryPrice, price, size, tickSize, tickValue);
   }
 
   async updateStopLossLine(){
@@ -364,28 +401,17 @@ class ChartPositionLine {
     if(tickSize === null || tickSize === undefined || tickValue === null || tickValue === undefined){
       return;
     }
-    let pnl = this.calcPnL(entryPrice, price, size, tickSize, tickValue);
-    let text = this.formatDollar(pnl)
-    this.setTvLineText(this.line, text);
     try {
       this.refreshBracketQuantity(this.line, size);
       this.line.setPrice(price);
-      const qtyColors = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
-      this.line.setQuantityBackgroundColor(qtyColors.fill);
-      this.applyChartLineColor(this.line, pnl >= 0);
-      if(size > 0){
-        if(price <= entryPrice){
-          this.setLineColor(this.line, false);
-        }else{
-          this.setLineColor(this.line);
-        }
-      }else{
-        if(price >= entryPrice){
-          this.setLineColor(this.line, false);
-        }else{
-          this.setLineColor(this.line);
-        }
-      }
+      this.applyStopLossBracketColors(
+        this.line,
+        entryPrice,
+        price,
+        size,
+        tickSize,
+        tickValue
+      );
       this.applyBracketPillOffset(this.line);
     } catch (err) {
       debugTradeseaSl('chart:line-update-error', {
@@ -570,10 +596,8 @@ class ChartPositionLine {
         return null;
       }
       line.onContextMenu(() => {return []})
-      line.setBodyBorderColor('#000');
-      line.setCancelButtonBorderColor('#000');
-      line.setCancelButtonIconColor('#000');
-      this.applyPillTextStyle(line);
+      this.applyPillChrome(line)
+      this.applyPillTextStyle(line)
       this.line = line;
       debugTradeseaSl('chart:line-created', {
         symbol: this.props.symbol,
@@ -654,16 +678,12 @@ class ChartPositionLine {
 
       const gray = TRADING_SIDE_CHART.neutral
       line.setBodyBackgroundColor(gray.fill)
-      line.setBodyBorderColor('#000')
       line.setLineColor(gray.fill)
 
       const qtyColors = chartQtyColors(action === 'Buy' ? 'buy' : 'sell')
       line.setQuantityBackgroundColor(qtyColors.fill)
-      line.setQuantityBorderColor('#000')
-      
-      // Set cancel button colors
-      line.setCancelButtonBorderColor('#000')
-      line.setCancelButtonIconColor('#000')
+
+      this.applyPillChrome(line, action === 'Buy')
       
       // Set cancel callback
       line.onCancel(() => {
@@ -683,9 +703,19 @@ class ChartPositionLine {
   }
 
   private applyChartLineColor(line: any, profit = true): void {
-    const { fill } = chartLineColors(profit)
+    const { fill, text } = chartLineColors(profit)
     line.setBodyBackgroundColor(fill)
     line.setLineColor(fill)
+    if (typeof line?.setBodyTextColor === 'function') {
+      line.setBodyTextColor(text)
+    }
+    if (typeof line?.setQuantityTextColor === 'function') {
+      line.setQuantityTextColor(text)
+    }
+    if (typeof line?.setQuantityBackgroundColor === 'function') {
+      line.setQuantityBackgroundColor(fill)
+    }
+    this.applyPillChrome(line, profit)
     this.applyPillTextStyle(line)
   }
 
@@ -707,12 +737,43 @@ class ChartPositionLine {
     return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
   }
 
+  /** Clean system UI font at pill size. */
+  private getPillFontSize(): number {
+    return 12
+  }
+
+  /** No black shell — let CSS handle subtle dividers and shadow. */
+  private applyPillChrome(line: any, profit = true): void {
+    if (typeof line?.setBodyBorderColor === 'function') {
+      line.setBodyBorderColor('transparent')
+    }
+    if (typeof line?.setQuantityBorderColor === 'function') {
+      line.setQuantityBorderColor('transparent')
+    }
+    if (typeof line?.setCancelButtonBorderColor === 'function') {
+      line.setCancelButtonBorderColor('transparent')
+    }
+    if (typeof line?.setCancelButtonIconColor === 'function') {
+      line.setCancelButtonIconColor('rgba(0, 0, 0, 0.5)')
+    }
+    if (typeof line?.setCancelButtonBackgroundColor === 'function') {
+      line.setCancelButtonBackgroundColor('rgba(255, 255, 255, 0.96)')
+    }
+    const { text } = chartLineColors(profit)
+    if (typeof line?.setBodyTextColor === 'function') {
+      line.setBodyTextColor(text)
+    }
+    if (typeof line?.setQuantityTextColor === 'function') {
+      line.setQuantityTextColor(text)
+    }
+  }
+
   private getPositionPillOffset(): number {
-    return this.isMobileViewport() ? 28 : 200
+    return this.isMobileViewport() ? 40 : 200
   }
 
   private getBracketPillOffset(): number {
-    return this.isMobileViewport() ? 44 : 300
+    return this.isMobileViewport() ? 56 : 300
   }
 
   private applyPositionPillOffset(line: any): void {
@@ -724,12 +785,6 @@ class ChartPositionLine {
   }
 
   private applyPillTextStyle(line: any): void {
-    if (typeof line?.setBodyTextColor === 'function') {
-      line.setBodyTextColor(this.PILL_TEXT_COLOR)
-    }
-    if (typeof line?.setQuantityTextColor === 'function') {
-      line.setQuantityTextColor(this.PILL_TEXT_COLOR)
-    }
     if (typeof line?.setBodyFontWeight === 'function') {
       line.setBodyFontWeight(this.PILL_FONT_WEIGHT)
     }
@@ -737,10 +792,10 @@ class ChartPositionLine {
       line.setQuantityFontWeight(this.PILL_FONT_WEIGHT)
     }
     if (typeof line?.setBodyFontSize === 'function') {
-      line.setBodyFontSize(this.PILL_FONT_SIZE)
+      line.setBodyFontSize(this.getPillFontSize())
     }
     if (typeof line?.setQuantityFontSize === 'function') {
-      line.setQuantityFontSize(this.PILL_FONT_SIZE)
+      line.setQuantityFontSize(this.getPillFontSize())
     }
     if (typeof line?.setBodyFontFamily === 'function') {
       line.setBodyFontFamily(this.PILL_FONT_FAMILY)

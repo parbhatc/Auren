@@ -6,7 +6,6 @@ import {
   refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../constants/practice'
-import { getPracticePlanFromAccount } from './practicePlans'
 import { TradeseaPropFirm } from '../../propfirms/tradesea'
 import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
 import { practiceBookBidAsk, type PracticeChartDatafeed, type PracticeMarketBook } from './practiceDatafeed'
@@ -29,6 +28,7 @@ import {
 } from './practicePendingOrders'
 import { evaluatePracticeRules } from './practiceRules'
 import { evaluatePracticeLockout } from './practiceLockout'
+import { getPracticeDailyRealizedPl } from './practiceSessionReset'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
@@ -101,8 +101,7 @@ export class PracticeTradeHandler {
     if (!account) {
       return { balance: 0, rpl: 0, upl: 0 }
     }
-    const start = getPracticePlanFromAccount(account).startingBalance
-    const rpl = account.balance - start
+    const rpl = getPracticeDailyRealizedPl(account)
     return {
       balance: account.balance + this.upl,
       mll: undefined,

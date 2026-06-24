@@ -110,6 +110,8 @@ export interface PracticeAccount {
   marketDataAccountLabel: string
   lockoutUntil?: string | null
   lockoutReason?: string | null
+  /** ISO timestamp of the current session's 5:59 PM ET reset boundary. */
+  lastResetAt?: string | null
 }
 
 let accountsCache: PracticeAccount[] | null = null

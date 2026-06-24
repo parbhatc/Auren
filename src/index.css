@@ -164,6 +164,57 @@ body {
   height: 100% !important;
 }
 
+/* BWC order-line pills — override chart.css faux-bold + black TV shell */
+.trading-chart-host .order-line-control {
+  height: 20px;
+  min-height: 20px;
+  border-radius: 3px;
+  border: none !important;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+}
+
+.trading-chart-host .order-line-control--tv {
+  border: none !important;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.trading-chart-host .order-line-control__body,
+.trading-chart-host .order-line-control__qty,
+.trading-chart-host .order-line-control__segment {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  font-synthesis: none;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  -webkit-text-stroke: 0 !important;
+  paint-order: normal !important;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.trading-chart-host .order-line-control__qty {
+  border-left: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.28) !important;
+}
+
+.trading-chart-host .order-line-control__cancel {
+  width: 20px !important;
+  min-width: 20px;
+  min-height: 20px;
+  border-left: 1px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
 /* Practice trade mobile: chart flush to edges (safe-area padding on top toolbar). */
 @media (max-width: 1023px) {
   .trading-chart-host .tv-app {

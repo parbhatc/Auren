@@ -17,6 +17,11 @@ import {
   countTradesInSession,
 } from '../utils/practiceLockout.js'
 import {
+  computeSessionDailyLossLimit,
+  evaluateDailySessionReset,
+  getLastResetBoundaryMs,
+} from '../utils/practiceSessionReset.js'
+import {
   broadcastOpenPosition,
   broadcastModifyPosition,
   broadcastClosePosition,
@@ -94,10 +99,65 @@ function rowToAccount(row) {
     blownAt: row.blown_at,
     lockoutUntil: row.lockout_until || null,
     lockoutReason: row.lockout_reason || null,
+    lastResetAt: row.last_reset_at || null,
   }
 }
 
 class PracticeService {
+  async maybeApplySessionReset(userId, account) {
+    if (!account) return account
+
+    const evalResult = evaluateDailySessionReset(account)
+    if (!evalResult.shouldInit && !evalResult.shouldReset) return account
+
+    if (evalResult.shouldInit) {
+      await Database.initialize()
+      await Database.run(
+        `UPDATE practice_accounts SET last_reset_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`,
+        [evalResult.lastResetAt, account.id, userId]
+      )
+      return { ...account, lastResetAt: evalResult.lastResetAt }
+    }
+
+    const rules = { ...account.rules }
+    rules.sessionDailyLossLimit = computeSessionDailyLossLimit(rules, account.balance)
+
+    const clearLockout =
+      evalResult.clearSessionLockout &&
+      (account.lockoutReason === 'daily_loss' || account.lockoutReason === 'max_trades')
+
+    if (evalResult.archivedDailyPl != null) {
+      console.info('[Practice] daily session reset', {
+        accountId: account.id,
+        previousSession: evalResult.previousSessionKey,
+        archivedDailyPl: evalResult.archivedDailyPl,
+        lastResetAt: evalResult.lastResetAt,
+        sessionDailyLossLimit: rules.sessionDailyLossLimit,
+      })
+    }
+
+    await Database.initialize()
+    await Database.run(
+      `UPDATE practice_accounts SET
+        last_reset_at = ?,
+        rules_json = ?,
+        lockout_until = ?,
+        lockout_reason = ?,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [
+        evalResult.lastResetAt,
+        JSON.stringify(rules),
+        clearLockout ? null : account.lockoutUntil || null,
+        clearLockout ? null : account.lockoutReason || null,
+        account.id,
+        userId,
+      ]
+    )
+    return this.getAccount(userId, account.id)
+  }
+
   async getMarketData(userId) {
     await Database.initialize()
     const row = await Database.get(
@@ -194,7 +254,8 @@ class PracticeService {
     const accounts = rows.map(rowToAccount)
     const reconciled = []
     for (const account of accounts) {
-      reconciled.push(await this.reconcileAccountStatus(userId, account))
+      const reset = await this.maybeApplySessionReset(userId, account)
+      reconciled.push(await this.reconcileAccountStatus(userId, reset))
     }
     return reconciled
   }
@@ -205,7 +266,9 @@ class PracticeService {
       'SELECT * FROM practice_accounts WHERE id = ? AND user_id = ?',
       [accountId, userId]
     )
-    return rowToAccount(row)
+    const account = rowToAccount(row)
+    if (!account) return null
+    return this.maybeApplySessionReset(userId, account)
   }
 
   async createAccount(userId, { mode, size, rules, marketData }) {
@@ -214,14 +277,19 @@ class PracticeService {
     const md = marketData || (await this.getMarketData(userId))
     const id = newId('pa')
     const now = new Date().toISOString()
+    const lastResetAt = new Date(getLastResetBoundaryMs()).toISOString()
+    const mergedWithSessionLimit = {
+      ...mergedRules,
+      sessionDailyLossLimit: computeSessionDailyLossLimit(mergedRules, mergedRules.startingBalance),
+    }
 
     await Database.initialize()
     await Database.run(
       `INSERT INTO practice_accounts (
         id, user_id, prop_firm_id, mode, size, status, balance, high_water_mark,
         drawdown_floor_locked, rules_json, day_pnl_json,
-        market_data_account_id, market_data_account_label, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', ?, ?, ?, ?)`,
+        market_data_account_id, market_data_account_label, created_at, updated_at, last_reset_at
+      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?)`,
       [
         id,
         userId,
@@ -231,11 +299,12 @@ class PracticeService {
         mergedRules.startingBalance,
         mergedRules.startingBalance,
         mode === 'funded' ? 1 : 0,
-        JSON.stringify(mergedRules),
+        JSON.stringify(mergedWithSessionLimit),
         md.accountId || '',
         md.accountLabel || '',
         now,
         now,
+        lastResetAt,
       ]
     )
     return this.getAccount(userId, id)
@@ -292,8 +361,10 @@ class PracticeService {
   }
 
   async applyBalanceChange(userId, accountId, delta, recordDay = true) {
-    const account = await this.getAccount(userId, accountId)
+    let account = await this.getAccount(userId, accountId)
     if (!account || account.status !== 'active') return account
+
+    account = (await this.maybeApplySessionReset(userId, account)) ?? account
 
     const nextBalance = account.balance + delta
     let highWaterMark = account.highWaterMark
@@ -371,9 +442,17 @@ class PracticeService {
         status = 'active', balance = ?, high_water_mark = ?, day_pnl_json = '[]',
         passed_at = NULL, blown_at = NULL, drawdown_floor_locked = ?,
         lockout_until = NULL, lockout_reason = NULL,
+        last_reset_at = ?,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND user_id = ?`,
-      [start, start, account.mode === 'funded' ? 1 : 0, accountId, userId]
+      [
+        start,
+        start,
+        account.mode === 'funded' ? 1 : 0,
+        new Date(getLastResetBoundaryMs()).toISOString(),
+        accountId,
+        userId,
+      ]
     )
     return this.getAccount(userId, accountId)
   }

@@ -10,15 +10,45 @@ export function resolveBracketLtpHit(position, ltp) {
   if (stopLoss == null && takeProfit == null) return null
 
   const isLong = position.type === 'long' || Number(position.contracts) > 0
+  const entry = Number(position.entry)
+  const hasEntry = Number.isFinite(entry)
 
   if (isLong) {
     if (stopLoss != null && ltp <= stopLoss) return 'stop_loss'
-    if (takeProfit != null && ltp >= takeProfit) return 'take_profit'
+    if (takeProfit != null) {
+      if (hasEntry && isLongTakeProfitHit(entry, takeProfit, ltp)) return 'take_profit'
+      if (!hasEntry && ltp >= takeProfit) return 'take_profit'
+    }
   } else {
     if (stopLoss != null && ltp >= stopLoss) return 'stop_loss'
-    if (takeProfit != null && ltp <= takeProfit) return 'take_profit'
+    if (takeProfit != null) {
+      if (hasEntry && isShortTakeProfitHit(entry, takeProfit, ltp)) return 'take_profit'
+      if (!hasEntry && ltp <= takeProfit) return 'take_profit'
+    }
   }
   return null
+}
+
+/** @param {number} entry @param {number} takeProfit @param {number} ltp */
+function isLongTakeProfitHit(entry, takeProfit, ltp) {
+  if (takeProfit > ltp) {
+    return ltp >= takeProfit
+  }
+  if (takeProfit > entry && ltp > takeProfit) {
+    return ltp <= takeProfit
+  }
+  return ltp >= takeProfit
+}
+
+/** @param {number} entry @param {number} takeProfit @param {number} ltp */
+function isShortTakeProfitHit(entry, takeProfit, ltp) {
+  if (takeProfit < ltp) {
+    return ltp <= takeProfit
+  }
+  if (takeProfit < entry && ltp < takeProfit) {
+    return ltp >= takeProfit
+  }
+  return ltp <= takeProfit
 }
 
 /** @deprecated bar-range replay — prefer resolveBracketLtpHit for live marks. */

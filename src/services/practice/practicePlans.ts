@@ -16,9 +16,11 @@ export interface PracticeAccountRules {
   maxMicros?: number
   /** Per contract, per fill (open and close). Stored on account rules server-side. */
   commissionPerContract?: number
-  /** Daily loss lockout ($). Null = 50% of max loss when lockouts enabled. */
+  /** Daily loss lockout ($). Null = 2% of balance (capped) when lockouts enabled. */
   dailyLossLimit?: number | null
-  /** Max round-trip trades per session day (6pm ET reset). Null = no limit. */
+  /** Recalculated at each 5:59 PM ET session reset when lockouts enabled. */
+  sessionDailyLossLimit?: number | null
+  /** Max round-trip trades per session day (5:59 PM ET reset). Null = no limit. */
   maxTradesPerDay?: number | null
   /** When false, daily loss / max-trade lockouts are disabled. */
   lockoutEnabled?: boolean

@@ -386,6 +386,12 @@ class Database {
     }
 
     try {
+      await run(`ALTER TABLE practice_accounts ADD COLUMN last_reset_at TEXT`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    try {
       await run(`ALTER TABLE practice_trades ADD COLUMN forced_exit INTEGER DEFAULT 0`)
     } catch (err) {
       // Column already exists

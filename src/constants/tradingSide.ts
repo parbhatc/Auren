@@ -10,21 +10,21 @@ export type TradeButtonVariant =
   | 'select'
   | 'confirm'
 
-/** TradingView order-line colors (bright green/red). */
+/** TradingView order-line colors — muted green/red on dark charts. */
 export const TRADING_SIDE_CHART = {
   buy: {
-    fill: '#00ff00',
-    textOnFill: '#000000',
+    fill: '#089981',
+    textOnFill: '#ffffff',
     textOnDarkFill: '#ffffff',
   },
   sell: {
-    fill: '#ff0000',
+    fill: '#f23645',
     textOnFill: '#ffffff',
     textOnDarkFill: '#ffffff',
   },
   neutral: {
-    fill: '#808080',
-    textOnFill: '#000000',
+    fill: '#787b86',
+    textOnFill: '#ffffff',
   },
 } as const
 

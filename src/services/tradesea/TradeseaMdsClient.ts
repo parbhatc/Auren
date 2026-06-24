@@ -117,6 +117,18 @@ export class TradeseaMdsClient {
   private static readonly PING_INTERVAL_MS = 5_000
   /** Wait for proxy/upstream to settle before subscribe burst (Tradesea worker pattern). */
   private static readonly RESUBSCRIBE_DELAY_MS = 150
+  /** iOS Safari keeps OPEN sockets after backgrounding; reconnect after this hidden duration. */
+  private static readonly BACKGROUND_RECONNECT_MS = 30_000
+  /** No wire activity for this long when foregrounding implies a zombie socket. */
+  private static readonly STALE_WIRE_MS = 25_000
+  private static readonly PAGE_VISIBLE_DEBOUNCE_MS = 150
+
+  private static pageLifecycleBound = false
+  private static readonly activeClients = new Set<TradeseaMdsClient>()
+
+  private pageHiddenAt: number | null = null
+  private lastWireActivityAt = 0
+  private pageVisibleTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Call after stream-config: production feed = false, sandbox delayed = true. */
   configureMarketDepth(entitled: boolean): void {
@@ -200,13 +212,91 @@ export class TradeseaMdsClient {
   resume(): void {
     if (!this.suspended) return
     this.suspended = false
-    if (
-      this.autoReconnectEnabled &&
-      !this.isConnectedOrConnecting() &&
-      this.lastAccountId &&
-      this.lastConnectionGroupId
-    ) {
-      this.logWs('Reconnecting (resume)', { delayMs: TradeseaMdsClient.RESUME_DELAY_MS })
+    this.scheduleForegroundReconnectCheck()
+  }
+
+  private static bindPageLifecycleOnce(): void {
+    if (TradeseaMdsClient.pageLifecycleBound || typeof document === 'undefined') return
+    TradeseaMdsClient.pageLifecycleBound = true
+
+    const notifyVisible = () => {
+      for (const client of TradeseaMdsClient.activeClients) {
+        client.scheduleForegroundReconnectCheck()
+      }
+    }
+    const notifyHidden = () => {
+      for (const client of TradeseaMdsClient.activeClients) {
+        client.onPageHidden()
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') notifyHidden()
+      else notifyVisible()
+    })
+    window.addEventListener('pageshow', () => {
+      notifyVisible()
+    })
+    window.addEventListener('focus', notifyVisible)
+  }
+
+  private registerPageLifecycle(): void {
+    TradeseaMdsClient.activeClients.add(this)
+    TradeseaMdsClient.bindPageLifecycleOnce()
+  }
+
+  private unregisterPageLifecycle(): void {
+    TradeseaMdsClient.activeClients.delete(this)
+    if (this.pageVisibleTimer) {
+      clearTimeout(this.pageVisibleTimer)
+      this.pageVisibleTimer = null
+    }
+  }
+
+  private onPageHidden(): void {
+    this.pageHiddenAt = Date.now()
+  }
+
+  private touchWireActivity(): void {
+    this.lastWireActivityAt = Date.now()
+  }
+
+  /** Debounced — iOS may fire visibilitychange, pageshow, and focus together. */
+  private scheduleForegroundReconnectCheck(): void {
+    if (this.pageVisibleTimer) clearTimeout(this.pageVisibleTimer)
+    this.pageVisibleTimer = setTimeout(() => {
+      this.pageVisibleTimer = null
+      this.handleForegroundResume()
+    }, TradeseaMdsClient.PAGE_VISIBLE_DEBOUNCE_MS)
+  }
+
+  private handleForegroundResume(): void {
+    if (this.suspended) this.suspended = false
+    this.syncPrefsFromStorage()
+    if (!this.autoReconnectEnabled || !this.lastAccountId || !this.lastConnectionGroupId) return
+
+    const hiddenMs = this.pageHiddenAt ? Date.now() - this.pageHiddenAt : 0
+    this.pageHiddenAt = null
+
+    if (this.ws?.readyState === WebSocket.CONNECTING) return
+
+    const staleWire =
+      this.lastWireActivityAt > 0 &&
+      Date.now() - this.lastWireActivityAt > TradeseaMdsClient.STALE_WIRE_MS
+    const longBackground = hiddenMs >= TradeseaMdsClient.BACKGROUND_RECONNECT_MS
+
+    if (this.ws?.readyState === WebSocket.OPEN && (longBackground || staleWire)) {
+      this.logWs('Reconnecting (foreground resume)', { hiddenMs, staleWire })
+      showMdsConnectionToast('reconnecting')
+      this.reconnect()
+      return
+    }
+
+    if (!this.isConnectedOrConnecting()) {
+      this.logWs('Reconnecting (foreground resume)', {
+        delayMs: TradeseaMdsClient.RESUME_DELAY_MS,
+        hiddenMs,
+      })
       showMdsConnectionToast('reconnecting')
       this.scheduleConnect(TradeseaMdsClient.RESUME_DELAY_MS)
     }
@@ -546,6 +636,7 @@ export class TradeseaMdsClient {
 
     this.lastAccountId = accountId
     this.lastConnectionGroupId = connectionGroupId
+    this.registerPageLifecycle()
     this.clearReconnectTimer()
     this.suppressAutoReconnectOnce = true
     this.detachSocket()
@@ -575,6 +666,7 @@ export class TradeseaMdsClient {
 
     ws.onopen = () => {
       if (this.ws !== ws) return
+      this.touchWireActivity()
       this.clearLimitReconnectTimer()
       this.resetLimitReconnectBudget()
       this.limitReconnectBackoffMs = TradeseaMdsClient.LIMIT_RECONNECT_MS
@@ -592,7 +684,12 @@ export class TradeseaMdsClient {
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return
       const text = typeof ev.data === 'string' ? ev.data : ''
-      if (!text || isMdsPong(text)) return
+      if (!text) return
+      if (isMdsPong(text)) {
+        this.touchWireActivity()
+        return
+      }
+      this.touchWireActivity()
       try {
         const parsed = JSON.parse(text) as Record<string, unknown>
         const msg = isMdsTick(parsed)
@@ -755,6 +852,9 @@ export class TradeseaMdsClient {
   disconnect(clearSubs = true): void {
     this.suspended = false
     this.manualDisconnect = true
+    this.unregisterPageLifecycle()
+    this.pageHiddenAt = null
+    this.lastWireActivityAt = 0
     this.clearAllReconnectTimers()
     if (this.ws) {
       this.logWs('Disconnected (client disconnect)')
