@@ -245,6 +245,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             const padId = this.getPadSessionId()
             const next: Pick<typeof this.state, 'selectedSymbol' | 'tradePadSymbol'> = {
               selectedSymbol: root,
+              tradePadSymbol: this.state.tradePadSymbol,
             }
             if (padId && getTradePadAutoChange(padId)) {
               next.tradePadSymbol = root
