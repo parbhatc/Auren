@@ -21,9 +21,9 @@ import {
   getInitialPracticeShowNav,
   savePracticeShowNav,
 } from '../../../utils/practiceTradePreferences'
-import { resetPageScroll } from '../../../utils/resetPageScroll'
-import { getTradePadSymbol } from '../../../utils/tradePadSymbol'
-import { PRACTICE_MOBILE_TRADE_PREFS_EVENT } from '../../../utils/mobileTradePrefs'
+import { schedulePageScrollReset } from '../../../utils/resetPageScroll'
+import { getTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange, saveTradePadSymbol } from '../../../utils/tradePadSymbol'
+import { PRACTICE_MOBILE_TRADE_PREFS_EVENT, setMobileFloatingPad } from '../../../utils/mobileTradePrefs'
 import {
   getActivePropFirm,
   getMdsClient,
@@ -57,6 +57,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     showNews: true,
     showNav: true,
     practiceMobileOrderOpen: false,
+    practiceMobileSettingsOpen: false,
     marketDataLive: true,
   }
 
@@ -241,7 +242,15 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
               { force: true }
             )
             if (!root || root === this.state.selectedSymbol) return
-            this.setState({ selectedSymbol: root })
+            const padId = this.getPadSessionId()
+            const next: Pick<typeof this.state, 'selectedSymbol' | 'tradePadSymbol'> = {
+              selectedSymbol: root,
+            }
+            if (padId && getTradePadAutoChange(padId)) {
+              next.tradePadSymbol = root
+              saveTradePadSymbol(padId, root)
+            }
+            this.setState(next)
           })
         }
         const handler = (activeFirm as any).getHandler?.()
@@ -347,7 +356,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       clearInterval(this.accountUpdateInterval)
     }
     if (this.isTerminalShell()) {
-      resetPageScroll()
+      schedulePageScrollReset()
     }
   }
 
@@ -589,6 +598,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           marketDataLive,
           chartSymbolLabel,
           chartSymbolHint,
+          chartProductRoot: this.state.selectedSymbol || 'MNQ',
           padRoot,
           contractQuantity,
           activeFirm,
@@ -617,7 +627,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             practiceMaxQty={practiceMaxQty}
             isDark={isDark}
             mobileOrderOpen={Boolean(this.state.practiceMobileOrderOpen)}
+            mobileSettingsOpen={Boolean(this.state.practiceMobileSettingsOpen)}
             onCloseMobileOrder={() => this.setState({ practiceMobileOrderOpen: false })}
+            onCloseMobileSettings={() => this.setState({ practiceMobileSettingsOpen: false })}
             onForceUpdate={() => this.forceUpdate()}
           />
         )
@@ -665,13 +677,31 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           isDark={isDark}
           navigate={navigate}
           padSessionId={padSessionId}
+          liveMode={Boolean(liveMode)}
           practiceMobileOrderOpen={Boolean(this.state.practiceMobileOrderOpen)}
+          practiceMobileSettingsOpen={Boolean(this.state.practiceMobileSettingsOpen)}
+          showMobileSettings={Boolean(practiceMode && padSessionId && !practiceAccountStatus)}
           onHideNav={() => this.hideNav(padSessionId)}
-          onToggleMobileOrder={() =>
-            this.setState((s) => ({
-              practiceMobileOrderOpen: !s.practiceMobileOrderOpen,
-            }))
-          }
+          onToggleMobileOrder={() => {
+            const opening = !this.state.practiceMobileOrderOpen
+            if (opening && padSessionId) {
+              setMobileFloatingPad(padSessionId, false)
+            }
+            this.setState({
+              practiceMobileOrderOpen: opening,
+              practiceMobileSettingsOpen: opening ? false : this.state.practiceMobileSettingsOpen,
+            })
+          }}
+          onToggleMobileSettings={() => {
+            const opening = !this.state.practiceMobileSettingsOpen
+            if (opening && padSessionId) {
+              setMobileFloatingPad(padSessionId, false)
+            }
+            this.setState({
+              practiceMobileSettingsOpen: opening,
+              practiceMobileOrderOpen: opening ? false : this.state.practiceMobileOrderOpen,
+            })
+          }}
         />
 
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -737,7 +767,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           <main
             className={`flex-1 flex flex-col min-h-0 overflow-hidden lg:pb-4 ${
               terminalShell
-                ? `px-2 py-1.5 ${this.state.showNav ? 'pb-[4.25rem]' : 'pb-1.5'}`
+                ? 'p-0 max-lg:pb-0 lg:px-2 lg:py-1.5'
                 : 'px-4 sm:px-6 lg:px-8 py-3 sm:py-4 pb-20'
             }`}
           >

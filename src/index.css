@@ -150,6 +150,28 @@ body {
   height: 100% !important;
 }
 
+/* Practice trade mobile: chart flush to edges (safe-area padding on top toolbar). */
+@media (max-width: 1023px) {
+  .trading-chart-host .tv-app {
+    height: 100% !important;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .trading-chart-host .tv-toolbar {
+    padding-left: max(0px, var(--safe-left));
+    padding-right: max(0px, var(--safe-right));
+  }
+
+  /* Order / settings sheet open: hide chart chrome above the dimmed overlay */
+  body.auren-mobile-trade-overlay-open .trading-chart-host .tv-toolbar,
+  body.auren-mobile-trade-overlay-open .trading-chart-host .tv-chart-bottom-bar,
+  body.auren-mobile-trade-overlay-open .trading-chart-host .drawing-toolbar {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
 /* Custom scrollbar for search results */
 .custom-scrollbar {
   scrollbar-width: thin;
@@ -494,11 +516,33 @@ body {
 /* Auren custom toasts (react-toastify) */
 .auren-toastify.Toastify__toast,
 .mds-connection-toastify.Toastify__toast {
+  position: relative;
+  width: fit-content !important;
+  max-width: min(340px, calc(100vw - 32px));
   padding: 0;
   min-height: 0;
   background: transparent;
   box-shadow: none;
   overflow: visible;
+}
+
+.auren-toastify .Toastify__close-button,
+.mds-connection-toastify .Toastify__close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  align-self: unset;
+  color: #94a3b8;
+  opacity: 0.8;
+}
+
+.auren-toastify .Toastify__close-button:hover,
+.mds-connection-toastify .Toastify__close-button:hover,
+.auren-toastify .Toastify__close-button:focus,
+.mds-connection-toastify .Toastify__close-button:focus {
+  opacity: 1;
+  color: #e2e8f0;
 }
 
 .auren-toastify .Toastify__toast-body,
@@ -515,7 +559,7 @@ body {
   gap: 12px;
   min-width: 280px;
   max-width: 340px;
-  padding: 12px 14px 12px 12px;
+  padding: 12px 38px 12px 12px;
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 27, 75, 0.92) 100%);
   border: 1px solid rgba(139, 92, 246, 0.35);
@@ -568,7 +612,7 @@ body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding-right: 4px;
+  padding-right: 0;
 }
 
 .auren-toast__title,

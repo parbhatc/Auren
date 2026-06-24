@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 
-type HubHeroAccent = 'violet' | 'emerald' | 'sky'
+type HubHeroAccent = 'violet' | 'emerald' | 'sky' | 'amber'
 
 const accentStyles: Record<
   HubHeroAccent,
@@ -18,12 +18,17 @@ const accentStyles: Record<
     icon: 'text-sky-400',
     badge: 'text-sky-400/90',
   },
+  amber: {
+    icon: 'text-amber-400',
+    badge: 'text-amber-400/90',
+  },
 }
 
 const accentStylesLight: Record<HubHeroAccent, { icon: string; badge: string }> = {
   violet: { icon: 'text-violet-600', badge: 'text-violet-600' },
   emerald: { icon: 'text-emerald-600', badge: 'text-emerald-600' },
   sky: { icon: 'text-sky-600', badge: 'text-sky-600' },
+  amber: { icon: 'text-amber-600', badge: 'text-amber-600' },
 }
 
 export default function HubHeroSection({

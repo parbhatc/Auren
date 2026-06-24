@@ -46,8 +46,18 @@ export type TradePanelProps = {
   mode?: TradingMode
   isDark: boolean
   chartSymbol?: string
+  /** Chart product root (e.g. MNQ) — shown in trade contract picker. */
+  chartProductRoot?: string
   /** Chart ticker when it differs from the pad trade symbol (e.g. chart NQ, pad MNQ). */
   chartSymbolHint?: string
+  /** Active trade contract product root (e.g. MNQ). */
+  tradeProductRoot?: string
+  /** When true, chart symbol changes also update the trade contract. */
+  autoChangeTradeContract?: boolean
+  onAutoChangeTradeContract?: (enabled: boolean) => void
+  /** Change chart symbol (updates chart + state). */
+  onChartProductChange?: (symbol: string) => void
+  /** Change trade contract only. */
   onChartSymbolChange?: (symbol: string) => void
   /** Same Tradesea instrument search used by the chart datafeed. */
   searchSymbols?: (query: string) => Promise<TradeseaSearchSymbolResult[]>

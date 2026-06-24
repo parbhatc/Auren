@@ -15,6 +15,7 @@ class Toggle extends Component<ToggleProps> {
       className = '',
       size = 'md',
       isDark,
+      accent = 'blue',
     } = this.props
 
     const sizeClasses = {
@@ -50,12 +51,16 @@ class Toggle extends Component<ToggleProps> {
           <div
             className={`${sizeClasses[size]} rounded-full transition-all duration-300 ${
               checked
-                ? isDark
-                  ? 'bg-blue-600'
-                  : 'bg-blue-500'
+                ? accent === 'amber'
+                  ? isDark
+                    ? 'bg-amber-600'
+                    : 'bg-amber-500'
+                  : isDark
+                    ? 'bg-blue-600'
+                    : 'bg-blue-500'
                 : isDark
-                ? 'bg-slate-700'
-                : 'bg-slate-300'
+                  ? 'bg-slate-700'
+                  : 'bg-slate-300'
             } ${disabled ? 'opacity-50' : ''}`}
           >
             <div

@@ -104,14 +104,22 @@ export function TradeHeader({
     ? 'border-slate-800 bg-slate-950/95 text-slate-200'
     : 'border-slate-200 bg-white/95 text-slate-800'
 
+  const statsProps = {
+    isDark,
+    balance,
+    rpl,
+    upl,
+    hasOpenPosition,
+  }
+
   return (
     <div className={`relative shrink-0 z-[110] ${shell}`}>
-      <header className="h-10 border-b border-inherit flex items-center gap-2 px-2">
+      <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
         {!showNav && (
           <button
             type="button"
             onClick={onShowNav}
-            className={`p-1.5 rounded shrink-0 ${
+            className={`self-center p-1.5 rounded shrink-0 ${
               isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
             }`}
             title="Show navigation"
@@ -121,7 +129,7 @@ export function TradeHeader({
           </button>
         )}
 
-        <div className="shrink-0">
+        <div className="hidden lg:block shrink-0 self-center">
           <Logo
             isDark={isDark}
             compact
@@ -131,34 +139,48 @@ export function TradeHeader({
         </div>
 
         {showAccountSelector && !liveMode && (
-          <AccountSelector
-            compact
-            isDark={isDark}
-            currentAccountId={accountId}
-            navigate={navigate}
-            onRefresh={onRefreshPracticeAccount}
-            refreshing={practiceRefreshing}
-          />
+          <div className="shrink-0 self-center min-w-0">
+            <AccountSelector
+              compact
+              isDark={isDark}
+              currentAccountId={accountId}
+              navigate={navigate}
+              onRefresh={onRefreshPracticeAccount}
+              refreshing={practiceRefreshing}
+            />
+          </div>
         )}
 
         {showAccountSelector && liveMode && onSelectLiveAccount && (
-          <LiveAccountSelector
-            compact
-            isDark={isDark}
-            navigate={navigate}
-            accounts={liveAccounts}
-            selectedLabel={selectedLiveAccountLabel}
-            onSelect={onSelectLiveAccount}
-            onRefresh={onRefreshLiveAccounts}
-            refreshing={liveRefreshing}
-          />
+          <div className="shrink-0 self-center min-w-0">
+            <LiveAccountSelector
+              compact
+              isDark={isDark}
+              navigate={navigate}
+              accounts={liveAccounts}
+              selectedLabel={selectedLiveAccountLabel}
+              onSelect={onSelectLiveAccount}
+              onRefresh={onRefreshLiveAccounts}
+              refreshing={liveRefreshing}
+            />
+          </div>
         )}
 
-        <div className="flex-1 min-w-0" aria-hidden />
+        {showStatsBar ? (
+          <div className="lg:hidden flex-1 min-w-0 self-stretch py-0.5">
+            <AccountStatsBar {...statsProps} inline />
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0 hidden lg:block" aria-hidden />
+        )}
 
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="hidden lg:block flex-1 min-w-0" aria-hidden />
+
+        <div className="flex items-center gap-0.5 shrink-0 self-center">
           {accountId && !practiceAccountStatus ? (
-            <HeaderTradingSettings practiceAccountId={accountId} isDark={isDark} />
+            <div className="hidden lg:block">
+              <HeaderTradingSettings practiceAccountId={accountId} isDark={isDark} />
+            </div>
           ) : null}
           {(mdsClient || onReconnectMds) && (
             <MdsNetworkStatusButton mds={mdsClient} onReconnect={onReconnectMds} />
@@ -169,7 +191,7 @@ export function TradeHeader({
               localStorage.removeItem('token')
               navigate(ROUTES.LOGIN)
             }}
-            className={`p-1.5 rounded ${
+            className={`hidden lg:block p-1.5 rounded ${
               isDark
                 ? 'text-slate-500 hover:text-red-400 hover:bg-slate-800'
                 : 'text-slate-500 hover:text-red-600 hover:bg-slate-100'
@@ -178,7 +200,9 @@ export function TradeHeader({
           >
             <LogOut className="w-4 h-4" />
           </button>
-          <HeaderThemeButton isDark={isDark} onToggle={toggleTheme} />
+          <div className="hidden lg:block">
+            <HeaderThemeButton isDark={isDark} onToggle={toggleTheme} />
+          </div>
         </div>
       </header>
 
@@ -192,13 +216,9 @@ export function TradeHeader({
       ) : null}
 
       {showStatsBar && (
-        <AccountStatsBar
-          isDark={isDark}
-          balance={balance}
-          rpl={rpl}
-          upl={upl}
-          hasOpenPosition={hasOpenPosition}
-        />
+        <div className="hidden lg:block">
+          <AccountStatsBar {...statsProps} />
+        </div>
       )}
 
       {accountId && !practiceAccountStatus ? (

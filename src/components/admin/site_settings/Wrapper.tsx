@@ -7,6 +7,7 @@ import { adminAPI } from '../../../api/admin.api'
 import { getThemeColors } from '../../../constants/theme'
 import { t } from '../../../utils/translator'
 import Loading from '../../common/Loading'
+import HubSettingsSkeleton from '../../trading/Practice/hub/HubSettingsSkeleton'
 import Renderer from './Renderer'
 import { UserData } from '../../../types/user'
 import { ConfigData } from '../../../types'
@@ -15,7 +16,7 @@ import { ConfigData } from '../../../types'
  * Admin Settings wrapper component
  * Uses hooks and passes props to renderer component
  */
-const Wrapper = () => {
+const Wrapper = ({ embedded, onBack }: { embedded?: boolean; onBack?: () => void } = {}) => {
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const colors = getThemeColors(isDark)
@@ -101,7 +102,7 @@ const Wrapper = () => {
   }
 
   if (loading || !user) {
-    return <Loading />
+    return embedded ? <HubSettingsSkeleton isDark={isDark} rows={3} /> : <Loading />
   }
 
   return (
@@ -117,6 +118,7 @@ const Wrapper = () => {
       saving={saving}
       onSave={handleSave}
       updateConfig={updateConfig}
+      embedded={embedded}
     />
   )
 }

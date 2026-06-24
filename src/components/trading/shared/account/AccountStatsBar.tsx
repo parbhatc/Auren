@@ -31,12 +31,15 @@ export function AccountStatsBar({
   rpl,
   upl,
   hasOpenPosition,
+  inline = false,
 }: {
   isDark: boolean
   balance: number
   rpl: number
   upl: number
   hasOpenPosition?: boolean
+  /** Compact row inside the trade header (mobile). */
+  inline?: boolean
 }) {
   const muted = isDark ? 'text-[#7F838B]' : 'text-slate-500'
   const rplFmt = formatStatMoney(rpl, { decimals: 2 })
@@ -57,17 +60,23 @@ export function AccountStatsBar({
 
   return (
     <div
-      className={`shrink-0 border-b grid grid-cols-3 gap-px ${
-        isDark ? 'border-slate-700 bg-slate-700/50' : 'border-slate-200 bg-slate-200'
-      }`}
+      className={`grid grid-cols-3 gap-px ${
+        inline ? 'h-full min-w-0 flex-1' : 'shrink-0 border-b'
+      } ${isDark ? 'border-slate-700 bg-slate-700/50' : 'border-slate-200 bg-slate-200'}`}
     >
       {cells.map((cell) => (
         <div
           key={cell.label}
-          className={`px-3 py-1.5 text-center ${isDark ? 'bg-slate-950/90' : 'bg-white'}`}
+          className={`flex flex-col items-center justify-center text-center ${
+            inline ? 'px-1.5 py-1' : 'px-3 py-1.5'
+          } ${isDark ? 'bg-slate-950/90' : 'bg-white'}`}
         >
           <div className={`text-[10px] font-medium uppercase tracking-wider ${muted}`}>{cell.label}</div>
-          <div className={`text-sm font-semibold tabular-nums ${cell.cls}`}>{cell.value}</div>
+          <div
+            className={`${inline ? 'text-xs' : 'text-sm'} font-semibold tabular-nums leading-tight ${cell.cls}`}
+          >
+            {cell.value}
+          </div>
         </div>
       ))}
     </div>

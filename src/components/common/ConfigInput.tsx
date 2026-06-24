@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { ConfigInputProps } from '../../types/common'
+import { adminInputClass, fieldLabelClass } from '../../styles/aurenTheme'
 
 /**
  * Simple input component for configuration forms
@@ -63,18 +64,26 @@ class ConfigInput extends Component<ConfigInputProps> {
   }
 
   render() {
-    const { label, type = 'text', placeholder, className = '', isDark } = this.props
+    const { label, type = 'text', placeholder, className = '', isDark, variant = 'default' } = this.props
     const { localValue } = this.state
+
+    const inputClass =
+      variant === 'admin'
+        ? adminInputClass(Boolean(isDark))
+        : `w-full px-4 py-2 rounded-lg border transition-all ${
+            isDark
+              ? 'bg-slate-900 border-slate-600 text-slate-100 focus:border-blue-500 focus:ring-blue-500'
+              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-blue-500'
+          } focus:outline-none focus:ring-2`
+
+    const labelClass =
+      variant === 'admin'
+        ? fieldLabelClass(Boolean(isDark))
+        : `block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`
 
     return (
       <div className={className}>
-        <label
-          className={`block text-sm font-medium mb-2 ${
-            isDark ? 'text-slate-300' : 'text-slate-700'
-          }`}
-        >
-          {label}
-        </label>
+        <label className={labelClass}>{label}</label>
         <input
           type={type}
           value={localValue}
@@ -82,11 +91,7 @@ class ConfigInput extends Component<ConfigInputProps> {
           onFocus={this.handleFocus}
           onBlur={this.handleBlur}
           placeholder={placeholder}
-          className={`w-full px-4 py-2 rounded-lg border transition-all ${
-            isDark
-              ? 'bg-slate-900 border-slate-600 text-slate-100 focus:border-blue-500 focus:ring-blue-500'
-              : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-blue-500'
-          } focus:outline-none focus:ring-2`}
+          className={`${inputClass} ${variant === 'admin' ? 'mt-1.5' : ''}`}
         />
       </div>
     )

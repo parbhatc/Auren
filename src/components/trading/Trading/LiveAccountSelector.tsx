@@ -38,8 +38,11 @@ export function LiveAccountSelector({
   }, [open])
 
   const wrapperClass = compact
-    ? 'relative shrink-0 w-[168px] sm:w-[188px] max-w-[42vw]'
+    ? 'relative shrink-0 w-[min(5.5rem,22vw)] lg:w-[168px] xl:w-[188px]'
     : 'relative min-w-[200px] sm:min-w-[260px] max-w-full sm:max-w-md'
+
+  const compactBtnClass =
+    'h-7 lg:h-8 px-1.5 lg:px-2 py-0 rounded text-[10px] leading-tight lg:text-xs lg:rounded-md gap-0.5 lg:gap-1.5'
 
   const currentLabel = selectedLabel || t('practice.selectAccount')
 
@@ -50,8 +53,9 @@ export function LiveAccountSelector({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={`w-full flex items-center gap-1.5 border text-left transition-all ${
-          compact ? 'h-8 px-2 py-0 rounded-md text-xs' : 'h-9 px-2.5 py-0 rounded-md text-sm'
+        aria-label={currentLabel}
+        className={`w-full flex items-center border text-left transition-all ${
+          compact ? compactBtnClass : 'h-9 px-2.5 py-0 rounded-md text-sm gap-1.5'
         } ${
           open
             ? isDark
@@ -72,7 +76,7 @@ export function LiveAccountSelector({
           </span>
         </div>
         <ChevronDown
-          className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${
+          className={`w-3 h-3 lg:w-3.5 lg:h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${
             isDark ? 'text-slate-500' : 'text-slate-500'
           }`}
         />

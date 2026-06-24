@@ -9,6 +9,7 @@ import type { User } from '../../../api/users.api'
 import type { Role } from '../../../api/permissions.api'
 import { getThemeColors } from '../../../constants/theme'
 import Loading from '../../common/Loading'
+import HubSettingsSkeleton from '../../trading/Practice/hub/HubSettingsSkeleton'
 import Renderer from './Renderer'
 import { UserData } from '../../../types/user'
 import { t } from '../../../utils/translator'
@@ -17,7 +18,7 @@ import { t } from '../../../utils/translator'
  * User Manager wrapper component
  * Uses hooks and passes props to renderer component
  */
-const Wrapper = () => {
+const Wrapper = ({ embedded, onBack }: { embedded?: boolean; onBack?: () => void } = {}) => {
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const colors = getThemeColors(isDark)
@@ -244,7 +245,7 @@ const Wrapper = () => {
   }
 
   if (loading || !user) {
-    return <Loading />
+    return embedded ? <HubSettingsSkeleton isDark={isDark} rows={3} /> : <Loading />
   }
 
   return (
@@ -283,6 +284,7 @@ const Wrapper = () => {
       onResetPassword={handleResetPassword}
       onShowPasswordReset={setShowPasswordReset}
       onNewPasswordChange={setNewPassword}
+      embedded={embedded}
     />
   )
 }

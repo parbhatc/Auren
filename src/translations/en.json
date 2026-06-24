@@ -414,6 +414,7 @@
       "workingCanceledTitle": "Orders canceled",
       "workingCanceledSubtitle": "All working limits cleared",
       "workingNoneSubtitle": "No working orders to cancel",
+      "burstMore": "+{count} more",
       "recordFailedTitle": "Trade not saved",
       "recordFailedSubtitle": "Check connection and try again"
     }
@@ -500,8 +501,9 @@
       "title": "Practice",
       "nav": {
         "accounts": "Home",
-        "market": "Market Data",
         "settings": "Settings",
+        "admin": "Admin Controls",
+        "market": "Market Data",
         "connected": "Connected",
         "disconnected": "Not connected",
         "connectMarketHint": "Connect market data before creating a practice account."
@@ -525,6 +527,20 @@
         "timezoneSelect": "Timezone",
         "timezoneDesc": "Applies to chart timestamps and practice session dates.",
         "currentTime": "Current time"
+      },
+      "admin": {
+        "badge": "Administration",
+        "headline": "Control center",
+        "subtitle": "Configure the platform, permissions, and user access from one place.",
+        "backToAll": "Admin controls",
+        "sections": {
+          "site": "Site config",
+          "roles": "Roles",
+          "users": "Users",
+          "siteDesc": "Platform, email, and auth",
+          "rolesDesc": "Permissions and access levels",
+          "usersDesc": "Accounts and invitations"
+        }
       },
       "badge": "Safe layer before your real eval",
       "headline": "Practice before you trade live",
@@ -562,6 +578,7 @@
       "balance": "Balance",
       "toTarget": "To target",
       "trade": "Trade",
+      "stats": "Stats",
       "viewDetailsHint": "Click for account details",
       "reset": "Reset",
       "accountCreated": "Practice account created.",

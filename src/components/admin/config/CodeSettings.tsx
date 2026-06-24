@@ -2,10 +2,49 @@ import { Component } from 'react'
 import ConfigInput from '../../common/ConfigInput'
 import { t } from '../../../utils/translator'
 import { CodeSettingsProps } from '../../../types'
+import { AdminConfigSection } from '../AdminFormPrimitives'
 
 class CodeSettings extends Component<CodeSettingsProps> {
   render() {
-    const { title, lengthKey, expiryKey, config, onUpdate, isDark } = this.props
+    const { title, lengthKey, expiryKey, config, onUpdate, isDark, embedded } = this.props
+    const inputVariant = embedded ? 'admin' : 'default'
+
+    const fields = (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ConfigInput
+          label={t(lengthKey)}
+          type="number"
+          value={config.length}
+          variant={inputVariant}
+          onChange={(value) => {
+            if (value === '' || value === '-') return
+            const num = parseInt(value)
+            if (!isNaN(num) && num > 0) onUpdate('length', num)
+          }}
+          isDark={isDark}
+        />
+        <ConfigInput
+          label={t(expiryKey)}
+          type="number"
+          value={config.expiryMinutes}
+          variant={inputVariant}
+          onChange={(value) => {
+            if (value === '' || value === '-') return
+            const num = parseInt(value)
+            if (!isNaN(num) && num > 0) onUpdate('expiryMinutes', num)
+          }}
+          isDark={isDark}
+        />
+      </div>
+    )
+
+    if (embedded) {
+      return (
+        <AdminConfigSection isDark={isDark} title={title}>
+          {fields}
+        </AdminConfigSection>
+      )
+    }
 
     return (
       <div
@@ -18,30 +57,7 @@ class CodeSettings extends Component<CodeSettingsProps> {
         <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           {title}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ConfigInput
-            label={t(lengthKey)}
-            type="number"
-            value={config.length}
-            onChange={(value) => {
-              if (value === '' || value === '-') return
-              const num = parseInt(value)
-              if (!isNaN(num) && num > 0) onUpdate('length', num)
-            }}
-            isDark={isDark}
-          />
-          <ConfigInput
-            label={t(expiryKey)}
-            type="number"
-            value={config.expiryMinutes}
-            onChange={(value) => {
-              if (value === '' || value === '-') return
-              const num = parseInt(value)
-              if (!isNaN(num) && num > 0) onUpdate('expiryMinutes', num)
-            }}
-            isDark={isDark}
-          />
-        </div>
+        {fields}
       </div>
     )
   }

@@ -81,17 +81,34 @@ export default function AccountCard({
       </button>
       <div className="flex flex-wrap gap-2 shrink-0 p-4 sm:pl-0">
         {account.status === 'active' ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onTrade()
-            }}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium"
-          >
-            <TrendingUp className="w-4 h-4" />
-            {t('practice.hub.trade')}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onTrade()
+              }}
+              className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium"
+            >
+              <TrendingUp className="w-4 h-4" />
+              {t('practice.hub.trade')}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onStats()
+              }}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                isDark
+                  ? 'border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              {t('practice.hub.stats')}
+            </button>
+          </>
         ) : isTerminal ? (
           <button
             type="button"
@@ -106,7 +123,7 @@ export default function AccountCard({
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            {t('practice.trade.statsPage')}
+            {t('practice.hub.stats')}
           </button>
         ) : null}
         <button

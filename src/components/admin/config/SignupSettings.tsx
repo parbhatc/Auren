@@ -2,10 +2,29 @@ import { Component } from 'react'
 import Toggle from '../../common/Toggle'
 import { t } from '../../../utils/translator'
 import { SignupSettingsProps } from '../../../types'
+import { AdminConfigSection } from '../AdminFormPrimitives'
 
 class SignupSettings extends Component<SignupSettingsProps> {
   render() {
-    const { enabled, onUpdate, isDark } = this.props
+    const { enabled, onUpdate, isDark, embedded } = this.props
+
+    const toggle = (
+      <Toggle
+        checked={enabled}
+        onChange={onUpdate}
+        label={t('admin.signup.enabled')}
+        isDark={isDark}
+        accent={embedded ? 'amber' : 'blue'}
+      />
+    )
+
+    if (embedded) {
+      return (
+        <AdminConfigSection isDark={isDark} title={t('admin.signup.title')}>
+          {toggle}
+        </AdminConfigSection>
+      )
+    }
 
     return (
       <div
@@ -18,12 +37,7 @@ class SignupSettings extends Component<SignupSettingsProps> {
         <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           {t('admin.signup.title')}
         </h2>
-        <Toggle
-          checked={enabled}
-          onChange={onUpdate}
-          label={t('admin.signup.enabled')}
-          isDark={isDark}
-        />
+        {toggle}
       </div>
     )
   }

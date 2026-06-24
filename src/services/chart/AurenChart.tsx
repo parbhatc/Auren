@@ -14,14 +14,10 @@ import {
   registerTradeContextActions,
 } from '../../components/common/aurenTradeContextMenu'
 import { setupChartKeyboardShortcuts } from '../../components/common/chartKeyboardShortcuts'
-import { resetPageScroll } from '../../utils/resetPageScroll'
+import { schedulePageScrollReset } from '../../utils/resetPageScroll'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
-import {
-  resolveMdsSubscribeTicker,
-  shouldUseDelayedMdsSymbols,
-} from '../tradesea/tradeseaMdsSymbols'
-import type { TradeseaStreamConfig } from '../../api/tradesea.api'
+import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
@@ -75,18 +71,12 @@ function chartShellHtml(chartId: string): string {
   `
 }
 
-function resolveInitialSymbol(
-  symbolProp: string | undefined,
-  services: AurenChartServices | null | undefined
-): string {
+function resolveInitialSymbol(symbolProp: string | undefined): string {
   const trimmed = String(symbolProp || '').trim()
-  if (trimmed) return trimmed
-
-  if (services?.mds && 'delayed' in (services.streamConfig || {})) {
-    const useDelayed = shouldUseDelayedMdsSymbols(services.streamConfig as TradeseaStreamConfig)
-    return resolveMdsSubscribeTicker(DEFAULT_PRACTICE_CHART_SYMBOL, useDelayed)
+  if (trimmed) {
+    return chartSymbolToProductRoot(trimmed) || trimmed
   }
-  return DEFAULT_PRACTICE_CHART_SYMBOL
+  return chartSymbolToProductRoot(DEFAULT_PRACTICE_CHART_SYMBOL) || 'MNQ'
 }
 
 function wireTradeContextActions(handler: ChartTradeHandler): void {
@@ -136,9 +126,8 @@ export default function AurenChart(props: AurenChartProps) {
     if (!datafeedSource) return
 
     const liveProps = propsRef.current
-    const services = liveProps.tradeseaServices as AurenChartServices | null | undefined
     const practiceAccountId = String(liveProps.practiceAccountId || '').trim()
-    const initialSymbol = resolveInitialSymbol(liveProps.symbol, services)
+    const initialSymbol = resolveInitialSymbol(liveProps.symbol)
     const resolution = String(liveProps.timeframe || '1')
     const theme = liveProps.isDark === false ? 'light' : 'dark'
 
@@ -206,6 +195,11 @@ export default function AurenChart(props: AurenChartProps) {
 
         handler?.onReady(widget, datafeedSource)
         setupChartKeyboardShortcuts(widget)
+        datafeedSource.setChartSymbolChangeRequest?.((symbol) => {
+          const next = chartSymbolToProductRoot(symbol) || symbol
+          if (!next || next === widget.getSymbol?.()) return
+          void widget.setSymbol(next)
+        })
 
         const sym = widget.getSymbol?.() ?? initialSymbol
         notifySymbolChange(sym)
@@ -226,7 +220,8 @@ export default function AurenChart(props: AurenChartProps) {
       widgetRef.current?.destroy?.()
       widgetRef.current = null
       datafeedSource.setChartResetCallback?.(null)
-      resetPageScroll()
+      datafeedSource.setChartSymbolChangeRequest?.(null)
+      schedulePageScrollReset()
     }
   }, [chartId, datafeedSource, props.practiceAccountId])
 
@@ -234,8 +229,7 @@ export default function AurenChart(props: AurenChartProps) {
     const widget = widgetRef.current
     if (!widget?.setSymbol) return
 
-    const services = propsRef.current.tradeseaServices as AurenChartServices | null | undefined
-    const nextSymbol = resolveInitialSymbol(props.symbol, services)
+    const nextSymbol = resolveInitialSymbol(props.symbol)
     const current = widget.getSymbol?.()
     if (!nextSymbol || nextSymbol === current) return
 

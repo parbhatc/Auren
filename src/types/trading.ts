@@ -32,6 +32,8 @@ export interface TradingRendererState {
   showNav: boolean
   /** Practice trade: mobile slide-up order panel */
   practiceMobileOrderOpen?: boolean
+  /** Practice trade: mobile trading limits settings sheet */
+  practiceMobileSettingsOpen?: boolean
   /** Tradesea MDS connected — gates trading controls when false */
   marketDataLive?: boolean
 }

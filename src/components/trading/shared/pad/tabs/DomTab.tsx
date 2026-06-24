@@ -37,6 +37,7 @@ export function DomTab({
   chartSymbol,
   fallbackLast,
   panelUi,
+  compact = false,
 }: {
   props: TradePanelProps
   book: TradeseaMarketBook | null
@@ -47,6 +48,8 @@ export function DomTab({
   chartSymbol: string
   fallbackLast?: number | null
   panelUi: TradePanelSettings
+  /** Mobile order sheet — shorter ladder so buy/sell stay visible. */
+  compact?: boolean
 }) {
   const qty = Number(props.quantity) || 1
   const tradeDisabled = !isTradePanelTradingEnabled(props)
@@ -208,11 +211,17 @@ export function DomTab({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#475569]/40 py-2">
-        <div className="flex items-start justify-between gap-2 rounded-lg border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-[#0f172a] to-[#0f172a] px-2.5 py-2">
+        <div
+          className={`flex items-start justify-between gap-2 rounded-lg border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-[#0f172a] to-[#0f172a] ${
+            compact ? 'px-2 py-1.5' : 'px-2.5 py-2'
+          }`}
+        >
           <div className="min-w-0 flex-1">
             <PadTradeSymbolPicker props={props} disabled={tradeDisabled} />
             <p
-              className="mt-1 text-2xl font-bold tabular-nums leading-none tracking-tight text-[#f0c040]"
+              className={`mt-1 font-bold tabular-nums leading-none tracking-tight text-[#f0c040] ${
+                compact ? 'text-lg' : 'text-2xl'
+              }`}
               aria-live="polite"
               aria-atomic="true"
             >
@@ -259,8 +268,8 @@ export function DomTab({
       <div
         ref={ladderRef}
         className={`min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain scrollbar-hide ${
-          domPosition ? 'min-w-[280px]' : 'min-w-[260px]'
-        }`}
+          compact ? 'max-h-[36vh]' : ''
+        } ${domPosition ? 'min-w-[280px]' : 'min-w-[260px]'}`}
       >
         {rows.map((row) => {
           const isLtp = ltpPrice != null && Math.abs(row.price - ltpPrice) < eps

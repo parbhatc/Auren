@@ -87,6 +87,7 @@ export async function prepareTradeseaChartServices(
 export function teardownTradeseaChartServices(services: TradeseaChartServices | null): void {
   if (!services?.mds) return
   services.datafeed.setChartResetCallback(null)
+  services.datafeed.setChartSymbolChangeRequest(null)
   services.mds.disconnect()
   services.trades?.disconnect()
 }

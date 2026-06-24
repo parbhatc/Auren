@@ -6,29 +6,49 @@ import type { HubTab } from '../../../../types/practiceHub'
 
 export type { HubTab } from '../../../../types/practiceHub'
 
-const TABS: { id: HubTab; labelKey: string }[] = [
+const BASE_TABS: { id: HubTab; labelKey: string }[] = [
   { id: 'accounts', labelKey: 'practice.hub.nav.accounts' },
   { id: 'settings', labelKey: 'practice.hub.nav.settings' },
 ]
+
+const ADMIN_TAB: { id: HubTab; labelKey: string } = {
+  id: 'admin',
+  labelKey: 'practice.hub.nav.admin',
+}
+
+function tabActiveClass(id: HubTab, isDark: boolean): string {
+  if (id === 'admin') {
+    return isDark
+      ? 'bg-amber-600 text-white shadow-md shadow-amber-900/40'
+      : 'bg-amber-600 text-white shadow-sm'
+  }
+  return isDark
+    ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
+    : 'bg-white text-violet-700 shadow-sm'
+}
 
 function HubTabRail({
   activeTab,
   onTabChange,
   isDark,
+  showAdmin,
   className = '',
 }: {
   activeTab: HubTab
   onTabChange: (tab: HubTab) => void
   isDark: boolean
+  showAdmin: boolean
   className?: string
 }) {
+  const tabs = showAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
+
   return (
     <div
       className={`inline-flex w-full sm:w-auto p-1 rounded-xl gap-0.5 ${
         isDark ? 'bg-slate-900/90 ring-1 ring-slate-800' : 'bg-slate-100/90 ring-1 ring-slate-200/80'
       } ${className}`}
     >
-      {TABS.map(({ id, labelKey }) => {
+      {tabs.map(({ id, labelKey }) => {
         const active = activeTab === id
         return (
           <button
@@ -37,9 +57,7 @@ function HubTabRail({
             onClick={() => onTabChange(id)}
             className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all duration-200 ${
               active
-                ? isDark
-                  ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
-                  : 'bg-white text-violet-700 shadow-sm'
+                ? tabActiveClass(id, isDark)
                 : isDark
                   ? 'text-slate-400 hover:text-slate-200'
                   : 'text-slate-600 hover:text-slate-900'
@@ -59,12 +77,14 @@ export default function HubNav({
   activeTab,
   onTabChange,
   onLogout,
+  showAdmin,
 }: {
   isDark: boolean
   toggleTheme: () => void
   activeTab: HubTab
   onTabChange: (tab: HubTab) => void
   onLogout: () => void
+  showAdmin: boolean
 }) {
   const shell = isDark
     ? 'border-slate-800/80 bg-slate-950/80 backdrop-blur-xl'
@@ -86,7 +106,12 @@ export default function HubNav({
             className="hidden sm:flex flex-1 justify-center min-w-0"
             aria-label="Hub sections"
           >
-            <HubTabRail activeTab={activeTab} onTabChange={onTabChange} isDark={isDark} />
+            <HubTabRail
+              activeTab={activeTab}
+              onTabChange={onTabChange}
+              isDark={isDark}
+              showAdmin={showAdmin}
+            />
           </nav>
 
           <div className="flex items-center gap-0.5 shrink-0 ml-auto">
@@ -108,7 +133,12 @@ export default function HubNav({
         </header>
 
         <nav className="sm:hidden pb-3" aria-label="Hub sections">
-          <HubTabRail activeTab={activeTab} onTabChange={onTabChange} isDark={isDark} />
+          <HubTabRail
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            isDark={isDark}
+            showAdmin={showAdmin}
+          />
         </nav>
       </div>
     </div>

@@ -52,7 +52,7 @@ export function ScalpFloat({
 
   return (
     <div
-      className="pointer-events-auto select-none rounded-2xl border border-[#475569] bg-[#0f172a] p-3 shadow-2xl w-[346px]"
+      className="pointer-events-auto select-none rounded-2xl border border-[#475569]/75 bg-[#0f172a]/88 p-3 shadow-2xl backdrop-blur-md w-[346px]"
       style={{ touchAction: 'none' }}
     >
       <div className="flex flex-col gap-2">
@@ -97,7 +97,7 @@ export function ScalpFloat({
               Buy
             </button>
           )}
-          <div className="flex h-9 items-center justify-center gap-1 rounded-2xl border border-[#8b5cf6]/50 bg-[#020617] px-1">
+          <div className="flex h-9 items-center justify-center gap-1 rounded-2xl border border-[#8b5cf6]/50 bg-[#020617]/75 px-1">
             <button
               type="button"
               disabled={tradeDisabled}
@@ -143,7 +143,7 @@ export function ScalpFloat({
               type="button"
               disabled={tradeDisabled}
               onClick={props.onJoinBid ?? props.onBuy}
-              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b]/80 bg-[#0f172a]/70 px-3 hover:bg-[#1c2128]/90 ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <span className="text-sm font-semibold text-[#adbac7]">Join Bid</span>
               <span className="text-sm font-semibold tabular-nums text-[#3fb950]">
@@ -154,7 +154,7 @@ export function ScalpFloat({
               type="button"
               disabled={tradeDisabled}
               onClick={props.onJoinAsk ?? props.onSell}
-              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b] bg-[#0f172a] px-3 hover:bg-[#1c2128] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+              className={`flex h-9 items-center justify-between rounded-2xl border border-[#1e293b]/80 bg-[#0f172a]/70 px-3 hover:bg-[#1c2128]/90 ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
               <span className="text-sm font-semibold text-[#adbac7]">Join Ask</span>
               <span className="text-sm font-semibold tabular-nums text-[#f85149]">

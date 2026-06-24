@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScalpFloat } from './ScalpFloat'
-import { dockTradePanel, getPadFloatPosition } from '../../../../utils/tradePanelPopout'
+import {
+  clampPadFloatPosition,
+  dockTradePanel,
+  getPadFloatPosition,
+} from '../../../../utils/tradePanelPopout'
 import type { TradePanelProps } from '../pad/TradePanel'
 
 const FLOAT_WIDTH = 346
@@ -27,12 +31,29 @@ export function DetachedTradePanel({
 }) {
   const [pos, setPos] = useState(() => getPadFloatPosition(FLOAT_WIDTH, FLOAT_HEIGHT))
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const measurePanel = useCallback(() => {
+    const el = panelRef.current
+    return {
+      width: el?.offsetWidth ?? FLOAT_WIDTH,
+      height: el?.offsetHeight ?? FLOAT_HEIGHT,
+    }
+  }, [])
+
+  const clampPosition = useCallback(
+    (x: number, y: number) => {
+      const { width, height } = measurePanel()
+      return clampPadFloatPosition(x, y, width, height)
+    },
+    [measurePanel]
+  )
 
   useEffect(() => {
-    const onResize = () => setPos(getPadFloatPosition(FLOAT_WIDTH, FLOAT_HEIGHT))
+    const onResize = () => setPos((p) => clampPosition(p.x, p.y))
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [clampPosition])
 
   const onDragStart = useCallback((clientX: number, clientY: number) => {
     dragRef.current = { x: pos.x, y: pos.y, startX: clientX, startY: clientY }
@@ -42,13 +63,13 @@ export function DetachedTradePanel({
     const onMove = (clientX: number, clientY: number) => {
       const d = dragRef.current
       if (!d) return
-      setPos({
-        x: Math.max(8, d.x + clientX - d.startX),
-        y: Math.max(8, d.y + clientY - d.startY),
-      })
+      setPos(clampPosition(d.x + clientX - d.startX, d.y + clientY - d.startY))
     }
     const onMouseMove = (e: MouseEvent) => onMove(e.clientX, e.clientY)
     const onMouseUp = () => {
+      if (dragRef.current) {
+        setPos((p) => clampPosition(p.x, p.y))
+      }
       dragRef.current = null
     }
     const onTouchMove = (e: TouchEvent) => {
@@ -64,10 +85,11 @@ export function DetachedTradePanel({
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchend', onMouseUp)
     }
-  }, [])
+  }, [clampPosition])
 
   return (
     <div
+      ref={panelRef}
       className="fixed z-[60] pointer-events-none"
       style={{ left: pos.x, top: pos.y, width: FLOAT_WIDTH }}
     >

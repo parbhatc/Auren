@@ -30,6 +30,8 @@ import {
   resolveProductSymbol as resolveProductSymbolFromCatalog,
   instrumentToLibrarySymbolInfo,
   instrumentToSearchSymbolResult,
+  librarySymbolDisplayName,
+  librarySymbolStreamTicker,
   parseTradeseaJsonArray,
   searchRowToSearchSymbolResult,
   udfSymbolToLibrarySymbolInfo,
@@ -97,6 +99,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private historyCache = new Map<string, { expires: number; data: UdfHistoryResponse }>()
   private lastRefetchCandlesAt = 0
   private chartResetCallback: (() => void) | null = null
+  private chartSymbolChangeRequest: ((symbol: string) => void) | null = null
   private refetchInFlight: Promise<void> | null = null
   private quoteSubs = new Map<string, QuoteSubscription>()
   private quoteBookListenerInstalled = false
@@ -242,8 +245,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     streamId: string
     symbolKey: string
   } | null {
-    const chartSymbol = String(info.name || info.ticker || info.symbol || '').trim()
-    const streamId = this.streamSymbol(String(info.ticker || info.name || info.symbol || chartSymbol))
+    const chartSymbol = librarySymbolDisplayName(info).trim()
+    const streamId = this.streamSymbol(librarySymbolStreamTicker(info))
     if (!streamId) return null
     return {
       chartSymbol: chartSymbol || streamId,
@@ -411,6 +414,14 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   /** TradingView `resetData()` after reconnect backfill (Tradesea fillAllMissingBars + resetChartData). */
   setChartResetCallback(callback: (() => void) | null): void {
     this.chartResetCallback = callback
+  }
+
+  setChartSymbolChangeRequest(callback: ((symbol: string) => void) | null): void {
+    this.chartSymbolChangeRequest = callback
+  }
+
+  requestChartSymbolChange(chartSymbol: string): void {
+    this.chartSymbolChangeRequest?.(chartSymbol)
   }
 
   private parseResKey(resKey: string): { streamId: string; resolution: string } | null {
@@ -648,10 +659,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   private rememberLastBar(symbolInfo: LibrarySymbolInfo, resolution: string, bar: Bar): void {
     const res = String(resolution)
-    const stream = this.streamSymbol(
-      symbolInfo.ticker || symbolInfo.symbol || symbolInfo.name || ''
-    )
-    const chartName = String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || '')
+    const stream = this.streamSymbol(librarySymbolStreamTicker(symbolInfo))
+    const chartName = librarySymbolDisplayName(symbolInfo)
     const keys = new Set<string>([
       this.keyFor(stream, res),
       this.keyFor(chartName, res),
@@ -1179,8 +1188,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       onResult([], { noData: true })
       return
     }
-    const chartSymbol = String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || '')
-    const symbol = this.streamSymbol(symbolInfo.ticker || symbolInfo.symbol || symbolInfo.name || '')
+    const chartSymbol = librarySymbolDisplayName(symbolInfo)
+    const symbol = this.streamSymbol(librarySymbolStreamTicker(symbolInfo))
     if (periodParams.firstDataRequest) {
       this.logSymbol(
         'getBars',
@@ -1259,8 +1268,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     onTick: SubscribeBarsCallback,
     listenerGuid: string
   ): void {
-    const chartSymbol = String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || '')
-    const symbol = this.streamSymbol(symbolInfo.ticker || symbolInfo.symbol || symbolInfo.name || '')
+    const chartSymbol = librarySymbolDisplayName(symbolInfo)
+    const symbol = this.streamSymbol(librarySymbolStreamTicker(symbolInfo))
     const key = this.keyFor(symbol, String(resolution))
 
     if (!this.keyToSubs.has(key)) {

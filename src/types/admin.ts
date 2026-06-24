@@ -13,6 +13,7 @@ export interface RoleFormProps {
   onRoleChange: (field: 'id' | 'name', value: string) => void
   onTogglePermission: (permission: string) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface RoleCardProps {
@@ -23,6 +24,7 @@ export interface RoleCardProps {
   onDelete: () => void
   onToggleExpand: () => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface PasswordSettingsProps {
@@ -32,12 +34,14 @@ export interface PasswordSettingsProps {
   }
   onUpdate: (field: 'minLength' | 'maxLength', value: number) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface SignupSettingsProps {
   enabled: boolean
   onUpdate: (enabled: boolean) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface CodeSettingsProps {
@@ -50,6 +54,7 @@ export interface CodeSettingsProps {
   }
   onUpdate: (field: 'length' | 'expiryMinutes', value: number) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface EmailSettingsProps {
@@ -65,6 +70,7 @@ export interface EmailSettingsProps {
   }
   onUpdate: (path: string[], value: any) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface TokenSettingsProps {
@@ -75,6 +81,7 @@ export interface TokenSettingsProps {
   placeholder?: string
   onUpdate: (value: string | number) => void
   isDark: boolean
+  embedded?: boolean
 }
 
 export interface ConfigData {
@@ -123,6 +130,7 @@ export interface AdminSettingsProps {
   saving: boolean
   onSave: () => void
   updateConfig: (path: string[], value: any) => void
+  embedded?: boolean
 }
 
 export interface RolesManagerProps {
@@ -153,6 +161,7 @@ export interface RolesManagerProps {
   onDeleteClick: (roleId: string) => void
   onDeleteConfirm: () => void
   onDeleteCancel: () => void
+  embedded?: boolean
 }
 
 export interface UserManagerProps {
@@ -190,4 +199,5 @@ export interface UserManagerProps {
   onResetPassword: (userId: string) => void
   onShowPasswordReset: (userId: string) => void
   onNewPasswordChange: (password: string) => void
+  embedded?: boolean
 }

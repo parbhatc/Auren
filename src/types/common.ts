@@ -86,6 +86,7 @@ export interface ToggleProps {
   isDark?: boolean
   size?: 'sm' | 'md' | 'lg'
   className?: string
+  accent?: 'blue' | 'amber'
 }
 
 export interface ConfigInputProps {
@@ -96,6 +97,7 @@ export interface ConfigInputProps {
   placeholder?: string
   className?: string
   isDark?: boolean
+  variant?: 'default' | 'admin'
 }
 
 export interface ConfirmDialogProps {
@@ -226,6 +228,12 @@ export interface TradingNavProps {
   /** Practice trade mobile: open full order panel */
   onPracticeOrder?: () => void
   practiceOrderActive?: boolean
+  /** Practice trade mobile: trading limits & lockout settings */
+  onPracticeSettings?: () => void
+  practiceSettingsActive?: boolean
+  showMobileSettings?: boolean
+  /** Mobile terminal: hub link (live uses `/?mode=live`). */
+  mobileHomePath?: string
 }
 
 export interface EquityCurveProps {

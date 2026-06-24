@@ -34,9 +34,12 @@ import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import { useTheme } from '../../../hooks/useTheme'
 import { appPageBackground } from '../../../styles/aurenTheme'
+import { authAPI } from '../../../api/auth.api'
 import HubNav, { type HubTab } from './hub/HubNav'
 import HubStatsBar from './hub/HubStatsBar'
 import HubSettingsPanel from './hub/HubSettingsPanel'
+import HubAdminPanel from './hub/HubAdminPanel'
+import { DEFAULT_HUB_ADMIN_SECTION, resolveHubAdminSection } from './hub/hubAdminSections'
 import PracticeMarketDataPanel from './hub/PracticeMarketDataPanel'
 import NewAccountModal from './hub/NewAccountModal'
 import HubHeroSection from './hub/HubHeroSection'
@@ -53,6 +56,7 @@ type HubConfirm = 'create' | 'reset' | 'delete' | 'resetAll' | null
 
 function parseTab(value: string | null): HubTab {
   if (value === 'settings') return 'settings'
+  if (value === 'admin') return 'admin'
   return 'accounts'
 }
 
@@ -93,6 +97,8 @@ export default function Hub() {
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [detailAccount, setDetailAccount] = useState<PracticeAccount | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminResolved, setAdminResolved] = useState(false)
 
   const setActiveTab = (tab: HubTab) => {
     if (tab === 'accounts') {
@@ -100,6 +106,9 @@ export default function Hub() {
       setSearchParams(mode === 'live' ? { mode: 'live' } : {})
     } else if (tab === 'settings') {
       setSearchParams({ tab: 'settings' })
+    } else if (tab === 'admin') {
+      const section = resolveHubAdminSection(searchParams.get('section'))
+      setSearchParams({ tab: 'admin', section })
     }
   }
 
@@ -115,6 +124,37 @@ export default function Hub() {
     if (modeParam !== 'market' && tabParam !== 'market') return
     setSearchParams({}, { replace: true })
   }, [modeParam, tabParam, setSearchParams])
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      setIsAdmin(false)
+      setAdminResolved(true)
+      return
+    }
+    void authAPI
+      .validateToken(token)
+      .then((res) => {
+        setIsAdmin(Boolean(res.user?.isAdmin))
+      })
+      .catch(() => {
+        setIsAdmin(false)
+      })
+      .finally(() => {
+        setAdminResolved(true)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (!adminResolved) return
+    if (activeTab === 'admin' && !isAdmin) {
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (activeTab === 'admin' && isAdmin && searchParams.get('section') == null) {
+      setSearchParams({ tab: 'admin', section: DEFAULT_HUB_ADMIN_SECTION }, { replace: true })
+    }
+  }, [activeTab, isAdmin, adminResolved, searchParams, setSearchParams])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -206,6 +246,8 @@ export default function Hub() {
 
   useEffect(() => {
     resetPageScroll()
+    const id = window.requestAnimationFrame(() => resetPageScroll())
+    return () => window.cancelAnimationFrame(id)
   }, [])
 
   useEffect(() => {
@@ -373,6 +415,7 @@ export default function Hub() {
         onTabChange={setActiveTab}
         toggleTheme={toggleTheme}
         onLogout={handleLogout}
+        showAdmin={isAdmin || (!adminResolved && activeTab === 'admin')}
       />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -492,6 +535,8 @@ export default function Hub() {
             )}
 
             {activeTab === 'settings' && <HubSettingsPanel isDark={isDark} />}
+
+            {activeTab === 'admin' && adminResolved && isAdmin && <HubAdminPanel isDark={isDark} />}
           </>
         )}
       </main>

@@ -40,6 +40,7 @@ import { useTheme } from './hooks/useTheme'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
+import { RouteScrollRestore } from './components/common/RouteScrollRestore'
 
 const LegacyRedirect = () => <Navigate to={ROUTES.HOME} replace />
 
@@ -135,6 +136,7 @@ function App() {
 
   return (
     <Router>
+      <RouteScrollRestore />
       <Routes>
         <Route
           path={ROUTES.HOME}
@@ -314,7 +316,8 @@ function App() {
         position="top-right"
         autoClose={3000}
         hideProgressBar
-        newestOnTop={false}
+        newestOnTop
+        limit={2}
         closeOnClick
         rtl={false}
         pauseOnFocusLoss

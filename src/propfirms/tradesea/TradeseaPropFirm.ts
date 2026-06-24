@@ -963,6 +963,30 @@ export class TradeseaPropFirm extends PropFirmBase {
     this.onChartSymbolChangeListener = listener
   }
 
+  /** Change chart symbol from trade UI (picker, etc.) — updates MDS, widget, and listeners. */
+  requestChartSymbolChange(rootOrSymbol: string): void {
+    const root = chartSymbolToProductRoot(rootOrSymbol) || String(rootOrSymbol || '').trim().toUpperCase()
+    if (!root) return
+
+    const df = this.chartServices?.datafeed
+    const tradeseaSvc = this.chartServices as TradeseaChartServices | undefined
+    const useDelayedMd = tradeseaSvc ? shouldUseDelayedMdsSymbols(tradeseaSvc.streamConfig) : false
+    const stream =
+      df?.resolveStreamInstrument?.(`CME:${root}`) ??
+      resolveMdsSubscribeTicker(`CME:${root}`, useDelayedMd)
+
+    if (this.practiceMode) {
+      this.chartSymbolSyncedFromTv = true
+    }
+    if (this.chartSymbol !== root) {
+      this.chartSymbol = root
+      this.applyMdsBootstrapForChartSymbol()
+    }
+    df?.ensureMarketBookSubscription?.(stream)
+    df?.requestChartSymbolChange?.(stream)
+    this.onChartSymbolChangeListener?.(stream)
+  }
+
   /** Full MDS reconnect; resubscribeAll on open restores wire subs without unsub churn. */
   reconnectMarketData(): void {
     const svc = this.chartServices

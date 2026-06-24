@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Plus, TrendingDown, TrendingUp } from 'lucide-react'
+import { TradeSideButton } from '../../../common/TradeSideButton'
 import {
   PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
   PRACTICE_CONTRACT_QTY_PRESETS,
@@ -13,6 +14,14 @@ import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../
 import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 
 const QTY_CHIP_LIMIT = 6
+
+const MOBILE_FLUSH_SHELL =
+  'max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:shadow-none'
+const MOBILE_HEADER_PAD = 'px-3 py-2.5 max-lg:px-2 max-lg:py-1.5'
+const MOBILE_BODY_PAD = 'p-3 pt-2 space-y-2.5 max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))]'
+const MOBILE_PRESET_PAD = 'flex justify-center px-3 pt-2.5 pb-1 max-lg:px-2 max-lg:pt-0 max-lg:pb-0'
+const MOBILE_BUY_SELL_GRID = 'grid grid-cols-2 gap-2'
+const MOBILE_BUY_SELL_BTN = 'max-lg:h-12 text-sm'
 
 export function QuickTradeCard({
   props,
@@ -53,15 +62,15 @@ export function QuickTradeCard({
   if (isDark) {
     return (
       <div
-        className={`overflow-hidden rounded-2xl border border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)] ${className}`}
+        className={`overflow-hidden rounded-2xl border border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)] ${MOBILE_FLUSH_SHELL} ${className}`}
         aria-label="Quick trade"
       >
-        <header className="flex items-center justify-between gap-2 border-b border-[#334155] bg-[#020617]/60 px-3 py-2.5">
+        <header className={`flex items-center justify-between gap-2 border-b border-[#334155] bg-[#020617]/60 ${MOBILE_HEADER_PAD}`}>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
               Quick trade
             </p>
-            <div className="mt-1">
+            <div className="mt-0.5">
               <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
             </div>
             {tradeDisabled ? (
@@ -75,7 +84,7 @@ export function QuickTradeCard({
         </header>
 
         {presets.length > 0 && (
-          <div className="flex justify-center px-3 pt-2.5 pb-1">
+          <div className={MOBILE_PRESET_PAD}>
             <div className="flex w-fit max-w-full justify-center rounded-xl border border-[#334155] bg-[#020617] p-1 gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch]">
               {presets.map((p) => (
                 <button
@@ -96,25 +105,31 @@ export function QuickTradeCard({
           </div>
         )}
 
-        <div className="p-3 pt-2 space-y-2.5">
+        <div className={MOBILE_BODY_PAD}>
           {!ui.hideBuySell && (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
+            <div className={MOBILE_BUY_SELL_GRID}>
+              <TradeSideButton
+                side="buy"
+                variant="market"
                 disabled={tradeDisabled}
                 onClick={props.onBuy}
-                className={`h-11 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#2ea043] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                title="Market buy"
+                className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
               >
+                <TrendingUp className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
                 Buy
-              </button>
-              <button
-                type="button"
+              </TradeSideButton>
+              <TradeSideButton
+                side="sell"
+                variant="market"
                 disabled={tradeDisabled}
                 onClick={props.onSell}
-                className={`h-11 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] active:scale-[0.98] transition-transform hover:bg-[#f03e3e] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                title="Market sell"
+                className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
               >
+                <TrendingDown className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
                 Sell
-              </button>
+              </TradeSideButton>
             </div>
           )}
 
@@ -146,15 +161,15 @@ export function QuickTradeCard({
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40 ${className}`}
+      className={`overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40 ${MOBILE_FLUSH_SHELL} ${className}`}
       aria-label="Quick trade"
     >
-      <header className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90 px-3 py-2.5">
+      <header className={`flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90 ${MOBILE_HEADER_PAD}`}>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             Quick trade
           </p>
-          <div className="mt-1">
+          <div className="mt-0.5">
             <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
           </div>
           {tradeDisabled ? (
@@ -168,7 +183,7 @@ export function QuickTradeCard({
       </header>
 
       {presets.length > 0 && (
-        <div className="flex justify-center px-3 pt-2.5 pb-1">
+        <div className={MOBILE_PRESET_PAD}>
           <div className="flex w-fit max-w-full justify-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 overflow-x-auto">
             {presets.map((p) => (
               <button
@@ -189,25 +204,31 @@ export function QuickTradeCard({
         </div>
       )}
 
-      <div className="p-3 pt-2 space-y-2.5">
+      <div className={MOBILE_BODY_PAD}>
         {!ui.hideBuySell && (
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
+          <div className={MOBILE_BUY_SELL_GRID}>
+            <TradeSideButton
+              side="buy"
+              variant="market"
               disabled={tradeDisabled}
               onClick={props.onBuy}
-              className={`h-11 rounded-xl bg-emerald-600 text-sm font-bold text-white shadow-md shadow-emerald-900/20 active:scale-[0.98] transition-transform hover:bg-emerald-500 ${TRADE_OFFLINE_DISABLED_CLASS}`}
+              title="Market buy"
+              className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
+              <TrendingUp className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
               Buy
-            </button>
-            <button
-              type="button"
+            </TradeSideButton>
+            <TradeSideButton
+              side="sell"
+              variant="market"
               disabled={tradeDisabled}
               onClick={props.onSell}
-              className={`h-11 rounded-xl bg-red-600 text-sm font-bold text-white shadow-md shadow-red-900/20 active:scale-[0.98] transition-transform hover:bg-red-500 ${TRADE_OFFLINE_DISABLED_CLASS}`}
+              title="Market sell"
+              className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
             >
+              <TrendingDown className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
               Sell
-            </button>
+            </TradeSideButton>
           </div>
         )}
 

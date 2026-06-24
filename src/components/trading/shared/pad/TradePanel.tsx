@@ -22,10 +22,8 @@ export type {
 } from './types'
 
 function readInitialTab(accountId: string, mobileSheet: boolean): TradePanelTab {
+  if (mobileSheet) return 'ticket'
   const saved = getTradePanelTab(accountId)
-  if (mobileSheet) {
-    return saved === 'dom' ? 'dom' : 'ticket'
-  }
   if (saved === 'dom' || saved === 'ticket') return saved
   return 'ticket'
 }
@@ -232,7 +230,9 @@ export default function TradePanel(props: TradePanelProps) {
   const tradeOffline = !isTradePanelTradingEnabled(props)
 
   return (
-    <div className={`h-full flex flex-col w-full ${fullWidth ? 'max-w-none' : 'max-w-[332px]'}`}>
+    <div
+      className={`h-full flex flex-col w-full min-h-0 ${fullWidth ? 'max-w-none flex-1' : 'max-w-[332px]'}`}
+    >
       <TradePanelTabBar
         tab={tab}
         onTab={handleTab}
@@ -270,6 +270,7 @@ export default function TradePanel(props: TradePanelProps) {
             chartSymbol={chartSymbol}
             fallbackLast={marketPrice}
             panelUi={panelUi}
+            compact={mobileSheet}
           />
         )}
       </div>

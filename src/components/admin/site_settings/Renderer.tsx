@@ -1,10 +1,8 @@
 import { Component } from 'react'
-import { Settings as SettingsIcon, ArrowLeft, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, AlertCircle } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import { t } from '../../../utils/translator'
 import { AdminSettingsProps } from '../../../types'
-import ThemeToggle from '../../common/ThemeToggle'
-import Logo from '../../common/Logo'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import SubmitButton from '../../common/SubmitButton'
@@ -14,6 +12,8 @@ import CodeSettings from '../config/CodeSettings'
 import EmailSettings from '../config/EmailSettings'
 import TokenSettings from '../config/TokenSettings'
 import Loading from '../../common/Loading'
+import { AdminEmbeddedShell } from '../../trading/Practice/hub/AdminEmbeddedShell'
+import { AdminConfigPanel, AdminConfigSaveBar } from '../AdminFormPrimitives'
 
 /**
  * Admin Settings renderer component
@@ -33,9 +33,17 @@ class Renderer extends Component<AdminSettingsProps> {
       saving,
       onSave,
       updateConfig,
+      embedded,
     } = this.props
 
     if (!user.isAdmin) {
+      if (embedded) {
+        return (
+          <AdminEmbeddedShell>
+            <ErrorMessage message={error || t('admin.adminRequired')} isDark={isDark} />
+          </AdminEmbeddedShell>
+        )
+      }
       return (
         <div
           className={`min-h-screen flex items-center justify-center transition-all duration-700 ease-in-out ${
@@ -72,7 +80,111 @@ class Renderer extends Component<AdminSettingsProps> {
     }
 
     if (!config) {
-      return <Loading />
+      return embedded ? null : <Loading />
+    }
+
+    const settingsFields = (
+      <>
+        <PasswordSettings
+          embedded={embedded}
+          config={config.password}
+          onUpdate={(field, value) => updateConfig(['password', field], value)}
+          isDark={isDark}
+        />
+
+        <SignupSettings
+          embedded={embedded}
+          enabled={config.signup.enabled}
+          onUpdate={(enabled) => updateConfig(['signup', 'enabled'], enabled)}
+          isDark={isDark}
+        />
+
+        <CodeSettings
+          embedded={embedded}
+          title={t('admin.verificationCode.title')}
+          lengthKey="admin.verificationCode.length"
+          expiryKey="admin.verificationCode.expiryMinutes"
+          config={config.verificationCode}
+          onUpdate={(field, value) => updateConfig(['verificationCode', field], value)}
+          isDark={isDark}
+        />
+
+        <CodeSettings
+          embedded={embedded}
+          title={t('admin.resetCode.title')}
+          lengthKey="admin.resetCode.length"
+          expiryKey="admin.resetCode.expiryMinutes"
+          config={config.resetCode}
+          onUpdate={(field, value) => updateConfig(['resetCode', field], value)}
+          isDark={isDark}
+        />
+
+        <EmailSettings embedded={embedded} config={config.email} onUpdate={updateConfig} isDark={isDark} />
+
+        <TokenSettings
+          embedded={embedded}
+          title={t('admin.jwt.title')}
+          labelKey="admin.jwt.expiresIn"
+          value={config.jwt.expiresIn}
+          type="text"
+          placeholder="e.g., 7d, 24h, 30m"
+          onUpdate={(value) => updateConfig(['jwt', 'expiresIn'], value)}
+          isDark={isDark}
+        />
+
+        <TokenSettings
+          embedded={embedded}
+          title={t('admin.resetToken.title')}
+          labelKey="admin.resetToken.expiryHours"
+          value={config.resetToken.expiryHours}
+          type="number"
+          onUpdate={(value) => updateConfig(['resetToken', 'expiryHours'], value)}
+          isDark={isDark}
+        />
+      </>
+    )
+
+    const form = (
+      <>
+        {(error || success) && (
+          <div className={`space-y-3 ${embedded ? 'px-5 sm:px-6 pt-5 sm:pt-6' : 'mb-4'}`}>
+            <ErrorMessage message={error} isDark={isDark} />
+            <SuccessMessage message={success} isDark={isDark} />
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSave()
+          }}
+          className={embedded ? 'space-y-0' : 'space-y-6'}
+        >
+          {embedded ? (
+            <AdminConfigPanel isDark={isDark} embedded>
+              {settingsFields}
+            </AdminConfigPanel>
+          ) : (
+            settingsFields
+          )}
+
+          {embedded ? (
+            <AdminConfigSaveBar isDark={isDark} loading={saving}>
+              {saving ? t('admin.saveButtonLoading') : t('admin.saveButton')}
+            </AdminConfigSaveBar>
+          ) : (
+            <div className="flex justify-end">
+              <SubmitButton loading={saving}>
+                {saving ? t('admin.saveButtonLoading') : t('admin.saveButton')}
+              </SubmitButton>
+            </div>
+          )}
+        </form>
+      </>
+    )
+
+    if (embedded) {
+      return <AdminEmbeddedShell>{form}</AdminEmbeddedShell>
     }
 
     return (
@@ -83,37 +195,6 @@ class Renderer extends Component<AdminSettingsProps> {
             : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
         }`}
       >
-        {/* Header */}
-        <header
-          className={`border-b ${
-            isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-white/80'
-          } backdrop-blur-sm sticky top-0 z-50`}
-        >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-3">
-                <Logo isDark={isDark} compact={true} onClick={() => navigate(ROUTES.HOME)} />
-              </div>
-
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => navigate(ROUTES.HOME)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                    isDark
-                      ? 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 border border-slate-700'
-                      : 'bg-white/80 text-slate-700 hover:bg-white border border-slate-200'
-                  }`}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span className="text-sm font-medium">{t('common.back')}</span>
-                </button>
-                <ThemeToggle isDark={isDark} onToggle={toggleTheme} fixed={false} />
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content */}
         <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
           <div className="mb-6 sm:mb-8">
             <div className="flex items-center gap-2 sm:gap-3 mb-2">
@@ -127,71 +208,7 @@ class Renderer extends Component<AdminSettingsProps> {
             </p>
           </div>
 
-          <ErrorMessage message={error} isDark={isDark} className="mb-4" />
-          <SuccessMessage message={success} isDark={isDark} className="mb-4" />
-
-          <form onSubmit={(e) => { e.preventDefault(); onSave(); }} className="space-y-6">
-            <PasswordSettings
-              config={config.password}
-              onUpdate={(field, value) => updateConfig(['password', field], value)}
-              isDark={isDark}
-            />
-
-            <SignupSettings
-              enabled={config.signup.enabled}
-              onUpdate={(enabled) => updateConfig(['signup', 'enabled'], enabled)}
-              isDark={isDark}
-            />
-
-            <CodeSettings
-              title={t('admin.verificationCode.title')}
-              lengthKey="admin.verificationCode.length"
-              expiryKey="admin.verificationCode.expiryMinutes"
-              config={config.verificationCode}
-              onUpdate={(field, value) => updateConfig(['verificationCode', field], value)}
-              isDark={isDark}
-            />
-
-            <CodeSettings
-              title={t('admin.resetCode.title')}
-              lengthKey="admin.resetCode.length"
-              expiryKey="admin.resetCode.expiryMinutes"
-              config={config.resetCode}
-              onUpdate={(field, value) => updateConfig(['resetCode', field], value)}
-              isDark={isDark}
-            />
-
-            <EmailSettings
-              config={config.email}
-              onUpdate={updateConfig}
-              isDark={isDark}
-            />
-
-            <TokenSettings
-              title={t('admin.jwt.title')}
-              labelKey="admin.jwt.expiresIn"
-              value={config.jwt.expiresIn}
-              type="text"
-              placeholder="e.g., 7d, 24h, 30m"
-              onUpdate={(value) => updateConfig(['jwt', 'expiresIn'], value)}
-              isDark={isDark}
-            />
-
-            <TokenSettings
-              title={t('admin.resetToken.title')}
-              labelKey="admin.resetToken.expiryHours"
-              value={config.resetToken.expiryHours}
-              type="number"
-              onUpdate={(value) => updateConfig(['resetToken', 'expiryHours'], value)}
-              isDark={isDark}
-            />
-
-            <div className="flex justify-end">
-              <SubmitButton loading={saving}>
-                {saving ? t('admin.saveButtonLoading') : t('admin.saveButton')}
-              </SubmitButton>
-            </div>
-          </form>
+          {form}
         </main>
       </div>
     )

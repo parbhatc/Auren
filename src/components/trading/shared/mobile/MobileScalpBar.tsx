@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
+import { TradeSideButton } from '../../../common/TradeSideButton'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
@@ -32,8 +33,10 @@ function CompactQuickTrade({
   const divider = isDark ? 'border-[#334155]' : 'border-slate-200'
 
   return (
-    <div className={`rounded-2xl border px-2 py-2 ${shell}`}>
-      <div className="flex items-center gap-2">
+    <div
+      className={`rounded-2xl border px-2 py-2 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-2 ${shell}`}
+    >
+      <div className="flex items-center gap-2 max-lg:gap-1.5">
         <button
           type="button"
           onClick={onExpand}
@@ -80,22 +83,26 @@ function CompactQuickTrade({
             <Plus className="w-3.5 h-3.5" aria-hidden />
           </button>
         </div>
-        <button
-          type="button"
+        <TradeSideButton
+          side="buy"
+          variant="market"
           disabled={tradeDisabled}
           onClick={props.onBuy}
-          className={`flex-1 min-w-0 h-9 rounded-xl border border-[#3fb950]/35 bg-[#238636] text-xs font-bold text-white active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+          title="Market buy"
+          className={`flex-1 min-w-0 !h-9 max-lg:!h-10 text-xs ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Buy
-        </button>
-        <button
-          type="button"
+        </TradeSideButton>
+        <TradeSideButton
+          side="sell"
+          variant="market"
           disabled={tradeDisabled}
           onClick={props.onSell}
-          className={`flex-1 min-w-0 h-9 rounded-xl border border-[#f85149]/35 bg-[#da3633] text-xs font-bold text-white active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS}`}
+          title="Market sell"
+          className={`flex-1 min-w-0 !h-9 max-lg:!h-10 text-xs ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Sell
-        </button>
+        </TradeSideButton>
       </div>
     </div>
   )
@@ -162,18 +169,16 @@ export function MobileScalpBar({
 
   if (prefs.quickTradeMinimized) {
     return (
-      <div className="lg:hidden shrink-0 w-full px-1 pb-0">
-        <CompactQuickTrade
-          props={props}
-          isDark={isDark}
-          onExpand={() => setMobileQuickTradeMinimized(accountId, false)}
-        />
-      </div>
+      <CompactQuickTrade
+        props={props}
+        isDark={isDark}
+        onExpand={() => setMobileQuickTradeMinimized(accountId, false)}
+      />
     )
   }
 
   return (
-    <div className="lg:hidden shrink-0 w-full px-1 pb-0 pt-0.5 max-h-[min(42dvh,360px)] overflow-y-auto overscroll-y-contain">
+    <div className="max-h-[min(42dvh,360px)] overflow-y-auto overscroll-y-contain">
       <QuickTradeCard
         props={props}
         maxQty={maxQty}

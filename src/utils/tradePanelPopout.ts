@@ -39,13 +39,32 @@ export function dockTradePanel(accountId: string): void {
   setPadDetached(accountId, false)
 }
 
+export function clampPadFloatPosition(
+  x: number,
+  y: number,
+  panelWidth: number,
+  panelHeight: number,
+  margin = 8
+): { x: number; y: number } {
+  if (typeof window === 'undefined') return { x, y }
+  const maxX = Math.max(margin, window.innerWidth - panelWidth - margin)
+  const maxY = Math.max(margin, window.innerHeight - panelHeight - margin)
+  return {
+    x: Math.min(maxX, Math.max(margin, x)),
+    y: Math.min(maxY, Math.max(margin, y)),
+  }
+}
+
 export function getPadFloatPosition(panelWidth = 346, panelHeight = 200): { x: number; y: number } {
   if (typeof window === 'undefined') return { x: 80, y: 80 }
   const margin = 24
-  return {
-    x: Math.max(margin, Math.round((window.innerWidth - panelWidth) / 2)),
-    y: Math.max(margin, window.innerHeight - panelHeight - margin),
-  }
+  return clampPadFloatPosition(
+    Math.round((window.innerWidth - panelWidth) / 2),
+    window.innerHeight - panelHeight - margin,
+    panelWidth,
+    panelHeight,
+    margin
+  )
 }
 
 /** @deprecated */

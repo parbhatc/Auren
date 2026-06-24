@@ -4,7 +4,7 @@ import { resolveTradePanelBidAsk } from '../../../../services/tradesea/tradeseaM
 import { chartSymbolToProductRoot } from '../../../../services/tradesea/tradeseaSymbolInfo'
 import type { TradeseaSearchSymbolResult } from '../../../../services/tradesea/tradeseaSymbolInfo'
 import { aurenToast } from '../../../../utils/aurenToast'
-import { saveTradePadSymbol } from '../../../../utils/tradePadSymbol'
+import { saveTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange } from '../../../../utils/tradePadSymbol'
 import {
   isPracticePadDetached,
   togglePracticePadDetached,
@@ -19,6 +19,7 @@ export type BuildTradePadPropsContext = {
   marketDataLive: boolean
   chartSymbolLabel: string
   chartSymbolHint?: string
+  chartProductRoot: string
   padRoot: string
   contractQuantity: number | string
   activeFirm: any
@@ -43,6 +44,7 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     marketDataLive,
     chartSymbolLabel,
     chartSymbolHint,
+    chartProductRoot,
     padRoot,
     contractQuantity,
     activeFirm,
@@ -104,8 +106,30 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     isDark,
     marketDataLive,
     chartSymbol: chartSymbolLabel,
+    chartProductRoot,
+    tradeProductRoot: padRoot,
     chartSymbolHint,
+    autoChangeTradeContract: getTradePadAutoChange(padSessionId),
+    onAutoChangeTradeContract: (enabled: boolean) => {
+      saveTradePadAutoChange(padSessionId, enabled)
+      if (enabled && chartProductRoot) {
+        saveTradePadSymbol(padSessionId, chartProductRoot)
+        onTradePadSymbolChange(chartProductRoot)
+      }
+    },
     searchSymbols: tsDatafeed ? searchPadSymbols : undefined,
+    onChartProductChange: (sym: string) => {
+      const root = chartSymbolToProductRoot(sym)
+      if (!root) return
+      const firm = activeFirm as { requestChartSymbolChange?: (r: string) => void } | undefined
+      if (typeof firm?.requestChartSymbolChange === 'function') {
+        firm.requestChartSymbolChange(root)
+        return
+      }
+      void tsDatafeed?.ensureMarketBookSubscription?.(
+        tsDatafeed.resolveStreamInstrument?.(`CME:${root}`) ?? `CME:${root}`
+      )
+    },
     onChartSymbolChange: (sym: string) => {
       const root = chartSymbolToProductRoot(sym)
       if (!root) return

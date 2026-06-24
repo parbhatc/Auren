@@ -6,9 +6,11 @@ import './index.css'
 import './services/tradesea/practiceChartSymbolDebug'
 import { registerCandleDebugGlobals } from './services/debug/candleDebugCapture'
 import { registerConsoleCaptureGlobals } from './services/debug/consoleLogCapture'
+import { installBwcTouchScrollLockIntercept } from './utils/bwcTouchScrollLock'
 
 registerCandleDebugGlobals()
 registerConsoleCaptureGlobals()
+installBwcTouchScrollLockIntercept()
 
 /** Suppress noisy unhandled rejections from browser extensions (not from app code). */
 if (import.meta.env.DEV) {

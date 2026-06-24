@@ -2,10 +2,49 @@ import { Component } from 'react'
 import ConfigInput from '../../common/ConfigInput'
 import { t } from '../../../utils/translator'
 import { PasswordSettingsProps } from '../../../types'
+import { AdminConfigSection } from '../AdminFormPrimitives'
 
 class PasswordSettings extends Component<PasswordSettingsProps> {
   render() {
-    const { config, onUpdate, isDark } = this.props
+    const { config, onUpdate, isDark, embedded } = this.props
+    const inputVariant = embedded ? 'admin' : 'default'
+
+    const fields = (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ConfigInput
+          label={t('admin.password.minLength')}
+          type="number"
+          value={config.minLength}
+          variant={inputVariant}
+          onChange={(value) => {
+            if (value === '' || value === '-') return
+            const num = parseInt(value)
+            if (!isNaN(num) && num > 0) onUpdate('minLength', num)
+          }}
+          isDark={isDark}
+        />
+        <ConfigInput
+          label={t('admin.password.maxLength')}
+          type="number"
+          value={config.maxLength}
+          variant={inputVariant}
+          onChange={(value) => {
+            if (value === '' || value === '-') return
+            const num = parseInt(value)
+            if (!isNaN(num) && num > 0) onUpdate('maxLength', num)
+          }}
+          isDark={isDark}
+        />
+      </div>
+    )
+
+    if (embedded) {
+      return (
+        <AdminConfigSection isDark={isDark} title={t('admin.password.title')}>
+          {fields}
+        </AdminConfigSection>
+      )
+    }
 
     return (
       <div
@@ -18,30 +57,7 @@ class PasswordSettings extends Component<PasswordSettingsProps> {
         <h2 className={`text-xl font-bold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           {t('admin.password.title')}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ConfigInput
-            label={t('admin.password.minLength')}
-            type="number"
-            value={config.minLength}
-            onChange={(value) => {
-              if (value === '' || value === '-') return
-              const num = parseInt(value)
-              if (!isNaN(num) && num > 0) onUpdate('minLength', num)
-            }}
-            isDark={isDark}
-          />
-          <ConfigInput
-            label={t('admin.password.maxLength')}
-            type="number"
-            value={config.maxLength}
-            onChange={(value) => {
-              if (value === '' || value === '-') return
-              const num = parseInt(value)
-              if (!isNaN(num) && num > 0) onUpdate('maxLength', num)
-            }}
-            isDark={isDark}
-          />
-        </div>
+        {fields}
       </div>
     )
   }

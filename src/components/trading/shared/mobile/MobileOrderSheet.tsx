@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import TradePanel, { type TradePanelProps } from '../pad/TradePanel'
+import { MobileTradeOverlayShell } from './MobileTradeOverlayShell'
 
 /** Full trade panel slide-up on mobile (DOM / ticket tabs). */
 export function MobileOrderSheet({
@@ -13,23 +14,15 @@ export function MobileOrderSheet({
   isDark: boolean
   padProps: TradePanelProps
 }) {
-  if (!open) return null
-
   return (
-    <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end" role="dialog" aria-modal>
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50"
-        aria-label="Close order panel"
-        onClick={onClose}
-      />
+    <MobileTradeOverlayShell open={open} onClose={onClose} ariaLabel="Trade panel">
       <div
-        className={`relative flex flex-col max-h-[min(78vh,640px)] rounded-t-2xl border-t shadow-2xl overflow-hidden ${
+        className={`flex flex-col h-[min(72vh,580px)] w-full rounded-t-2xl border-t shadow-2xl overflow-hidden ${
           isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
         }`}
       >
         <div
-          className={`flex items-center justify-between px-3 py-2 border-b shrink-0 ${
+          className={`flex items-center justify-between px-3 py-1.5 border-b shrink-0 ${
             isDark ? 'border-slate-700' : 'border-slate-200'
           }`}
         >
@@ -47,10 +40,10 @@ export function MobileOrderSheet({
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden max-w-none w-full">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <TradePanel {...padProps} hideDetach fullWidth />
         </div>
       </div>
-    </div>
+    </MobileTradeOverlayShell>
   )
 }

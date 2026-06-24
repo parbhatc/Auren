@@ -1,6 +1,6 @@
 import { Component } from 'react'
-import { BarChart3, TrendingUp, ChevronLeft, Newspaper, PanelRight } from 'lucide-react'
-import { ROUTES, practiceTradePath, practiceTradeStatsPath, practiceTradeNewsPath } from '../../constants/routes'
+import { BarChart3, ChevronLeft, Home, PanelRight, Settings2, TrendingUp } from 'lucide-react'
+import { ROUTES, practiceTradePath, practiceTradeStatsPath } from '../../constants/routes'
 import { getPracticeAccountById } from '../../constants/practice'
 import { TradingNavProps } from '../../types/common'
 
@@ -21,6 +21,10 @@ class TradingNav extends Component<TradingNavProps> {
       compact = false,
       onPracticeOrder,
       practiceOrderActive = false,
+      onPracticeSettings,
+      practiceSettingsActive = false,
+      showMobileSettings = false,
+      mobileHomePath = ROUTES.HOME,
     } = this.props
 
     const handleNavigate = (path: string) => {
@@ -45,7 +49,6 @@ class TradingNav extends Component<TradingNavProps> {
         ? [
             { path: practiceTradePath(practiceAccountId), label: 'Chart', icon: BarChart3 },
             { path: practiceTradeStatsPath(practiceAccountId), label: 'Stats', icon: TrendingUp },
-            { path: practiceTradeNewsPath(practiceAccountId), label: 'News', icon: Newspaper },
           ]
         : []
 
@@ -64,9 +67,6 @@ class TradingNav extends Component<TradingNavProps> {
       if (isPracticeTrade && practiceAccountId) {
         if (path === practiceTradeStatsPath(practiceAccountId)) {
           return currentPath.endsWith('/stats')
-        }
-        if (path === practiceTradeNewsPath(practiceAccountId)) {
-          return currentPath.endsWith('/news')
         }
         if (path === practiceTradePath(practiceAccountId)) {
           return (
@@ -148,37 +148,42 @@ class TradingNav extends Component<TradingNavProps> {
     ) : null
 
     const mobileTabClass = (active: boolean) => {
-      const accent = isDark ? 'text-violet-400' : 'text-violet-600'
-      const idle = isDark ? 'text-slate-500 active:text-slate-300' : 'text-slate-500 active:text-slate-700'
-      return `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-px py-1 transition-colors ${
-        active ? accent : idle
-      }`
+      const base =
+        'relative flex min-w-0 flex-1 flex-col items-center justify-center rounded-md mx-px py-0.5 transition-colors'
+      if (active) {
+        return `${base} ${isDark ? 'bg-violet-500/12 text-violet-400' : 'bg-violet-100 text-violet-600'}`
+      }
+      return `${base} ${isDark ? 'text-slate-500 active:text-slate-300' : 'text-slate-500 active:text-slate-700'}`
     }
+
+    const isHomeActive = currentPath === ROUTES.HOME || currentPath.startsWith(`${ROUTES.HOME}?`)
 
     // Mobile Bottom Nav — compact tab bar
     const bottomNav = showMobileNav ? (
       <nav
-        className={`lg:hidden fixed inset-x-0 bottom-0 z-50 border-t backdrop-blur-md transition-all duration-300 ease-in-out ${
+        className={`lg:hidden fixed inset-x-0 bottom-0 z-50 border-t transition-all duration-300 ease-in-out ${
           showMobileNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         } ${
-          isDark ? 'border-slate-800/90 bg-slate-950/92' : 'border-slate-200/90 bg-white/92'
-        } pb-[max(0.25rem,env(safe-area-inset-bottom))]`}
+          isDark ? 'border-slate-800/80 bg-slate-950/96' : 'border-slate-200/90 bg-white/96'
+        } pb-[max(0px,env(safe-area-inset-bottom))]`}
         aria-label="Practice navigation"
       >
-        <div className="flex h-11 max-h-11 items-stretch px-0.5">
-          {onToggleNav && (
+        <div className="flex h-9 max-h-9 items-stretch px-1">
+          {(isPracticeTrade || isLiveTrade) && (
             <button
               type="button"
-              onClick={onToggleNav}
-              className={mobileTabClass(false)}
-              title="Hide navigation"
-              aria-label="Hide navigation"
+              onClick={() => handleNavigate(mobileHomePath)}
+              className={mobileTabClass(isHomeActive)}
+              aria-label="Home"
+              aria-current={isHomeActive ? 'page' : undefined}
             >
-              <ChevronLeft className="h-[18px] w-[18px] rotate-90 shrink-0" strokeWidth={2} />
-              <span className="max-w-full truncate text-[9px] font-medium leading-none">Hide</span>
+              <Home className="h-4 w-4 shrink-0" strokeWidth={isHomeActive ? 2.25 : 2} />
+              <span className="max-w-full truncate text-[8px] font-medium leading-none">Home</span>
             </button>
           )}
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => item.label !== 'Stats')
+            .map((item) => {
             const Icon = item.icon
             const active = isActive(item.path)
             return (
@@ -190,15 +195,8 @@ class TradingNav extends Component<TradingNavProps> {
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
               >
-                {active ? (
-                  <span
-                    className={`absolute top-0 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full ${
-                      isDark ? 'bg-violet-400' : 'bg-violet-600'
-                    }`}
-                  />
-                ) : null}
-                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={active ? 2.25 : 2} />
-                <span className="max-w-full truncate text-[9px] font-medium leading-none">{item.label}</span>
+                <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.25 : 2} />
+                <span className="max-w-full truncate text-[8px] font-medium leading-none">{item.label}</span>
               </button>
             )
           })}
@@ -210,15 +208,20 @@ class TradingNav extends Component<TradingNavProps> {
               aria-label="Trade panel"
               aria-pressed={practiceOrderActive}
             >
-              {practiceOrderActive ? (
-                <span
-                  className={`absolute top-0 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full ${
-                    isDark ? 'bg-violet-400' : 'bg-violet-600'
-                  }`}
-                />
-              ) : null}
-              <PanelRight className="h-[18px] w-[18px] shrink-0" strokeWidth={practiceOrderActive ? 2.25 : 2} />
-              <span className="max-w-full truncate text-[9px] font-medium leading-none">Order</span>
+              <PanelRight className="h-4 w-4 shrink-0" strokeWidth={practiceOrderActive ? 2.25 : 2} />
+              <span className="max-w-full truncate text-[8px] font-medium leading-none">Order</span>
+            </button>
+          )}
+          {showMobileSettings && onPracticeSettings && (
+            <button
+              type="button"
+              onClick={onPracticeSettings}
+              className={mobileTabClass(practiceSettingsActive)}
+              aria-label="Settings"
+              aria-pressed={practiceSettingsActive}
+            >
+              <Settings2 className="h-4 w-4 shrink-0" strokeWidth={practiceSettingsActive ? 2.25 : 2} />
+              <span className="max-w-full truncate text-[8px] font-medium leading-none">Settings</span>
             </button>
           )}
         </div>

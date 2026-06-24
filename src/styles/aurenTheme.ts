@@ -66,6 +66,92 @@ export function settingsInputDisabledClass(isDark: boolean): string {
   }`
 }
 
+export function adminInputClass(isDark: boolean): string {
+  return `w-full px-3 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/35 focus:border-amber-500/40 ${
+    isDark
+      ? 'bg-slate-950/40 border-slate-700/80 text-slate-100 placeholder:text-slate-500'
+      : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+  }`
+}
+
+export function adminSaveButtonClass(): string {
+  return 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:from-amber-500 hover:to-orange-500 shadow-md shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all'
+}
+
+export function adminPrimaryButtonClass(): string {
+  return adminSaveButtonClass()
+}
+
+export function adminGhostButtonClass(isDark: boolean): string {
+  return `inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+    isDark
+      ? 'border-slate-700 text-slate-300 hover:bg-slate-800/80 hover:text-white'
+      : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+  }`
+}
+
+export function adminIconButtonClass(
+  isDark: boolean,
+  tone: 'amber' | 'muted' | 'danger' = 'muted'
+): string {
+  const map = {
+    amber: isDark
+      ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30'
+      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200',
+    muted: isDark
+      ? 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-700/80'
+      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200',
+    danger: isDark
+      ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30'
+      : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200',
+  }
+  return `p-2 rounded-lg transition-colors ${map[tone]}`
+}
+
+export function adminListCardClass(isDark: boolean): string {
+  return isDark
+    ? 'rounded-xl border border-slate-800/80 bg-slate-950/30 p-4 sm:p-5 transition-colors hover:border-slate-700/90'
+    : 'rounded-xl border border-slate-200 bg-white/80 p-4 sm:p-5 transition-colors hover:border-slate-300 hover:shadow-sm'
+}
+
+export function adminSearchInputClass(isDark: boolean): string {
+  return `w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/35 focus:border-amber-500/40 ${
+    isDark
+      ? 'bg-slate-950/40 border-slate-700/80 text-slate-100 placeholder:text-slate-500'
+      : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+  }`
+}
+
+export function adminBadgeClass(isDark: boolean): string {
+  return isDark
+    ? 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25'
+    : 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+}
+
+export function adminInsetListItemClass(isDark: boolean): string {
+  return isDark
+    ? 'rounded-lg border border-slate-800/80 bg-slate-900/50 p-3'
+    : 'rounded-lg border border-slate-200 bg-slate-50 p-3'
+}
+
+export function adminSectionTitleClass(isDark: boolean): string {
+  return `text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`
+}
+
+export function adminSectionHintClass(isDark: boolean): string {
+  return `text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`
+}
+
+export function adminDividerClass(isDark: boolean): string {
+  return isDark ? 'border-slate-800/80' : 'border-slate-200'
+}
+
+export function adminInsetClass(isDark: boolean): string {
+  return isDark
+    ? 'rounded-xl border border-slate-800/80 bg-slate-950/30 p-4'
+    : 'rounded-xl border border-slate-200 bg-slate-50/80 p-4'
+}
+
 export function settingsSaveButtonClass(): string {
   return 'shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 }

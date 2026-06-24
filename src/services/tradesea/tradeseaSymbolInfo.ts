@@ -78,7 +78,7 @@ export function instrumentToLibrarySymbolInfo(
   return {
     name: display,
     symbol: display,
-    ticker: streamTicker,
+    ticker: display,
     broker_symbol: streamTicker,
     description: row.description || display,
     type: normalizeType(row.type),
@@ -130,7 +130,7 @@ export function instrumentToSearchSymbolResult(
     description: label,
     exchange: row.exchange || 'CME',
     type: 'futures',
-    ticker: instrumentUiTicker(row, delayed),
+    ticker: display,
     streamTicker,
   }
 }
@@ -154,7 +154,7 @@ export function searchRowToSearchSymbolResult(
     description: label,
     exchange,
     type: 'futures',
-    ticker: streamTicker ? (delayed ? streamTicker : toTradeseaProdTicker(streamTicker)) : undefined,
+    ticker: display,
     streamTicker: streamTicker || undefined,
   }
 }
@@ -172,7 +172,8 @@ export function searchRowToLibrarySymbolInfo(row: TradeseaSearchRow, delayed = t
   return {
     name: display,
     symbol: display,
-    ticker: streamTicker || undefined,
+    ticker: display,
+    broker_symbol: streamTicker || undefined,
     description: row.description || display,
     type: normalizeType(row.type),
     exchange: exchangeLabel,
@@ -191,6 +192,24 @@ export function searchRowToLibrarySymbolInfo(row: TradeseaSearchRow, delayed = t
     intraday_multipliers: TRADESEA_INTRADAY_MULTIPLIERS,
     seconds_multipliers: TRADESEA_SECONDS_MULTIPLIERS,
   }
+}
+
+/** Root symbol for chart toolbar / search (MNQ) — not CME-Delayed:MNQ. */
+export function librarySymbolDisplayName(info: LibrarySymbolInfo): string {
+  const name = String(info.name || info.symbol || '').trim()
+  if (name && !name.includes(':') && !/-Delayed:/i.test(name)) return name
+  const fromTicker = chartSymbolToProductRoot(String(info.ticker || ''))
+  if (fromTicker) return fromTicker
+  return name || chartSymbolToProductRoot(String(info.broker_symbol || '')) || ''
+}
+
+/** MDS / UDF wire ticker (CME-Delayed:MNQ). */
+export function librarySymbolStreamTicker(info: LibrarySymbolInfo): string {
+  const broker = String(info.broker_symbol || '').trim()
+  if (broker) return broker
+  const ticker = String(info.ticker || '').trim()
+  if (ticker.includes(':') || /-Delayed:/i.test(ticker)) return ticker
+  return ticker
 }
 
 export function buildInstrumentIndex(rows: TradeseaInstrumentRow[]): Map<string, TradeseaInstrumentRow> {
@@ -309,7 +328,7 @@ export function udfSymbolToLibrarySymbolInfo(
   return {
     name: display,
     symbol: display,
-    ticker: streamTicker,
+    ticker: display,
     broker_symbol: streamTicker,
     description: String(row.description || display),
     type: normalizeType(String(row.type || 'futures')),

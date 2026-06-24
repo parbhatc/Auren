@@ -1,4 +1,5 @@
 import TradingNav from '../../../common/TradingNav'
+import { ROUTES } from '../../../../constants/routes'
 
 type TradingRendererNavProps = {
   showNav: boolean
@@ -7,9 +8,13 @@ type TradingRendererNavProps = {
   isDark: boolean
   navigate: (path: string) => void
   padSessionId: string | null
+  liveMode: boolean
   practiceMobileOrderOpen: boolean
+  practiceMobileSettingsOpen: boolean
+  showMobileSettings: boolean
   onHideNav: () => void
   onToggleMobileOrder: () => void
+  onToggleMobileSettings: () => void
 }
 
 export function TradingRendererNav({
@@ -19,9 +24,13 @@ export function TradingRendererNav({
   isDark,
   navigate,
   padSessionId,
+  liveMode,
   practiceMobileOrderOpen,
+  practiceMobileSettingsOpen,
+  showMobileSettings,
   onHideNav,
   onToggleMobileOrder,
+  onToggleMobileSettings,
 }: TradingRendererNavProps) {
   return (
     <>
@@ -61,6 +70,12 @@ export function TradingRendererNav({
               terminalShell && padSessionId ? onToggleMobileOrder : undefined
             }
             practiceOrderActive={practiceMobileOrderOpen}
+            onPracticeSettings={
+              showMobileSettings ? onToggleMobileSettings : undefined
+            }
+            practiceSettingsActive={practiceMobileSettingsOpen}
+            showMobileSettings={showMobileSettings}
+            mobileHomePath={liveMode ? `${ROUTES.HOME}?mode=live` : ROUTES.HOME}
           />
         )}
       </div>
