@@ -8,6 +8,8 @@ class EmailSettings extends Component<EmailSettingsProps> {
   render() {
     const { config, onUpdate, isDark, embedded } = this.props
     const inputVariant = embedded ? 'admin' : 'default'
+    const smtpUser = config.smtp?.user ?? ''
+    const smtpPassword = config.smtp?.password ?? ''
 
     const fields = (
       <div className="space-y-4">
@@ -57,7 +59,7 @@ class EmailSettings extends Component<EmailSettingsProps> {
               <ConfigInput
                 label={t('admin.email.smtp.password')}
                 type="password"
-                value={config.smtp.password}
+                value={smtpPassword}
                 variant={inputVariant}
                 onChange={(value) => onUpdate(['email', 'smtp', 'password'], value)}
                 isDark={isDark}
@@ -80,7 +82,7 @@ class EmailSettings extends Component<EmailSettingsProps> {
               <ConfigInput
                 label={t('admin.email.smtp.password')}
                 type="password"
-                value={config.smtp.password}
+                value={smtpPassword}
                 onChange={(value) => onUpdate(['email', 'smtp', 'password'], value)}
                 isDark={isDark}
               />

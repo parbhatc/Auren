@@ -36,7 +36,7 @@ class Renderer extends Component<AdminSettingsProps> {
       embedded,
     } = this.props
 
-    if (!user.isAdmin) {
+    if (!user?.isAdmin) {
       if (embedded) {
         return (
           <AdminEmbeddedShell>

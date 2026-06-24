@@ -37,6 +37,10 @@ const Wrapper = ({ embedded, onBack }: { embedded?: boolean; onBack?: () => void
         }
 
         const userResponse = await authAPI.validateToken(token)
+        if (!userResponse?.user) {
+          setError(t('admin.configLoadError'))
+          return
+        }
         setUser(userResponse.user)
 
         if (!userResponse.user.isAdmin) {

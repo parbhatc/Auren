@@ -34,7 +34,7 @@ class ConfigLoader {
       }
 
       const configData = fs.readFileSync(this.configPath, 'utf8')
-      this.config = JSON.parse(configData)
+      this.config = this.normalizeConfig(JSON.parse(configData))
       this.loaded = true
       console.log('✅ Configuration loaded from config.json')
       return this.config
@@ -72,6 +72,10 @@ class ConfigLoader {
         appName: 'NexusSync',
         appUrl: 'http://localhost:2000',
         supportEmail: 'support@nexussync.com',
+        smtp: {
+          user: '',
+          password: '',
+        },
       },
       jwt: {
         expiresIn: '7d',
@@ -91,6 +95,30 @@ class ConfigLoader {
           gatewayName: 'Chicago Area',
         },
       },
+    }
+  }
+
+  /**
+   * Fill missing nested keys so admin UI and email service always have expected shape.
+   */
+  normalizeConfig(config) {
+    const defaults = this.getDefaultConfig()
+    const email = { ...defaults.email, ...(config.email || {}) }
+    if (!email.smtp || typeof email.smtp !== 'object') {
+      email.smtp = { ...defaults.email.smtp }
+    } else {
+      email.smtp = { ...defaults.email.smtp, ...email.smtp }
+    }
+    return {
+      ...defaults,
+      ...config,
+      email,
+      password: { ...defaults.password, ...(config.password || {}) },
+      signup: { ...defaults.signup, ...(config.signup || {}) },
+      verificationCode: { ...defaults.verificationCode, ...(config.verificationCode || {}) },
+      resetCode: { ...defaults.resetCode, ...(config.resetCode || {}) },
+      jwt: { ...defaults.jwt, ...(config.jwt || {}) },
+      resetToken: { ...defaults.resetToken, ...(config.resetToken || {}) },
     }
   }
 
