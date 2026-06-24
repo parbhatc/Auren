@@ -18,6 +18,7 @@ export default function NewAccountSection({
   onModeChange,
   onSizeChange,
   onCreateClick,
+  embedded = false,
 }: {
   isDark: boolean
   newMode: PracticeAccountMode
@@ -27,9 +28,11 @@ export default function NewAccountSection({
   onModeChange: (mode: PracticeAccountMode) => void
   onSizeChange: (size: PracticeAccountSize) => void
   onCreateClick: () => void
+  /** When true, omits card chrome and create button (used inside NewAccountModal). */
+  embedded?: boolean
 }) {
-  return (
-    <HubCard isDark={isDark} title={t('practice.hub.newAccount')}>
+  const form = (
+    <>
       <div className="flex flex-wrap gap-2 mb-4">
         {(['eval', 'funded'] as PracticeAccountMode[]).map((m) => (
           <button
@@ -63,15 +66,21 @@ export default function NewAccountSection({
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={onCreateClick}
-        disabled={!marketAccountId}
-        className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
-      >
-        <Plus className="w-4 h-4" />
-        {t('practice.hub.create')}
-      </button>
-    </HubCard>
+      {!embedded && (
+        <button
+          type="button"
+          onClick={onCreateClick}
+          disabled={!marketAccountId}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+        >
+          <Plus className="w-4 h-4" />
+          {t('practice.hub.create')}
+        </button>
+      )}
+    </>
   )
+
+  if (embedded) return form
+
+  return <HubCard isDark={isDark} title={t('practice.hub.newAccount')}>{form}</HubCard>
 }

@@ -774,11 +774,14 @@ export class TradeseaMdsClient {
   }
 
   setBootstrap(bootstrap: TradeseaMdsBootstrap | null, options?: { apply?: boolean; wireUnsub?: boolean }): void {
+    const prevSymbols = (this.bootstrap?.symbols ?? []).filter(Boolean).join('|')
+    const nextSymbols = (bootstrap?.symbols ?? []).filter(Boolean)
+    const symbolsChanged = prevSymbols !== nextSymbols.join('|')
     this.bootstrap = bootstrap
-    const symbols = bootstrap?.symbols?.filter(Boolean) ?? []
-    if (options?.apply === false || !symbols.length) return
+    if (options?.apply === false || !nextSymbols.length) return
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.applyBootstrap(Boolean(options?.wireUnsub))
+      const wireUnsub = Boolean(options?.wireUnsub) && symbolsChanged
+      this.applyBootstrap(wireUnsub)
     }
   }
 
@@ -819,14 +822,31 @@ export class TradeseaMdsClient {
     const symbols = this.bootstrap?.symbols?.filter(Boolean) || []
     if (!symbols.length) return
 
+    const ensure = (kind: SubscriptionPayload['kind'], subscribe: () => number): number => {
+      const existing = this.findSubscriptionId(kind, symbols)
+      if (existing != null) return existing
+      return subscribe()
+    }
+
     // Match Tradesea: ltp + bidAsk + quotes + ttv on connect; f:4 only when entitled (delayed).
     this.bootstrapSubIds = [
-      this.subscribeLtp(symbols),
-      this.subscribeBestBidAsk(symbols),
-      this.subscribeQuotes(symbols),
-      this.subscribeTtv(symbols),
-      ...(this.depthSubscribeAllowed ? [this.subscribeDepth(symbols)] : []),
-    ]
+      ensure('ltp', () => this.subscribeLtp(symbols)),
+      ensure('bestBidAsk', () => this.subscribeBestBidAsk(symbols)),
+      ensure('quotes', () => this.subscribeQuotes(symbols)),
+      ensure('ttv', () => this.subscribeTtv(symbols)),
+      ...(this.depthSubscribeAllowed
+        ? [ensure('depth', () => this.subscribeDepth(symbols))]
+        : []),
+    ].filter((id) => id >= 0)
+  }
+
+  private findSubscriptionId(kind: SubscriptionPayload['kind'], symbols: string[]): number | undefined {
+    const symKey = symbols.join('|')
+    for (const [id, payload] of this.activeSubs.entries()) {
+      if (payload.kind !== kind) continue
+      if (payload.symbols.join('|') === symKey) return id
+    }
+    return undefined
   }
 
   /**

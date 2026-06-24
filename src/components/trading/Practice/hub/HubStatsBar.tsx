@@ -1,17 +1,13 @@
-import { Activity, CheckCircle2, TrendingUp, Wifi, WifiOff } from 'lucide-react'
+import { Activity, CheckCircle2, TrendingUp } from 'lucide-react'
 import type { PracticeAccount } from '../../../../constants/practice'
 import { t } from '../../../../utils/translator'
 
 export default function HubStatsBar({
   accounts,
   isDark,
-  marketConnected,
-  marketAccountLabel,
 }: {
   accounts: PracticeAccount[]
   isDark: boolean
-  marketConnected: boolean
-  marketAccountLabel?: string
 }) {
   const active = accounts.filter((a) => a.status === 'active').length
   const passed = accounts.filter((a) => a.status === 'passed').length
@@ -39,57 +35,32 @@ export default function HubStatsBar({
       accent: isDark ? 'text-red-400' : 'text-red-600',
       bg: isDark ? 'bg-red-500/10' : 'bg-red-50',
     },
-    {
-      label: t('practice.hub.nav.market'),
-      value: marketConnected ? t('practice.hub.nav.connected') : t('practice.hub.nav.disconnected'),
-      sub: marketAccountLabel,
-      icon: marketConnected ? Wifi : WifiOff,
-      accent: marketConnected
-        ? isDark
-          ? 'text-sky-400'
-          : 'text-sky-600'
-        : isDark
-          ? 'text-amber-400'
-          : 'text-amber-600',
-      bg: marketConnected
-        ? isDark
-          ? 'bg-sky-500/10'
-          : 'bg-sky-50'
-        : isDark
-          ? 'bg-amber-500/10'
-          : 'bg-amber-50',
-    },
   ]
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
       {cards.map((card) => {
         const Icon = card.icon
         return (
           <div
             key={card.label}
-            className={`rounded-xl border p-3 sm:p-4 ${
+            className={`rounded-xl border p-2.5 sm:p-4 min-w-0 ${
               isDark
                 ? 'border-slate-800/80 bg-slate-900/50'
                 : 'border-slate-200/90 bg-white/70'
             }`}
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-1.5 sm:gap-2">
               <div className="min-w-0">
-                <p className={`text-[10px] sm:text-xs font-medium uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                <p className={`text-[9px] sm:text-xs font-medium uppercase tracking-wide truncate ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {card.label}
                 </p>
-                <p className={`text-lg sm:text-xl font-bold mt-0.5 truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <p className={`text-base sm:text-xl font-bold mt-0.5 tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {card.value}
                 </p>
-                {card.sub && (
-                  <p className={`text-[10px] mt-0.5 truncate ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-                    {card.sub}
-                  </p>
-                )}
               </div>
-              <div className={`p-2 rounded-lg shrink-0 ${card.bg}`}>
-                <Icon className={`w-4 h-4 ${card.accent}`} />
+              <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${card.bg}`}>
+                <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${card.accent}`} />
               </div>
             </div>
           </div>

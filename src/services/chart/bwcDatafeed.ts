@@ -173,7 +173,7 @@ export type BwcWidget = {
   getSymbol?: () => string
   getResolution?: () => string
   setSymbol?: (symbol: string) => void | Promise<void>
-  reload?: () => void
+  reload?: (opts?: { force?: boolean }) => void | Promise<unknown>
   destroy?: () => void
   onChartReady?: (cb: () => void) => void
   onShortcut?: (shortcut: (string | number)[], cb: () => void) => void

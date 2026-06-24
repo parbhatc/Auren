@@ -144,11 +144,6 @@ export default function AurenChart(props: AurenChartProps) {
 
     debugPracticeChartSymbol('AurenChart.init', { initialSymbol, resolution, practiceAccountId }, { force: true })
 
-    datafeedSource.setChartResetCallback?.(() => {
-      const reload = widgetRef.current?.reload
-      if (typeof reload === 'function') reload()
-    })
-
     void (async () => {
       try {
         const {

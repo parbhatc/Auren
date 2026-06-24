@@ -12,6 +12,7 @@ export default function AccountsList({
   onResetAccount,
   onDeleteAccount,
   onResetAll,
+  onCreateAccount,
 }: {
   accounts: PracticeAccount[]
   isDark: boolean
@@ -19,6 +20,7 @@ export default function AccountsList({
   onResetAccount: (id: string) => void
   onDeleteAccount: (id: string) => void
   onResetAll: () => void
+  onCreateAccount?: () => void
 }) {
   const navigate = useNavigate()
 
@@ -86,8 +88,17 @@ export default function AccountsList({
         >
           <p className="text-sm font-medium">{t('practice.hub.empty')}</p>
           <p className={`text-xs mt-2 max-w-sm mx-auto ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-            {t('practice.hub.nav.connectMarketHint')}
+            {t('practice.hub.emptyHint')}
           </p>
+          {onCreateAccount ? (
+            <button
+              type="button"
+              onClick={onCreateAccount}
+              className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+            >
+              {t('practice.hub.create')}
+            </button>
+          ) : null}
         </div>
       )}
 

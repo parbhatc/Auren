@@ -35,6 +35,7 @@ export default function MarketDataSection({
   onMarketAccountChange,
   onRefreshAccounts,
   onRefreshSession,
+  embedded = false,
 }: {
   isDark: boolean
   propFirmId: string
@@ -48,6 +49,7 @@ export default function MarketDataSection({
   onMarketAccountChange: (accountId: string) => void
   onRefreshAccounts: () => void
   onRefreshSession: () => void
+  embedded?: boolean
 }) {
   const navigate = useNavigate()
   const selectClass = selectInputClass(isDark)
@@ -80,12 +82,8 @@ export default function MarketDataSection({
     }
   }, [showSessionExpiredBanner])
 
-  return (
-    <PanelCard
-      isDark={isDark}
-      title={t('practice.hub.marketDataTitle')}
-      description={t('practice.hub.marketDataHint')}
-    >
+  const fields = (
+    <>
       <div className="grid sm:grid-cols-2 gap-5">
         <PanelField label={t('practice.propFirmLabel')} isDark={isDark}>
           <select value={propFirmId} onChange={(e) => onPropFirmChange(e.target.value)} className={selectClass}>
@@ -204,6 +202,27 @@ export default function MarketDataSection({
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="pt-4">
+        <p className={`text-sm mb-4 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          {t('practice.hub.marketDataHint')}
+        </p>
+        {fields}
+      </div>
+    )
+  }
+
+  return (
+    <PanelCard
+      isDark={isDark}
+      title={t('practice.hub.marketDataTitle')}
+      description={t('practice.hub.marketDataHint')}
+    >
+      {fields}
     </PanelCard>
   )
 }

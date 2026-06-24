@@ -24,7 +24,6 @@ import AurenChart, {
 } from '../../services/chart/AurenChart'
 
 import { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClient'
-import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
 import { TradeseaDatafeed } from '../../services/tradesea/TradeseaDatafeed'
 import type { AurenChartProps } from '../../types/chart'
 
@@ -964,16 +963,10 @@ export class TradeseaPropFirm extends PropFirmBase {
     this.onChartSymbolChangeListener = listener
   }
 
-  /** Full MDS reconnect with bootstrap + chart/book subs (fixes ping-only socket). */
+  /** Full MDS reconnect; resubscribeAll on open restores wire subs without unsub churn. */
   reconnectMarketData(): void {
     const svc = this.chartServices
     if (!svc?.mds) return
-    this.lastBootstrapKey = ''
-    const df = svc.datafeed
-    const offOpen = asMdsStatusClient(svc.mds as MdsStatusClient).on('open', () => {
-      offOpen()
-      df?.refreshMdsSubscriptions?.()
-    })
     svc.mds.reconnect()
   }
 

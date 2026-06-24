@@ -193,15 +193,6 @@ class TradeseaMdsWebSocket extends WebSocketBase {
       if (clientClosed) return
       if (isWsPing(raw)) {
         safeSend(clientWs, buildWsPongReply(raw))
-        if (upstream.readyState === WebSocket.OPEN) {
-          try {
-            upstream.send(raw, { binary: isBinary })
-          } catch {
-            /* ignore */
-          }
-        } else if (!isBinary) {
-          pending.push(raw)
-        }
         return
       }
 

@@ -499,7 +499,7 @@
     "hub": {
       "title": "Practice",
       "nav": {
-        "accounts": "Accounts",
+        "accounts": "Home",
         "market": "Market Data",
         "settings": "Settings",
         "connected": "Connected",
@@ -511,8 +511,8 @@
         "backToAll": "All settings",
         "accountDesc": "Name, email, and password.",
         "accountEmbeddedDesc": "Update how you sign in and how your name appears in Auren.",
-        "marketDesc": "Connect Tradesea for live practice charts.",
-        "marketEmbeddedDesc": "Sign in with Tradesea for market data. Practice orders stay simulated.",
+        "marketDesc": "Connect your prop firm for live charts and market data.",
+        "marketEmbeddedDesc": "Sign in with your prop firm for market data and chart feeds.",
         "shortcutsTitle": "Shortcuts",
         "shortcutsDesc": "Customize hotkeys for the practice terminal.",
         "shortcutsEmbeddedDesc": "Change keys for order entry and navigation in practice mode.",
@@ -566,7 +566,8 @@
       "reset": "Reset",
       "accountCreated": "Practice account created.",
       "accountReset": "Account reset to starting balance.",
-      "empty": "No practice accounts yet. Connect market data and create one above.",
+      "empty": "No practice accounts yet.",
+      "emptyHint": "Connect market data, then create a simulated eval or funded account.",
       "resetAll": "Delete all practice accounts",
       "resetAllConfirm": "Delete all practice accounts? This cannot be undone."
     },

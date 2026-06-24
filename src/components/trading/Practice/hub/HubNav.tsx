@@ -8,7 +8,6 @@ export type { HubTab } from '../../../../types/practiceHub'
 
 const TABS: { id: HubTab; labelKey: string }[] = [
   { id: 'accounts', labelKey: 'practice.hub.nav.accounts' },
-  { id: 'market', labelKey: 'practice.hub.nav.market' },
   { id: 'settings', labelKey: 'practice.hub.nav.settings' },
 ]
 

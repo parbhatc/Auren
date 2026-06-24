@@ -5,8 +5,16 @@ import cors from 'cors'
  */
 class CorsMiddleware {
   constructor() {
+    const raw = process.env.CORS_ORIGIN || '*'
+    const origins =
+      raw === '*'
+        ? '*'
+        : raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
     this.corsOptions = {
-      origin: process.env.CORS_ORIGIN || '*',
+      origin: origins === '*' || origins.length === 1 ? origins[0] ?? '*' : origins,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

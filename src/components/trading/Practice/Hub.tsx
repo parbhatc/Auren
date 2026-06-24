@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { RefreshCw, Sparkles } from 'lucide-react'
+import { RefreshCw, Sparkles, Zap, Plus } from 'lucide-react'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import {
   createPracticeAccount,
@@ -34,12 +34,12 @@ import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import { useTheme } from '../../../hooks/useTheme'
 import { appPageBackground } from '../../../styles/aurenTheme'
-import { CenteredPanel } from '../../ui/PanelCard'
 import HubNav, { type HubTab } from './hub/HubNav'
 import HubStatsBar from './hub/HubStatsBar'
 import HubSettingsPanel from './hub/HubSettingsPanel'
-import MarketDataSection from './hub/MarketDataSection'
-import NewAccountSection from './hub/NewAccountSection'
+import PracticeMarketDataPanel from './hub/PracticeMarketDataPanel'
+import NewAccountModal from './hub/NewAccountModal'
+import HubHeroSection from './hub/HubHeroSection'
 import AccountsList from './hub/AccountsList'
 import HubConfirmDialogs from './hub/HubConfirmDialogs'
 import HubModeSwitch from './hub/HubModeSwitch'
@@ -52,19 +52,22 @@ import type { HubHomeMode } from '../../../types/practiceHub'
 type HubConfirm = 'create' | 'reset' | 'delete' | 'resetAll' | null
 
 function parseTab(value: string | null): HubTab {
-  if (value === 'market' || value === 'settings') return value
+  if (value === 'settings') return 'settings'
   return 'accounts'
 }
 
-function parseHomeMode(value: string | null): HubHomeMode {
-  return value === 'live' ? 'live' : 'practice'
+function parseHomeMode(tab: string | null, mode: string | null): HubHomeMode {
+  if (mode === 'live') return 'live'
+  return 'practice'
 }
 
 export default function Hub() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = parseTab(searchParams.get('tab'))
-  const homeMode = parseHomeMode(searchParams.get('mode'))
+  const tabParam = searchParams.get('tab')
+  const modeParam = searchParams.get('mode')
+  const activeTab = parseTab(tabParam)
+  const homeMode = parseHomeMode(tabParam, modeParam)
   const { isDark, toggleTheme } = useTheme()
 
   const [accounts, setAccounts] = useState<PracticeAccount[]>([])
@@ -89,6 +92,7 @@ export default function Hub() {
   const [confirmTargetId, setConfirmTargetId] = useState<string | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [detailAccount, setDetailAccount] = useState<PracticeAccount | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const setActiveTab = (tab: HubTab) => {
     if (tab === 'accounts') {
@@ -96,18 +100,21 @@ export default function Hub() {
       setSearchParams(mode === 'live' ? { mode: 'live' } : {})
     } else if (tab === 'settings') {
       setSearchParams({ tab: 'settings' })
-    } else {
-      setSearchParams({ tab })
     }
   }
 
   const setHomeMode = (mode: HubHomeMode) => {
-    if (mode === 'live') {
-      setSearchParams({ mode: 'live' })
-    } else {
+    if (mode === 'practice') {
       setSearchParams({})
+    } else {
+      setSearchParams({ mode: 'live' })
     }
   }
+
+  useEffect(() => {
+    if (modeParam !== 'market' && tabParam !== 'market') return
+    setSearchParams({}, { replace: true })
+  }, [modeParam, tabParam, setSearchParams])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -224,9 +231,9 @@ export default function Hub() {
   }, [reload, loadBrokerAccounts, loadFirmCredentials, syncFromCache])
 
   useEffect(() => {
-    if (activeTab !== 'market') return
+    if (activeTab !== 'accounts' || homeMode !== 'practice') return
     void loadBrokerAccounts(propFirmId)
-  }, [activeTab, propFirmId, loadBrokerAccounts])
+  }, [activeTab, homeMode, propFirmId, loadBrokerAccounts])
 
   useEffect(() => {
     if (homeMode !== 'live' || activeTab !== 'accounts') return
@@ -369,31 +376,6 @@ export default function Hub() {
       />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {activeTab === 'accounts' && homeMode === 'practice' && (
-          <section className="mb-8">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-              <span
-                className={`text-xs font-semibold uppercase tracking-wider ${
-                  isDark ? 'text-violet-400/90' : 'text-violet-600'
-                }`}
-              >
-                {t('practice.hub.badge')}
-              </span>
-            </div>
-            <h1
-              className={`text-2xl sm:text-3xl font-bold tracking-tight ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}
-            >
-              {t('practice.hub.headline')}
-            </h1>
-            <p className={`mt-2 max-w-2xl text-sm sm:text-base leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              {t('practice.hub.subtitle')}
-            </p>
-          </section>
-        )}
-
         {error && (
           <div className="mb-4">
             <ErrorMessage message={error} isDark={isDark} />
@@ -411,6 +393,28 @@ export default function Hub() {
           </div>
         ) : (
           <>
+            {activeTab === 'accounts' && homeMode === 'practice' && (
+              <HubHeroSection
+                isDark={isDark}
+                icon={Sparkles}
+                badge={t('practice.hub.badge')}
+                headline={t('practice.hub.headline')}
+                subtitle={t('practice.hub.subtitle')}
+                accent="violet"
+              />
+            )}
+
+            {activeTab === 'accounts' && homeMode === 'live' && (
+              <HubHeroSection
+                isDark={isDark}
+                icon={Zap}
+                badge={t('live.hub.badge')}
+                headline={t('live.hub.headline')}
+                subtitle={t('live.hub.subtitle')}
+                accent="emerald"
+              />
+            )}
+
             {activeTab === 'accounts' && (
               <div className="mb-6">
                 <HubModeSwitch mode={homeMode} onModeChange={setHomeMode} isDark={isDark} />
@@ -419,76 +423,9 @@ export default function Hub() {
 
             {activeTab === 'accounts' && homeMode === 'practice' && (
               <div className="space-y-6">
-                <HubStatsBar
-                  accounts={accounts}
-                  isDark={isDark}
-                  marketConnected={marketConnected}
-                  marketAccountLabel={marketAccountLabel}
-                />
+                <HubStatsBar accounts={accounts} isDark={isDark} />
 
-                <div className="grid lg:grid-cols-5 gap-6 items-start">
-                  <div className="lg:col-span-2 lg:sticky lg:top-20">
-                    <NewAccountSection
-                      isDark={isDark}
-                      newMode={newMode}
-                      newSize={newSize}
-                      customRules={customRules}
-                      marketAccountId={firmPersistsMarketAccountId(propFirmId) ? marketAccountId : ''}
-                      onModeChange={setNewMode}
-                      onSizeChange={setNewSize}
-                      onCreateClick={() => setConfirm('create')}
-                    />
-                    {!marketConnected && (
-                      <p
-                        className={`mt-3 text-xs rounded-lg px-3 py-2 border ${
-                          isDark
-                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-                            : 'border-amber-200 bg-amber-50 text-amber-800'
-                        }`}
-                      >
-                        {t('practice.notConnected')}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="lg:col-span-3 space-y-6">
-                    <AccountsList
-                      accounts={accounts}
-                      isDark={isDark}
-                      onViewAccount={setDetailAccount}
-                      onResetAccount={(id) => {
-                        setConfirmTargetId(id)
-                        setConfirm('reset')
-                      }}
-                      onDeleteAccount={(id) => {
-                        setConfirmTargetId(id)
-                        setConfirm('delete')
-                      }}
-                      onResetAll={() => setConfirm('resetAll')}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'accounts' && homeMode === 'live' && (
-              <LiveTradingSection
-                propFirmId={livePropFirmId}
-                accounts={brokerAccounts}
-                isDark={isDark}
-                marketConnected={liveMarketConnection.connected}
-                brokerSessionExpired={brokerSessionExpired}
-                loadingMd={loadingMd}
-                onPropFirmChange={handleLivePropFirmChange}
-                onRefreshAccounts={() => void loadBrokerAccounts(livePropFirmId)}
-                onRefreshSession={() => void refreshBrokerSession(livePropFirmId)}
-                onConnectMarket={() => setActiveTab('market')}
-              />
-            )}
-
-            {activeTab === 'market' && (
-              <CenteredPanel maxWidth="max-w-2xl">
-                <MarketDataSection
+                <PracticeMarketDataPanel
                   isDark={isDark}
                   propFirmId={propFirmId}
                   marketAccountId={marketAccountId}
@@ -504,7 +441,54 @@ export default function Hub() {
                   onRefreshAccounts={() => void loadBrokerAccounts()}
                   onRefreshSession={() => void refreshBrokerSession()}
                 />
-              </CenteredPanel>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <h2
+                    className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}
+                  >
+                    {t('practice.hub.yourAccounts')}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setCreateOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+                  >
+                    <Plus className="w-4 h-4" aria-hidden />
+                    {t('practice.hub.create')}
+                  </button>
+                </div>
+
+                <AccountsList
+                  accounts={accounts}
+                  isDark={isDark}
+                  onViewAccount={setDetailAccount}
+                  onResetAccount={(id) => {
+                    setConfirmTargetId(id)
+                    setConfirm('reset')
+                  }}
+                  onDeleteAccount={(id) => {
+                    setConfirmTargetId(id)
+                    setConfirm('delete')
+                  }}
+                  onResetAll={() => setConfirm('resetAll')}
+                  onCreateAccount={() => setCreateOpen(true)}
+                />
+              </div>
+            )}
+
+            {activeTab === 'accounts' && homeMode === 'live' && (
+              <LiveTradingSection
+                propFirmId={livePropFirmId}
+                accounts={brokerAccounts}
+                isDark={isDark}
+                marketConnected={liveMarketConnection.connected}
+                brokerSessionExpired={brokerSessionExpired}
+                loadingMd={loadingMd}
+                onPropFirmChange={handleLivePropFirmChange}
+                onRefreshAccounts={() => void loadBrokerAccounts(livePropFirmId)}
+                onRefreshSession={() => void refreshBrokerSession(livePropFirmId)}
+                onConnectMarket={() => setHomeMode('practice')}
+              />
             )}
 
             {activeTab === 'settings' && <HubSettingsPanel isDark={isDark} />}
@@ -537,6 +521,22 @@ export default function Hub() {
           onGoToStats={(id) => navigate(practiceTradeStatsPath(id))}
         />
       ) : null}
+
+      <NewAccountModal
+        isOpen={createOpen}
+        isDark={isDark}
+        newMode={newMode}
+        newSize={newSize}
+        customRules={customRules}
+        marketAccountId={firmPersistsMarketAccountId(propFirmId) ? marketAccountId : ''}
+        onClose={() => setCreateOpen(false)}
+        onModeChange={setNewMode}
+        onSizeChange={setNewSize}
+        onCreateClick={() => {
+          setCreateOpen(false)
+          setConfirm('create')
+        }}
+      />
     </div>
   )
 }

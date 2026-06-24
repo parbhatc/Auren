@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 
-import { RefreshCw, TrendingUp, Zap } from 'lucide-react'
+import { RefreshCw, TrendingUp } from 'lucide-react'
 
 import {
 
@@ -79,60 +79,6 @@ export default function LiveTradingSection({
   return (
 
     <div className="space-y-6">
-
-      <section className="mb-2">
-
-        <div className="flex items-center gap-2 mb-2">
-
-          <Zap className={`w-5 h-5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-
-          <span
-
-            className={`text-xs font-semibold uppercase tracking-wider ${
-
-              isDark ? 'text-emerald-400/90' : 'text-emerald-600'
-
-            }`}
-
-          >
-
-            {t('live.hub.badge')}
-
-          </span>
-
-        </div>
-
-        <h1
-
-          className={`text-2xl sm:text-3xl font-bold tracking-tight ${
-
-            isDark ? 'text-white' : 'text-slate-900'
-
-          }`}
-
-        >
-
-          {t('live.hub.headline')}
-
-        </h1>
-
-        <p
-
-          className={`mt-2 max-w-2xl text-sm sm:text-base leading-relaxed ${
-
-            isDark ? 'text-slate-400' : 'text-slate-600'
-
-          }`}
-
-        >
-
-          {t('live.hub.subtitle')}
-
-        </p>
-
-      </section>
-
-
 
       {!marketConnected && (
 
@@ -356,7 +302,7 @@ export default function LiveTradingSection({
 
           type="button"
 
-          onClick={() => navigate(`${ROUTES.HOME}?tab=market`)}
+          onClick={() => navigate(ROUTES.HOME)}
 
           className={`underline-offset-2 hover:underline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
 
