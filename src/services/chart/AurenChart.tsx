@@ -14,6 +14,7 @@ import {
   registerTradeContextActions,
 } from '../../components/common/aurenTradeContextMenu'
 import { setupChartKeyboardShortcuts } from '../../components/common/chartKeyboardShortcuts'
+import { resetPageScroll } from '../../utils/resetPageScroll'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 import {
@@ -230,6 +231,7 @@ export default function AurenChart(props: AurenChartProps) {
       widgetRef.current?.destroy?.()
       widgetRef.current = null
       datafeedSource.setChartResetCallback?.(null)
+      resetPageScroll()
     }
   }, [chartId, datafeedSource, props.practiceAccountId])
 

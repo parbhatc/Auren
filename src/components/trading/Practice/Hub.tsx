@@ -46,6 +46,7 @@ import HubModeSwitch from './hub/HubModeSwitch'
 import LiveTradingSection from '../Live/hub/LiveTradingSection'
 import { getLiveTradePropFirmId, saveLiveTradePropFirmId } from '../../../utils/liveTrade'
 import AccountDetailModal from './hub/AccountDetailModal'
+import { resetPageScroll } from '../../../utils/resetPageScroll'
 import type { HubHomeMode } from '../../../types/practiceHub'
 
 type HubConfirm = 'create' | 'reset' | 'delete' | 'resetAll' | null
@@ -195,6 +196,10 @@ export default function Hub() {
     }
     await loadBrokerAccounts(firm)
   }, [propFirmId, loadBrokerAccounts])
+
+  useEffect(() => {
+    resetPageScroll()
+  }, [])
 
   useEffect(() => {
     void (async () => {

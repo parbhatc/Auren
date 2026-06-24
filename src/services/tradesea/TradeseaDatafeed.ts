@@ -1137,12 +1137,16 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   getBars(
-    symbolInfo: LibrarySymbolInfo,
+    symbolInfo: LibrarySymbolInfo | null | undefined,
     resolution: ResolutionString,
     periodParams: { from: number; to: number; firstDataRequest?: boolean; countBack?: number },
     onResult: (bars: Bar[], meta: { noData: boolean }) => void,
     onError: (reason: string) => void
   ): void {
+    if (!symbolInfo) {
+      onResult([], { noData: true })
+      return
+    }
     const chartSymbol = String(symbolInfo.name || symbolInfo.ticker || symbolInfo.symbol || '')
     const symbol = this.streamSymbol(symbolInfo.ticker || symbolInfo.symbol || symbolInfo.name || '')
     if (periodParams.firstDataRequest) {

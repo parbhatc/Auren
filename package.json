@@ -9,9 +9,9 @@
     "sync-bwc-vendor": "node scripts/sync-bwc-vendor.mjs"
   },
   "dependencies": {
-    "betterweightchart": "github:parbhatc/BetterweightChart",
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
+    "betterweightchart": "github:parbhatc/BetterweightChart",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
     "lightweight-charts": "^5.2.0",

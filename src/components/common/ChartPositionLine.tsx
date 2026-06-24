@@ -18,8 +18,6 @@ class ChartPositionLine {
   private props: ChartPositionLineProps
   private RIGHT_PLOT_SIDE: number
   private ORDER_RIGHT_PLOT_SIDE: number
-  private readonly POSITION_PILL_OFFSET = 100
-  private readonly BRACKET_PILL_OFFSET = 160
   private readonly PILL_FONT_WEIGHT = 900
   private readonly PILL_FONT_SIZE = 12
   private readonly PILL_FONT_FAMILY = "'Trebuchet MS', Roboto, Ubuntu, sans-serif"
@@ -189,10 +187,10 @@ class ChartPositionLine {
     })
     line.setPrice(entryPrice);
     line.setQuantity(this.getContracts().toString());
-    line.setLineStyle(0);
+    line.setLineStyle(2);
     line.setLineLength(this.RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
-    this.applyPillOffset(line, this.POSITION_PILL_OFFSET);
+    this.applyPositionPillOffset(line);
     this.applyPillTextStyle(line);
     const qtyColors = chartQtyColors(this.getContracts() > 0 ? 'buy' : 'sell');
     line.setQuantityBackgroundColor(qtyColors.fill);
@@ -250,6 +248,7 @@ class ChartPositionLine {
     }else{
       this.setLineColor(this.line, false);
     }
+    this.applyPositionPillOffset(this.line);
   }
   
   private async createStopLossLine(){
@@ -312,7 +311,7 @@ class ChartPositionLine {
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
-    this.applyPillOffset(line, this.BRACKET_PILL_OFFSET);
+    this.applyBracketPillOffset(line);
     this.applyPillTextStyle(line);
     const slQty = chartQtyColors(pnl >= 0 ? 'buy' : 'sell');
     line.setQuantityBackgroundColor(slQty.fill);
@@ -387,6 +386,7 @@ class ChartPositionLine {
           this.setLineColor(this.line);
         }
       }
+      this.applyBracketPillOffset(this.line);
     } catch (err) {
       debugTradeseaSl('chart:line-update-error', {
         symbol: this.props.symbol,
@@ -453,7 +453,7 @@ class ChartPositionLine {
     line.setLineStyle(2);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
-    this.applyPillOffset(line, this.BRACKET_PILL_OFFSET);
+    this.applyBracketPillOffset(line);
     this.applyPillTextStyle(line);
     line.setQuantityBackgroundColor(TRADING_SIDE_CHART.buy.fill);
     this.applyChartLineColor(line, true);
@@ -534,6 +534,7 @@ class ChartPositionLine {
         this.setLineColor(this.line);
       }
     }
+    this.applyBracketPillOffset(this.line);
   }
 
   async createOrderLine(){
@@ -699,6 +700,27 @@ class ChartPositionLine {
     if (typeof line?.setPillOffset === 'function') {
       line.setPillOffset(offset)
     }
+  }
+
+  /** Position line sits closer to the price axis; SL/TP pills sit further left. */
+  private isMobileViewport(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+  }
+
+  private getPositionPillOffset(): number {
+    return this.isMobileViewport() ? 28 : 200
+  }
+
+  private getBracketPillOffset(): number {
+    return this.isMobileViewport() ? 44 : 300
+  }
+
+  private applyPositionPillOffset(line: any): void {
+    this.applyPillOffset(line, this.getPositionPillOffset())
+  }
+
+  private applyBracketPillOffset(line: any): void {
+    this.applyPillOffset(line, this.getBracketPillOffset())
   }
 
   private applyPillTextStyle(line: any): void {

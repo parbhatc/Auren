@@ -21,6 +21,7 @@ import {
   getInitialPracticeShowNav,
   savePracticeShowNav,
 } from '../../../utils/practiceTradePreferences'
+import { resetPageScroll } from '../../../utils/resetPageScroll'
 import { getTradePadSymbol } from '../../../utils/tradePadSymbol'
 import { PRACTICE_MOBILE_TRADE_PREFS_EVENT } from '../../../utils/mobileTradePrefs'
 import {
@@ -344,6 +345,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     }
     if (this.accountUpdateInterval) {
       clearInterval(this.accountUpdateInterval)
+    }
+    if (this.isTerminalShell()) {
+      resetPageScroll()
     }
   }
 

@@ -57,6 +57,9 @@ Thumbs.db
 .cursor/
 *.cursor/
 
+# Local deploy tooling (untracked)
+scripts/deploy/
+
 # Scratch / local scripts
 update.sh
 patch_dom_rows.py

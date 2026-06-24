@@ -88,7 +88,7 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
     },
 
     getBars(
-      symbolInfo: LibrarySymbolInfo,
+      symbolInfo: LibrarySymbolInfo | null | undefined,
       resolution: string,
       periodParams: {
         from?: number
@@ -97,6 +97,9 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
         firstDataRequest?: boolean
       } = {}
     ) {
+      if (!symbolInfo) {
+        return Promise.resolve({ bars: [], noData: true })
+      }
       const now = Math.floor(Date.now() / 1000)
       const from = periodParams.from ?? now - 86400 * 7
       const to = periodParams.to ?? now
