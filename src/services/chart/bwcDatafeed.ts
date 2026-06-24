@@ -177,7 +177,7 @@ export type BwcWidget = {
   [key: string]: unknown
 }
 
-/** Requires BetterweightChart commit 4c1b6d8+ (trade overlays + host hooks). */
+/** Requires recent betterweightchart (trade overlays + host hooks). */
 export function getBwcChartApi(widget: BwcWidget | null | undefined): BwcChartApi | null {
   if (!widget || typeof widget.chart !== 'function') return null
   try {

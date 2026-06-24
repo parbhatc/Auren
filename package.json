@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
-    "build": "tsc && vite build",
-    "preview": "vite preview --port 3000"
+    "build": "npm run sync-bwc-vendor && tsc && vite build",
+    "preview": "vite preview --port 3000",
+    "sync-bwc-vendor": "node scripts/sync-bwc-vendor.mjs"
   },
   "dependencies": {
+    "betterweightchart": "github:parbhatc/BetterweightChart",
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
     "dayjs": "^1.11.19",

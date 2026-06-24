@@ -195,12 +195,12 @@ export default function AurenChart(props: AurenChartProps) {
 
         if (!bwcHasOrderLines(widget)) {
           console.warn(
-            '[AurenChart] widget.chart().createOrderLine missing — update sibling BetterweightChart to 4c1b6d8+'
+            '[AurenChart] widget.chart().createOrderLine missing — update betterweightchart (github:parbhatc/BetterweightChart)'
           )
         }
         if (!bwcHasExecutionShapes(widget)) {
           console.warn(
-            '[AurenChart] widget.chart().createExecutionShape missing — update sibling BetterweightChart to 4c1b6d8+'
+            '[AurenChart] widget.chart().createExecutionShape missing — update betterweightchart (github:parbhatc/BetterweightChart)'
           )
         }
 

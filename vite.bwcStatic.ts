@@ -39,7 +39,8 @@ function copyDir(src: string, dest: string): void {
 }
 
 /**
- * Serve BetterweightChart `public/` and testing_web indicator assets.
+ * Serve BetterweightChart `public/` and testing_web indicator assets from the
+ * `betterweightchart` npm package (github:parbhatc/BetterweightChart).
  */
 export function betterweightChartStatic(bwcRoot: string): Plugin {
   const publicRoot = path.join(bwcRoot, 'public')

@@ -119,7 +119,9 @@ export class PracticeTradeHandler {
       return
     }
     if (typeof (chart as { createOrderLine?: unknown }).createOrderLine !== 'function') {
-      console.warn('[PracticeTradeHandler] widget.chart().createOrderLine missing — update BetterweightChart to 4c1b6d8+')
+      console.warn(
+        '[PracticeTradeHandler] widget.chart().createOrderLine missing — update betterweightchart (github:parbhatc/BetterweightChart)'
+      )
     }
 
     this.tradeCache = new PracticeTradeCache(this, chart, this.practiceAccountId)

@@ -16,8 +16,8 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 
 ### Trading terminal
 
-- **TradingView** charts with Tradesea market data (you supply the Charting Library license)
-- **Simulated execution**: orders and P/L stay on Auren; nothing routes to a live eval
+- **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** charts (lightweight-charts v5, drawings, indicators) with Tradesea market data
+- **Practice simulation** and **live Tradesea** trading (Lucid / sandbox) on the same chart stack
 - **DOM ladder** and order ticket: market, limit, join bid/ask, close, reverse, flatten, cancel-all
 - **Draggable SL/TP** on the chart; bracket tracking when offline (where supported)
 - **Detachable** trade panel and **resizable** layout regions
@@ -55,7 +55,7 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 - Admin: users, roles, server config (self-hosted)
 - English UI copy via `en.json`
 
-There is **no live prop-firm order routing** in this project. When you are ready for a real eval, trade on your firm directly.
+There is **no third-party prop-firm order routing** beyond Tradesea accounts you connect yourself. Practice accounts remain fully simulated on Auren.
 
 ## Screenshots
 
@@ -106,7 +106,8 @@ Session calendar and headlines while you practice.
 | Route | Purpose |
 |-------|---------|
 | `/` | Auren home: accounts, market data, settings |
-| `/trade/:id` | Trading terminal (chart + trade panel) |
+| `/trade/:id` | Practice trading terminal (chart + trade panel) |
+| `/live/trade` | Live Tradesea trading terminal |
 | `/trade/:id/stats` | Session statistics and eval progress |
 | `/trade/:id/news` | Economic news calendar |
 | `/settings` | Profile and account settings |
@@ -119,8 +120,7 @@ Session calendar and headlines while you practice.
 
 - [Node.js](https://nodejs.org/) 18+ (20 LTS recommended)
 - npm 9+
-- A **TradingView Charting Library** license ([request access](https://www.tradingview.com/charting-library/))
-- (Optional) Tradesea account for live/delayed futures chart data
+- (Optional) Tradesea account for live/delayed futures chart data and live trading
 
 ## Quick start
 
@@ -130,25 +130,35 @@ Session calendar and headlines while you practice.
 git clone <repository-url>
 cd Auren
 npm install
+npm run sync-bwc-vendor
 cd server && npm install && cd ..
 ```
 
+`npm install` pulls **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** from GitHub (`betterweightchart` dependency). Then `npm run sync-bwc-vendor` copies `lightweight-charts` into the chart package’s `public/vendor/` (required because dependency postinstall scripts are skipped via `.npmrc`). No local sibling checkout is required.
+
 `package-lock.json` is not committed. Run `npm install` in the repo root and in `server/` to generate lockfiles locally.
 
-### 2. TradingView Charting Library (required for charts)
+### 2. Chart engine (BetterweightChart)
 
-The charting library is **not included** (TradingView license). After clone:
+Charts are powered by the open-source **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** package, installed automatically from GitHub:
 
-1. Download from [TradingView Charting Library](https://www.tradingview.com/charting-library/) for your license.
-2. Copy the extracted `charting_library` folder (with `charting_library.js` and `bundles/`) to:
+```json
+"betterweightchart": "github:parbhatc/BetterweightChart"
+```
 
-   ```text
-   public/charting_library/
-   ```
+Vite serves `/chart/*`, `/js/*`, `/css/*`, `/vendor/*`, and `/testing/js/*` from `node_modules/betterweightchart/` during dev and copies them into `dist/` on production build.
 
-3. Start the dev server and open a practice trade page. A placeholder appears if the folder is missing.
+To update to the latest chart release:
 
-`public/charting_library/` is gitignored so your licensed copy is never committed.
+```bash
+npm update betterweightchart
+npm run sync-bwc-vendor
+npm run build
+```
+
+Do **not** clone BetterweightChart next to Auren — the app no longer uses `../BetterweightChart`.
+
+`.npmrc` sets `ignore-scripts=true` so the chart package’s postinstall does not fail when dependencies are hoisted; run `npm run sync-bwc-vendor` after every `npm install` or `npm update betterweightchart`.
 
 ### 3. Environment
 
@@ -221,7 +231,7 @@ Change this password after first login. You can also register a new account if s
 npm run build
 ```
 
-Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN` on the server). The charting library must exist under `public/charting_library/` at build time so it is copied into the build.
+Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN` on the server). BetterweightChart static assets are bundled into `dist/chart`, `dist/js`, etc. automatically during `npm run build`.
 
 ## Project structure
 
@@ -229,18 +239,19 @@ Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN`
 Auren/
 ├── src/                    # React + TypeScript frontend
 ├── server/                 # Express API, SQLite, auth, practice engine
-├── public/
-│   └── charting_library/   # You add this (gitignored)
+├── public/                 # Static assets (favicon, etc.)
 ├── images/                 # README screenshots
+├── node_modules/
+│   └── betterweightchart/  # Chart SDK (from github:parbhatc/BetterweightChart)
 └── package.json
 ```
 
 ## License and third-party notices
 
 - **Auren** application code: see repository license (if provided).
-- **TradingView Charting Library**: separate license from TradingView. Do not redistribute without permission.
-- **Market data**: subject to your provider’s terms; used as a chart feed in this project.
+- **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)**: MIT — chart widget, drawings, and indicators (installed via npm from GitHub).
+- **Market data**: subject to your provider’s terms (e.g. Tradesea).
 
 ## Contributing
 
-Issues and pull requests are welcome. Do not commit secrets, `server/data/`, `public/charting_library/`, local check scripts, or lockfiles listed in `.gitignore`.
+Issues and pull requests are welcome. Do not commit secrets, `server/data/`, local check scripts, or lockfiles listed in `.gitignore`.
