@@ -1,9 +1,18 @@
 /**
  * Market Data Stream (MDS) WebSocket client.
- * Wire protocol matches app.tradesea.ai mdsWorker (f:1..7 frames, not {type:...}).
+ * Speaks the MDS wire protocol on /tradesea-mds-ws; backend translates to Tradesea.
  */
 import { getAuthToken, getWebSocketUrl } from '../../api/api'
 import { dismissMdsConnectionToast, showMdsConnectionToast } from './mdsConnectionToast'
+import {
+  encodeMdsSubscribe,
+  encodeMdsUnsubscribe,
+  isMdsPong,
+  isMdsTick,
+  MDS_PING_FRAME,
+  mdsTickToFrame,
+  type MdsSubscriptionPayload,
+} from '../mds/mdsWire'
 import {
   readMdsAutoReconnect,
   readMdsReconnectOnLimit,
@@ -36,10 +45,6 @@ export type TradeseaMdsMessage =
   | { f: 7; id: string; v?: [number, number][]; u?: number }
   | { f: 0; c?: string; m?: string }
 
-type MdsWireFrame = Record<string, unknown>
-
-export type MdsConnectionState = 'connected' | 'connecting' | 'disconnected'
-
 type MdsEventMap = {
   candles: Extract<TradeseaMdsMessage, { f: 5 }>
   ltp: Extract<TradeseaMdsMessage, { f: 2 }>
@@ -57,115 +62,9 @@ type MdsEventMap = {
   error: Error
 }
 
-type SubscriptionPayload =
-  | { kind: 'candles'; symbols: string[]; resolutions: string[] }
-  | { kind: 'ltp'; symbols: string[]; bucket: string }
-  | { kind: 'bestBidAsk'; symbols: string[]; bucket: string }
-  | { kind: 'depth'; symbols: string[]; bucket: string }
-  | { kind: 'quotes'; symbols: string[] }
-  | { kind: 'ttv'; symbols: string[]; bucket: string }
+export type MdsConnectionState = 'connected' | 'connecting' | 'disconnected'
 
-function subscribeFrame(payload: SubscriptionPayload): MdsWireFrame {
-  const lane = 0
-  switch (payload.kind) {
-    case 'candles':
-      return {
-        f: F_CANDLES,
-        s: payload.symbols,
-        u: [],
-        sr: payload.resolutions,
-        ur: [],
-        l: lane,
-      }
-    case 'ltp':
-      return {
-        f: F_LTP,
-        b: payload.bucket,
-        s: payload.symbols,
-        u: [],
-        l: lane,
-      }
-    case 'bestBidAsk':
-      return {
-        f: F_BEST_BID_ASK,
-        b: payload.bucket,
-        s: payload.symbols,
-        u: [],
-        l: lane,
-      }
-    case 'depth':
-      return {
-        f: F_DEPTH,
-        b: payload.bucket,
-        s: payload.symbols,
-        u: [],
-        l: lane,
-      }
-    case 'quotes':
-      return { f: F_QUOTES, s: payload.symbols, u: [], l: lane }
-    case 'ttv':
-      return {
-        f: F_TTV,
-        b: payload.bucket,
-        s: payload.symbols,
-        u: [],
-        l: lane,
-      }
-    default:
-      return { f: F_CANDLES, s: [], u: [], sr: [], ur: [], l: lane }
-  }
-}
-
-function unsubscribeFrame(payload: SubscriptionPayload): MdsWireFrame {
-  const lane = 0
-  switch (payload.kind) {
-    case 'candles':
-      return {
-        f: F_CANDLES,
-        s: [],
-        u: payload.symbols,
-        sr: [],
-        ur: payload.resolutions,
-        l: lane,
-      }
-    case 'ltp':
-      return {
-        f: F_LTP,
-        b: payload.bucket,
-        s: [],
-        u: payload.symbols,
-        l: lane,
-      }
-    case 'bestBidAsk':
-      return {
-        f: F_BEST_BID_ASK,
-        b: payload.bucket,
-        s: [],
-        u: payload.symbols,
-        l: lane,
-      }
-    case 'depth':
-      return {
-        f: F_DEPTH,
-        b: payload.bucket,
-        s: [],
-        u: payload.symbols,
-        l: lane,
-      }
-    case 'quotes':
-      return { f: F_QUOTES, s: [], u: payload.symbols, l: lane }
-    case 'ttv':
-      return {
-        f: F_TTV,
-        b: payload.bucket,
-        s: [],
-        u: payload.symbols,
-        l: lane,
-      }
-    default:
-      return { f: F_CANDLES, s: [], u: [], sr: [], ur: [], l: lane }
-  }
-}
+type SubscriptionPayload = MdsSubscriptionPayload
 
 export type TradeseaMdsBootstrap = {
   symbols: string[]
@@ -693,9 +592,13 @@ export class TradeseaMdsClient {
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return
       const text = typeof ev.data === 'string' ? ev.data : ''
-      if (!text || text === 'pong') return
+      if (!text || isMdsPong(text)) return
       try {
-        const msg = JSON.parse(text) as TradeseaMdsMessage
+        const parsed = JSON.parse(text) as Record<string, unknown>
+        const msg = isMdsTick(parsed)
+          ? (mdsTickToFrame(parsed) as TradeseaMdsMessage | null)
+          : (parsed as TradeseaMdsMessage)
+        if (!msg || typeof msg.f !== 'number') return
         if (msg.f === 0) {
           const err = msg as { c?: string; m?: string }
           const key = `${err.c || ''}:${err.m || ''}`
@@ -713,7 +616,6 @@ export class TradeseaMdsClient {
           return
         }
         this.emit('message', msg)
-        if (typeof msg.f !== 'number') return
         if (msg.f === F_CANDLES) this.emit('candles', msg as MdsEventMap['candles'])
         else if (msg.f === F_LTP) this.emit('ltp', msg as MdsEventMap['ltp'])
         else if (msg.f === F_BEST_BID_ASK) this.emit('bestBidAsk', msg as MdsEventMap['bestBidAsk'])
@@ -812,7 +714,7 @@ export class TradeseaMdsClient {
     this.pingTimer = setInterval(() => {
       if (this.ws !== ws || this.pingSocket !== ws || ws.readyState !== WebSocket.OPEN) return
       try {
-        ws.send('ping')
+        ws.send(MDS_PING_FRAME)
       } catch {
         /* ignore */
       }
@@ -883,7 +785,7 @@ export class TradeseaMdsClient {
   /** Re-send an existing subscription on the wire (no unsubscribe). */
   resendSubscription(id: number): void {
     const payload = this.activeSubs.get(id)
-    if (payload) this.sendWire(subscribeFrame(payload))
+    if (payload) this.sendWire(payload, true)
   }
 
   /** Drop bootstrap subs in memory only (socket is closing or fresh upstream). */
@@ -935,7 +837,7 @@ export class TradeseaMdsClient {
     const payloads = [...this.activeSubs.values()]
     if (payloads.length) {
       for (const payload of payloads) {
-        this.sendWire(subscribeFrame(payload))
+        this.sendWire(payload, true)
       }
       this.logWs('Resubscribed', { streams: payloads.length })
       return
@@ -957,15 +859,16 @@ export class TradeseaMdsClient {
     return
   }
 
-  private sendWire(frame: MdsWireFrame): void {
+  private sendWire(payload: SubscriptionPayload, subscribe: boolean): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    const frame = subscribe ? encodeMdsSubscribe(payload) : encodeMdsUnsubscribe(payload)
     this.ws.send(JSON.stringify(frame))
   }
 
   private addSubscription(payload: SubscriptionPayload): number {
     const id = ++this.subscriptionId
     this.activeSubs.set(id, payload)
-    this.sendWire(subscribeFrame(payload))
+    this.sendWire(payload, true)
     return id
   }
 
@@ -973,13 +876,14 @@ export class TradeseaMdsClient {
     const payload = this.activeSubs.get(id)
     if (!payload) return
     this.activeSubs.delete(id)
-    this.sendWire(unsubscribeFrame(payload))
+    this.sendWire(payload, false)
   }
 
   subscribeCandles(symbols: string[], resolutions: string[]): number {
     return this.addSubscription({ kind: 'candles', symbols, resolutions })
   }
 
+  /** Subscribe to last-traded-price ticks for symbols (chart last price, P/L mark). */
   subscribeLtp(symbols: string[], bucket = MDS_BUCKET_LTP): number {
     return this.addSubscription({ kind: 'ltp', symbols, bucket })
   }

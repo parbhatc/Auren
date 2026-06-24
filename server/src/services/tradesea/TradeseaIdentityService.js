@@ -4,6 +4,7 @@ import {
   getStreamEndpoints,
   isSupportedTradeseaAccount,
   pickDefaultAccountId,
+  usesDelayedMarketData,
 } from './TradeseaAccountPolicy.js'
 import { normalizeTradeseaTradeInstrument } from '../../utils/tradeseaInstrument.js'
 
@@ -503,7 +504,10 @@ class TradeseaIdentityService {
       throw new Error('Account not found or not supported')
     }
 
-    const instrument = normalizeTradeseaTradeInstrument(String(query.instrument || '').trim())
+    let instrument = normalizeTradeseaTradeInstrument(String(query.instrument || '').trim())
+    if (!usesDelayedMarketData(account)) {
+      instrument = instrument.replace(/^([A-Za-z]+)-Delayed:/i, '$1:')
+    }
     if (!instrument) {
       throw new Error('instrument is required')
     }
@@ -539,7 +543,7 @@ class TradeseaIdentityService {
   }
 
   async postTradeWriteForm(tokens, accountId, path, formEntries, options = {}) {
-    const account = await this.findAccountById(tokens, accountId)
+    const account = options.account ?? (await this.findAccountById(tokens, accountId))
     if (!account) {
       throw new Error('Account not found or not supported')
     }
@@ -563,16 +567,31 @@ class TradeseaIdentityService {
     }
 
     const cookie = buildAuthCookieHeader(tokens)
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        cookie,
-        origin: TRADESEA_APP_ORIGIN,
-        referer: `${TRADESEA_APP_ORIGIN}/`,
-        accept: 'application/json, text/plain, */*',
-      },
-      body: form,
-    })
+    let res
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          cookie,
+          origin: TRADESEA_APP_ORIGIN,
+          referer: `${TRADESEA_APP_ORIGIN}/`,
+          accept: 'application/json, text/plain, */*',
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+        },
+        body: form,
+      })
+    } catch (err) {
+      console.warn('[Tradesea] trade write request failed:', err?.message || err, {
+        origin: tradesWriteOrigin,
+        path: suffix,
+      })
+      return {
+        statusCode: 502,
+        body: { s: 'error', errmsg: err?.message || 'Could not reach Tradesea trade API' },
+        requestId: options.requestId || null,
+      }
+    }
 
     const raw = await res.text()
     let body = {}
@@ -590,7 +609,13 @@ class TradeseaIdentityService {
   }
 
   async placeOrder(tokens, accountId, order) {
-    const instrument = normalizeTradeseaTradeInstrument(String(order?.instrument || '').trim())
+    const account = await this.findAccountById(tokens, accountId)
+    if (!account) throw new Error('Account not found or not supported')
+
+    let instrument = normalizeTradeseaTradeInstrument(String(order?.instrument || '').trim())
+    if (!usesDelayedMarketData(account)) {
+      instrument = instrument.replace(/^([A-Za-z]+)-Delayed:/i, '$1:')
+    }
     const qty = Number(order?.qty)
     const side = String(order?.side || '').trim().toLowerCase()
     const type = String(order?.type || 'market').trim().toLowerCase()
@@ -629,10 +654,10 @@ class TradeseaIdentityService {
 
     const proxied = await this.postTradeWriteForm(
       tokens,
-      accountId,
-      `/accounts/${encodeURIComponent(accountId)}/orders`,
+      account.id,
+      `/accounts/${account.id}/orders`,
       fields,
-      { locale: order?.locale, requestId }
+      { locale: order?.locale, requestId, account }
     )
 
     return proxied

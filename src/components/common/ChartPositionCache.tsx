@@ -97,7 +97,7 @@ class ChartPositionCache {
         const price = bar?.close ?? position.entry
         const exitTime = bar?.time ?? Date.now()
         const qty = Math.abs(Number(position.contracts))
-        this.tradeCache.onClosePosition(this.symbol, qty, price, exitTime)
+        this.tradeCache.onClosePosition(this.symbol, qty, price, exitTime, 'onCancel')
       }
     }
     let line = new ChartPositionLine(props)

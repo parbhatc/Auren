@@ -7,6 +7,8 @@ export interface TradingProps {
   selectedAccount?: string
   /** Practice route: single account from settings, market data only */
   practiceMode?: boolean
+  /** Live `/trade` — same terminal shell as practice, real prop-firm execution */
+  liveMode?: boolean
   practiceAccountId?: string
   practiceAccountStatus?: 'blown' | 'passed'
   onRefreshPracticeAccount?: () => void

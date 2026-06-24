@@ -4,6 +4,7 @@
  */
 import { getAuthToken, getWebSocketUrl } from '../../api/api'
 import {
+  encodeTradesPing,
   isTradesPing,
   isTradesPong,
   isUnifiedSnapshotMessage,
@@ -187,7 +188,7 @@ export class TradeseaTradesClient {
           generation === this.connectGeneration &&
           ws.readyState === WebSocket.OPEN
         ) {
-          ws.send('ping')
+          ws.send(encodeTradesPing())
           const gotPong = await this.waitForPong(ac.signal)
           if (!gotPong || ac.signal.aborted) {
             break

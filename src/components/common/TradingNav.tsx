@@ -34,6 +34,7 @@ class TradingNav extends Component<TradingNavProps> {
     const practiceTradeMatch = currentPath.match(/^\/practice\/trade\/([^/]+)/)
     const practiceAccountId = practiceTradeMatch?.[1]
     const isPracticeTrade = Boolean(practiceAccountId)
+    const isLiveTrade = currentPath === ROUTES.TRADE
     const isPracticeHub = currentPath === ROUTES.HOME
     const practiceAccount = practiceAccountId ? getPracticeAccountById(practiceAccountId) : null
     const isTerminalPracticeAccount =
@@ -52,9 +53,14 @@ class TradingNav extends Component<TradingNavProps> {
       ? isTerminalPracticeAccount
         ? practiceNavItems.filter((item) => item.label !== 'Chart')
         : practiceNavItems
-      : [{ path: ROUTES.HOME, label: 'Hub', icon: BarChart3 }]
+      : isLiveTrade
+        ? [{ path: ROUTES.TRADE, label: 'Chart', icon: BarChart3 }]
+        : [{ path: ROUTES.HOME, label: 'Hub', icon: BarChart3 }]
 
     const isActive = (path: string) => {
+      if (isLiveTrade && path === ROUTES.TRADE) {
+        return currentPath === ROUTES.TRADE
+      }
       if (isPracticeTrade && practiceAccountId) {
         if (path === practiceTradeStatsPath(practiceAccountId)) {
           return currentPath.endsWith('/stats')
@@ -196,7 +202,7 @@ class TradingNav extends Component<TradingNavProps> {
               </button>
             )
           })}
-          {isPracticeTrade && onPracticeOrder && !isTerminalPracticeAccount && (
+          {(isPracticeTrade || isLiveTrade) && onPracticeOrder && !isTerminalPracticeAccount && (
             <button
               type="button"
               onClick={onPracticeOrder}

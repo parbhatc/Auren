@@ -3,6 +3,7 @@ import { LogOut, Menu } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import Logo from '../../common/Logo'
 import { AccountSelector } from './AccountSelector'
+import { LiveAccountSelector } from './LiveAccountSelector'
 import { AccountStatsBar } from '../shared/account/AccountStatsBar'
 import { MdsNetworkStatusButton } from '../MdsNetworkStatusButton'
 import { HeaderThemeButton } from '../shared/header/HeaderThemeButton'
@@ -11,6 +12,7 @@ import LockoutCard from '../shared/header/LockoutCard'
 import HeaderTradingSettings from '../shared/header/HeaderTradingSettings'
 import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
 import { MdsConnectionLimitModal } from '../MdsConnectionLimitModal'
+import type { FormattedAccount } from '../../../utils/marketAccountDisplay'
 
 export function TradeHeader({
   isDark,
@@ -31,6 +33,13 @@ export function TradeHeader({
   showStatsBar = true,
   showAccountSelector = true,
   practiceAccountStatus,
+  liveMode = false,
+  liveAccounts = [],
+  selectedLiveAccountLabel = '',
+  onSelectLiveAccount,
+  onRefreshLiveAccounts,
+  liveRefreshing,
+  hubPath = ROUTES.PRACTICE,
 }: {
   isDark: boolean
   navigate: (path: string) => void
@@ -53,6 +62,14 @@ export function TradeHeader({
   /** Account dropdown in header row */
   showAccountSelector?: boolean
   practiceAccountStatus?: 'blown' | 'passed'
+  liveMode?: boolean
+  liveAccounts?: FormattedAccount[]
+  selectedLiveAccountLabel?: string
+  onSelectLiveAccount?: (accountId: number, displayName: string) => void
+  onRefreshLiveAccounts?: () => void
+  liveRefreshing?: boolean
+  /** Logo click destination — live hub uses `/?mode=live` */
+  hubPath?: string
 }) {
   const accountId = accountIdProp ?? practiceAccountId
   const [connectionLimitOpen, setConnectionLimitOpen] = useState(false)
@@ -88,7 +105,7 @@ export function TradeHeader({
     : 'border-slate-200 bg-white/95 text-slate-800'
 
   return (
-    <div className={`shrink-0 z-50 ${shell}`}>
+    <div className={`relative shrink-0 z-[110] ${shell}`}>
       <header className="h-10 border-b border-inherit flex items-center gap-2 px-2">
         {!showNav && (
           <button
@@ -109,11 +126,11 @@ export function TradeHeader({
             isDark={isDark}
             compact
             size="sm"
-            onClick={() => navigate(ROUTES.PRACTICE)}
+            onClick={() => navigate(hubPath)}
           />
         </div>
 
-        {showAccountSelector && (
+        {showAccountSelector && !liveMode && (
           <AccountSelector
             compact
             isDark={isDark}
@@ -121,6 +138,19 @@ export function TradeHeader({
             navigate={navigate}
             onRefresh={onRefreshPracticeAccount}
             refreshing={practiceRefreshing}
+          />
+        )}
+
+        {showAccountSelector && liveMode && onSelectLiveAccount && (
+          <LiveAccountSelector
+            compact
+            isDark={isDark}
+            navigate={navigate}
+            accounts={liveAccounts}
+            selectedLabel={selectedLiveAccountLabel}
+            onSelect={onSelectLiveAccount}
+            onRefresh={onRefreshLiveAccounts}
+            refreshing={liveRefreshing}
           />
         )}
 

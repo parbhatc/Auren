@@ -150,7 +150,7 @@ export function AccountSelector({
       {open && (
         <div
           role="listbox"
-          className={`absolute top-full left-0 mt-1 z-[60] rounded-lg border shadow-xl overflow-hidden ${
+          className={`absolute top-full left-0 mt-1 z-[200] rounded-lg border shadow-xl overflow-hidden ${
             compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'right-0 sm:left-0 sm:right-auto sm:min-w-[320px]'
           } ${
             isDark ? 'bg-[#0f172a] border-[#475569]' : 'bg-white border-slate-200'

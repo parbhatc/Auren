@@ -55,13 +55,17 @@ export interface TradeseaTradesWsMessage {
   }
 }
 
+export function encodeTradesPing(): string {
+  return JSON.stringify({ action: 'ping' })
+}
+
 export function isTradesPong(raw: string): boolean {
   const text = raw.trim()
   if (text === 'pong') return true
   if (!text.startsWith('{')) return false
   try {
-    const json = JSON.parse(text) as { type?: string; event?: string }
-    const type = String(json.type || json.event || '').toLowerCase()
+    const json = JSON.parse(text) as { action?: string; type?: string; event?: string }
+    const type = String(json.action || json.type || json.event || '').toLowerCase()
     return type === 'pong'
   } catch {
     return false
@@ -77,8 +81,8 @@ export function isTradesPing(raw: string): boolean {
   if (text === 'ping') return true
   if (!text.startsWith('{')) return false
   try {
-    const json = JSON.parse(text) as { type?: string; event?: string }
-    const type = String(json.type || json.event || '').toLowerCase()
+    const json = JSON.parse(text) as { action?: string; type?: string; event?: string }
+    const type = String(json.action || json.type || json.event || '').toLowerCase()
     return type === 'ping'
   } catch {
     return false

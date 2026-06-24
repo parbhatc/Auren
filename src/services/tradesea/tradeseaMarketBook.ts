@@ -1,5 +1,7 @@
 /** MDS order book snapshot (f:1 / f:4 / f:6 / f:2 / f:7). */
 
+export type MarketBookUpdateKind = 'ltp' | 'bbo' | 'depth' | 'vol'
+
 export type BookLevel = { price: number; size: number }
 
 export type TradeseaMarketBook = {
@@ -72,7 +74,9 @@ function syncBestFromLevels(book: TradeseaMarketBook): void {
 
 export class TradeseaMarketBookStore {
   private books = new Map<string, TradeseaMarketBook>()
-  private listeners = new Set<(streamId: string) => void>()
+  private listeners = new Set<(streamId: string, kind: MarketBookUpdateKind) => void>()
+  /** f:1 bidAskDef is authoritative for BBO — f:6 quotes only seed until first f:1. */
+  private bboFromPanel = new Set<string>()
 
   get(streamId: string): TradeseaMarketBook | null {
     const id = String(streamId || '').trim()
@@ -80,15 +84,15 @@ export class TradeseaMarketBookStore {
     return this.books.get(id) ?? null
   }
 
-  subscribe(listener: (streamId: string) => void): () => void {
+  subscribe(listener: (streamId: string, kind: MarketBookUpdateKind) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
 
-  private notify(streamId: string): void {
+  private notify(streamId: string, kind: MarketBookUpdateKind): void {
     for (const fn of this.listeners) {
       try {
-        fn(streamId)
+        fn(streamId, kind)
       } catch {
         /* ignore */
       }
@@ -108,9 +112,10 @@ export class TradeseaMarketBookStore {
   applyLtp(streamId: string, price: number): void {
     if (!Number.isFinite(price)) return
     const book = this.touch(streamId)
+    if (book.last === price) return
     book.last = price
     book.updatedAt = Date.now()
-    this.notify(streamId)
+    this.notify(streamId, 'ltp')
   }
 
   /** f:1 — best bid/ask panel update */
@@ -119,6 +124,11 @@ export class TradeseaMarketBookStore {
     fields: { bp?: number; ap?: number; bs?: number; as?: number }
   ): void {
     const book = this.touch(streamId)
+    const prevBid = book.bestBid
+    const prevAsk = book.bestAsk
+    const prevBidSize = book.bestBidSize
+    const prevAskSize = book.bestAskSize
+
     if (fields.bp != null && Number.isFinite(Number(fields.bp))) {
       book.bestBid = Number(fields.bp)
     }
@@ -131,29 +141,50 @@ export class TradeseaMarketBookStore {
     if (fields.as != null && Number.isFinite(Number(fields.as))) {
       book.bestAskSize = Number(fields.as)
     }
+    if (
+      book.bestBid === prevBid &&
+      book.bestAsk === prevAsk &&
+      book.bestBidSize === prevBidSize &&
+      book.bestAskSize === prevAskSize
+    ) {
+      return
+    }
+
     if (book.bestBid != null && book.bestBidSize != null && book.bestBidSize > 0) {
       book.bids = mergeBookSide(book.bids, [{ price: book.bestBid, size: book.bestBidSize }], 'bid')
     }
     if (book.bestAsk != null && book.bestAskSize != null && book.bestAskSize > 0) {
       book.asks = mergeBookSide(book.asks, [{ price: book.bestAsk, size: book.bestAskSize }], 'ask')
     }
+    this.bboFromPanel.add(streamId)
     book.updatedAt = Date.now()
-    this.notify(streamId)
+    this.notify(streamId, 'bbo')
   }
 
-  /** f:6 — quote snapshot (ap/bp/as/bs + last `p`) */
+  /** f:6 — quote snapshot: last `p` only once f:1 owns BBO (matches Tradesea DOM). */
   applyQuotes(
     streamId: string,
     fields: { p?: number; ap?: number; bp?: number; as?: number; bs?: number }
   ): void {
     const book = this.touch(streamId)
-    if (fields.p != null && Number.isFinite(Number(fields.p))) {
+    const panelOwnsBbo = this.bboFromPanel.has(streamId)
+
+    if (fields.p != null && Number.isFinite(Number(fields.p)) && book.last !== Number(fields.p)) {
       book.last = Number(fields.p)
+      book.updatedAt = Date.now()
+      this.notify(streamId, 'ltp')
     }
+
+    if (panelOwnsBbo) return
+
+    const prevBid = book.bestBid
+    const prevAsk = book.bestAsk
     if (fields.bp != null && Number.isFinite(Number(fields.bp))) book.bestBid = Number(fields.bp)
     if (fields.ap != null && Number.isFinite(Number(fields.ap))) book.bestAsk = Number(fields.ap)
     if (fields.bs != null && Number.isFinite(Number(fields.bs))) book.bestBidSize = Number(fields.bs)
     if (fields.as != null && Number.isFinite(Number(fields.as))) book.bestAskSize = Number(fields.as)
+    if (book.bestBid === prevBid && book.bestAsk === prevAsk) return
+
     if (book.bestBid != null && book.bestBidSize != null && book.bestBidSize > 0) {
       book.bids = mergeBookSide(book.bids, [{ price: book.bestBid, size: book.bestBidSize }], 'bid')
     }
@@ -161,7 +192,7 @@ export class TradeseaMarketBookStore {
       book.asks = mergeBookSide(book.asks, [{ price: book.bestAsk, size: book.bestAskSize }], 'ask')
     }
     book.updatedAt = Date.now()
-    this.notify(streamId)
+    this.notify(streamId, 'bbo')
   }
 
   /**
@@ -193,9 +224,12 @@ export class TradeseaMarketBookStore {
       }
     }
 
+    const prevBid = book.bestBid
+    const prevAsk = book.bestAsk
     syncBestFromLevels(book)
+    if (book.bestBid === prevBid && book.bestAsk === prevAsk) return
     book.updatedAt = Date.now()
-    this.notify(streamId)
+    this.notify(streamId, 'depth')
   }
 
   /** f:7 — traded volume at price (`v`: [[price, volume], …]). */
@@ -217,11 +251,11 @@ export class TradeseaMarketBookStore {
     }
 
     book.updatedAt = Date.now()
-    this.notify(streamId)
+    this.notify(streamId, 'vol')
   }
 }
 
-/** Trade panel BBO; uses last trade when f:1/f:6 have not arrived yet (chart may only stream f:5). */
+/** Trade panel BBO; falls back to last only for order routing before f:1/f:6 arrive. */
 export function resolveTradePanelBidAsk(book: TradeseaMarketBook | null): {
   bid: number | null
   ask: number | null
@@ -231,5 +265,17 @@ export function resolveTradePanelBidAsk(book: TradeseaMarketBook | null): {
   return {
     bid: book.bestBid ?? last ?? null,
     ask: book.bestAsk ?? last ?? null,
+  }
+}
+
+/** DOM header bid/ask — top-of-book only (no LTP fallback; matches Tradesea panel). */
+export function resolveDomBidAsk(book: TradeseaMarketBook | null): {
+  bid: number | null
+  ask: number | null
+} {
+  if (!book) return { bid: null, ask: null }
+  return {
+    bid: book.bestBid,
+    ask: book.bestAsk,
   }
 }

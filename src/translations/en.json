@@ -622,6 +622,33 @@
       "paperTrade": "Paper trade (simulated)"
     }
   },
+  "live": {
+    "hub": {
+      "modePractice": "Practice",
+      "modeLive": "Live trading",
+      "badge": "Real prop firm trading",
+      "headline": "Trade your live account",
+      "subtitle": "Choose your prop firm here, then open the trade terminal. Switch live accounts from the header dropdown on the trade page.",
+      "connectHint": "Connect your prop firm in Market Data to load live accounts.",
+      "connectCta": "Connect market data",
+      "propFirmTitle": "Live prop firm",
+      "propFirmHint": "This firm is used when you open the live trade terminal at /trade.",
+      "loadingAccounts": "Loading live accounts…",
+      "accountsReady": "{count} live account(s) ready",
+      "openTerminal": "Open trade terminal",
+      "accountsTitle": "Your live accounts",
+      "accountMeta": "Tradesea · live orders",
+      "trade": "Trade live",
+      "empty": "No live accounts found.",
+      "emptyHint": "Connect your prop firm in Market Data and make sure your account is linked.",
+      "riskHint": "Live trading sends real orders. Manage connection in"
+    },
+    "trade": {
+      "backToHub": "Back to hub",
+      "accountNotFound": "Live account not found or not available.",
+      "firmNotSupported": "This prop firm is not available for live trading yet."
+    }
+  },
   "props": {
     "title": "Prop Firm Settings",
     "description": "Manage your prop firm account credentials. Your credentials are encrypted and stored securely.",

@@ -42,7 +42,11 @@ import MarketDataSection from './hub/MarketDataSection'
 import NewAccountSection from './hub/NewAccountSection'
 import AccountsList from './hub/AccountsList'
 import HubConfirmDialogs from './hub/HubConfirmDialogs'
+import HubModeSwitch from './hub/HubModeSwitch'
+import LiveTradingSection from '../Live/hub/LiveTradingSection'
+import { getLiveTradePropFirmId, saveLiveTradePropFirmId } from '../../../utils/liveTrade'
 import AccountDetailModal from './hub/AccountDetailModal'
+import type { HubHomeMode } from '../../../types/practiceHub'
 
 type HubConfirm = 'create' | 'reset' | 'delete' | 'resetAll' | null
 
@@ -51,14 +55,20 @@ function parseTab(value: string | null): HubTab {
   return 'accounts'
 }
 
+function parseHomeMode(value: string | null): HubHomeMode {
+  return value === 'live' ? 'live' : 'practice'
+}
+
 export default function Hub() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = parseTab(searchParams.get('tab'))
+  const homeMode = parseHomeMode(searchParams.get('mode'))
   const { isDark, toggleTheme } = useTheme()
 
   const [accounts, setAccounts] = useState<PracticeAccount[]>([])
   const [propFirmId, setPropFirmId] = useState(getDefaultPropFirmId())
+  const [livePropFirmId, setLivePropFirmId] = useState(() => getLiveTradePropFirmId())
   const [marketAccountId, setMarketAccountId] = useState('')
   const [brokerAccounts, setBrokerAccounts] = useState<BrokerAccountOption[]>([])
   const [brokerSessionExpired, setBrokerSessionExpired] = useState(false)
@@ -81,11 +91,20 @@ export default function Hub() {
 
   const setActiveTab = (tab: HubTab) => {
     if (tab === 'accounts') {
-      setSearchParams({})
+      const mode = searchParams.get('mode')
+      setSearchParams(mode === 'live' ? { mode: 'live' } : {})
     } else if (tab === 'settings') {
       setSearchParams({ tab: 'settings' })
     } else {
       setSearchParams({ tab })
+    }
+  }
+
+  const setHomeMode = (mode: HubHomeMode) => {
+    if (mode === 'live') {
+      setSearchParams({ mode: 'live' })
+    } else {
+      setSearchParams({})
     }
   }
 
@@ -104,6 +123,7 @@ export default function Hub() {
     const firmId = md.propFirmId || getDefaultPropFirmId()
     setAccounts(getPracticeAccounts())
     setPropFirmId(firmId)
+    setLivePropFirmId(getLiveTradePropFirmId())
     setMarketAccountId(firmPersistsMarketAccountId(firmId) ? md.accountId : '')
   }, [])
 
@@ -151,8 +171,9 @@ export default function Hub() {
     }
   }, [propFirmId, loadFirmCredentials])
 
-  const refreshBrokerSession = useCallback(async () => {
-    if (propFirmId === 'tradesea') {
+  const refreshBrokerSession = useCallback(async (firmId?: string) => {
+    const firm = firmId ?? propFirmId
+    if (firm === 'tradesea') {
       setLoadingMd(true)
       setError('')
       try {
@@ -172,7 +193,7 @@ export default function Hub() {
       }
       return
     }
-    await loadBrokerAccounts(propFirmId)
+    await loadBrokerAccounts(firm)
   }, [propFirmId, loadBrokerAccounts])
 
   useEffect(() => {
@@ -203,6 +224,17 @@ export default function Hub() {
   }, [activeTab, propFirmId, loadBrokerAccounts])
 
   useEffect(() => {
+    if (homeMode !== 'live' || activeTab !== 'accounts') return
+    void loadBrokerAccounts(livePropFirmId)
+  }, [homeMode, activeTab, livePropFirmId, loadBrokerAccounts])
+
+  const handleLivePropFirmChange = (firmId: string) => {
+    saveLiveTradePropFirmId(firmId)
+    setLivePropFirmId(firmId)
+    void loadBrokerAccounts(firmId)
+  }
+
+  useEffect(() => {
     setCustomRules(getDefaultPracticeRules(newSize, newMode))
   }, [newSize, newMode])
 
@@ -216,6 +248,18 @@ export default function Hub() {
         firmCredentials: getCredentialsForFirm(propFirmId, credentialsByFirm),
       }),
     [propFirmId, marketAccountId, brokerAccounts, brokerSessionExpired, credentialsByFirm]
+  )
+
+  const liveMarketConnection = useMemo(
+    () =>
+      resolveMarketDataConnection({
+        firmId: livePropFirmId,
+        marketAccountId: firmPersistsMarketAccountId(livePropFirmId) ? marketAccountId : '',
+        brokerAccounts,
+        brokerSessionExpired,
+        firmCredentials: getCredentialsForFirm(livePropFirmId, credentialsByFirm),
+      }),
+    [livePropFirmId, marketAccountId, brokerAccounts, brokerSessionExpired, credentialsByFirm]
   )
 
   const marketConnected = marketConnection.connected
@@ -320,7 +364,7 @@ export default function Hub() {
       />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {activeTab === 'accounts' && (
+        {activeTab === 'accounts' && homeMode === 'practice' && (
           <section className="mb-8">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
@@ -363,6 +407,12 @@ export default function Hub() {
         ) : (
           <>
             {activeTab === 'accounts' && (
+              <div className="mb-6">
+                <HubModeSwitch mode={homeMode} onModeChange={setHomeMode} isDark={isDark} />
+              </div>
+            )}
+
+            {activeTab === 'accounts' && homeMode === 'practice' && (
               <div className="space-y-6">
                 <HubStatsBar
                   accounts={accounts}
@@ -414,6 +464,21 @@ export default function Hub() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'accounts' && homeMode === 'live' && (
+              <LiveTradingSection
+                propFirmId={livePropFirmId}
+                accounts={brokerAccounts}
+                isDark={isDark}
+                marketConnected={liveMarketConnection.connected}
+                brokerSessionExpired={brokerSessionExpired}
+                loadingMd={loadingMd}
+                onPropFirmChange={handleLivePropFirmChange}
+                onRefreshAccounts={() => void loadBrokerAccounts(livePropFirmId)}
+                onRefreshSession={() => void refreshBrokerSession(livePropFirmId)}
+                onConnectMarket={() => setActiveTab('market')}
+              />
             )}
 
             {activeTab === 'market' && (

@@ -15,7 +15,7 @@ import {
   formatDomRowPnl,
   resolveDomLtpPrice,
 } from '../../dom/LadderData'
-import { resolveTradePanelBidAsk } from '../../../../../services/tradesea/tradeseaMarketBook'
+import { resolveDomBidAsk } from '../../../../../services/tradesea/tradeseaMarketBook'
 import LadderRow from '../../dom/LadderRow'
 import { DomLtpLockButton } from '../../dom/DomLtpLockButton'
 import { formatStatMoney } from '../../account/AccountStatsBar'
@@ -30,6 +30,7 @@ const DOM_ROW_HEIGHT_PX = 23
 export function DomTab({
   props,
   book,
+  ltpTick,
   bookTick,
   tickSize,
   maxQty,
@@ -39,6 +40,7 @@ export function DomTab({
 }: {
   props: TradePanelProps
   book: TradeseaMarketBook | null
+  ltpTick: number
   bookTick: number
   tickSize: number
   maxQty: number
@@ -69,7 +71,12 @@ export function DomTab({
       lastResolvedLtpRef.current = resolved
     }
     return resolved ?? lastResolvedLtpRef.current
-  }, [book, tickSize, effectiveFallbackLast, bookTick])
+  }, [book, tickSize, effectiveFallbackLast, ltpTick])
+
+  const { bid, ask } = useMemo(() => {
+    void bookTick
+    return resolveDomBidAsk(book)
+  }, [book, bookTick])
 
   const rows = useMemo(() => {
     const built = buildDomLadder(book, tickSize, DOM_LADDER_LEVELS, effectiveFallbackLast)
@@ -143,7 +150,7 @@ export function DomTab({
     if (mustCenter) pendingCenterRef.current = false
     if (ltp != null) lastFollowedLtpRef.current = ltp
     centerLtpInView()
-  }, [ltpCenterLocked, rows, bookTick, centerLtpInView, ltpPrice, book, tickSize, effectiveFallbackLast, chartSymbol])
+  }, [ltpCenterLocked, rows, ltpTick, centerLtpInView, ltpPrice, book, tickSize, effectiveFallbackLast, chartSymbol])
 
   useEffect(() => {
     const el = ladderRef.current
@@ -190,7 +197,6 @@ export function DomTab({
     )
   }
 
-  const { bid, ask } = resolveTradePanelBidAsk(book)
   const fmt = (p: number) => formatDomPrice(p, tickSize)
   const eps = tickSize / 1000
   const ltpLabel = ltpPrice != null ? formatDomPrice(ltpPrice, tickSize) : '—'

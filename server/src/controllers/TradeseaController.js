@@ -19,6 +19,17 @@ function respondTradeWrite(res, proxied, fallbackError = 'Request failed') {
   })
 }
 
+function respondTradeException(res, error) {
+  if (error instanceof Error) {
+    const msg = error.message || 'Request failed'
+    return res.status(HTTP_STATUS.BAD_REQUEST).json({
+      success: false,
+      error: msg,
+    })
+  }
+  return ErrorHandler.handleServerError(res, error)
+}
+
 const MARKET_DATA_NOT_CONNECTED = 'Market data is not connected.'
 const MARKET_DATA_NOT_CONNECTED_HINT =
   'Market data is not connected. Connect in Settings → Market data.'
@@ -326,7 +337,7 @@ class TradeseaController {
       if (!account) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
           success: false,
-          error: 'Account not found or not supported (sandbox-2 and Lucid only).',
+          error: 'Account not found or not supported (sandbox and Lucid only).',
         })
       }
 
@@ -398,7 +409,6 @@ class TradeseaController {
   async placeOrder(req, res) {
     try {
       await PropsController.initializeTable()
-      const userId = req.user.id
       const accountId = String(req.body?.accountId || '').trim()
 
       if (!accountId) {
@@ -408,27 +418,18 @@ class TradeseaController {
         })
       }
 
-      const firm = await Database.get(
-        'SELECT token, session_id FROM prop_firms WHERE user_id = ? AND type = ?',
-        [userId, 'tradesea']
-      )
-
-      if (!firm?.token) {
-        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+      const auth = await this.getTradeseaTokensForUser(req.user.id)
+      if (auth.error) {
+        return res.status(auth.status).json({
           success: false,
-          error: MARKET_DATA_NOT_CONNECTED,
+          error: auth.error,
         })
       }
 
-      const tokens = {
-        accessToken: firm.token,
-        refreshToken: firm.session_id || '',
-      }
-
-      const proxied = await TradeseaIdentityService.placeOrder(tokens, accountId, req.body)
+      const proxied = await TradeseaIdentityService.placeOrder(auth.tokens, accountId, req.body)
       return respondTradeWrite(res, proxied, 'Order failed')
     } catch (error) {
-      return ErrorHandler.handleServerError(res, error)
+      return respondTradeException(res, error)
     }
   }
 

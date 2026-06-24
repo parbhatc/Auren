@@ -287,9 +287,17 @@ class ChartTradeCache {
     return data
   }
 
-  onClosePosition(symbol: string, contracts: number, price: number | null = null, exitTime: number | null = null) {
+  onClosePosition(
+    symbol: string,
+    contracts: number,
+    price: number | null = null,
+    exitTime: number | null = null,
+    context?: string
+  ) {
     console.log('[Chart Trade Cache] Closing position: ', symbol, contracts)
-    let position = this.cache.get(symbol)
+    const resolved = this.getPositionForActiveChart(symbol)
+    const cacheKey = resolved?.key ?? symbol
+    let position = resolved?.position ?? this.cache.get(symbol)
     let update = true
 
     if(position){
@@ -345,7 +353,7 @@ class ChartTradeCache {
           return;
         }
         position.contracts = originalContracts;
-        this.handleClosePosition(position, price, exitTime)
+        this.handleClosePosition(position, price, exitTime, context)
         // Set to 0 after handleClosePosition is called
         position.contracts = 0;
       }
@@ -446,6 +454,8 @@ class ChartTradeCache {
   }
 
   getPosition(symbol: string) {
+    const resolved = this.getPositionForActiveChart(symbol)
+    if (resolved?.position) return resolved.position
     return this.cache.get(symbol)
   }
 

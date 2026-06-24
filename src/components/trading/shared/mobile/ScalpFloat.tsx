@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import {
-  resolveTradePanelBidAsk,
-  type TradeseaMarketBook,
-} from '../../../../services/tradesea/tradeseaMarketBook'
+import { resolveDomBidAsk, type TradeseaMarketBook } from '../../../../services/tradesea/tradeseaMarketBook'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { getTradePanelSettings } from '../../../../constants/tradePanelSettings'
@@ -42,13 +39,16 @@ export function ScalpFloat({
 
   useEffect(() => {
     if (!props.subscribeMarketBook) return
-    return props.subscribeMarketBook(() => setBookTick((n) => n + 1))
+    return props.subscribeMarketBook((_streamId, kind) => {
+      if (kind === 'ltp') return
+      setBookTick((n) => n + 1)
+    })
   }, [props.subscribeMarketBook])
   const book = useMemo(() => {
     void bookTick
     return props.getMarketBook?.() ?? null
   }, [props.getMarketBook, bookTick])
-  const { bid, ask } = resolveTradePanelBidAsk(book)
+  const { bid, ask } = useMemo(() => resolveDomBidAsk(book), [book, bookTick])
 
   return (
     <div

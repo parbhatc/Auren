@@ -9,6 +9,7 @@ import {
   buildTradesUnifiedWsUrl,
   isSupportedTradeseaAccount,
 } from '../services/tradesea/TradeseaAccountPolicy.js'
+import { buildWsPongReply, isWsPing, isWsPong } from './mds/MdsProtocol.js'
 
 const TRADESEA_ORIGIN = 'https://app.tradesea.ai'
 
@@ -17,19 +18,6 @@ function buildAuthCookieHeader(tokens) {
   if (tokens?.accessToken) parts.push(`access_token=${tokens.accessToken}`)
   if (tokens?.refreshToken) parts.push(`refresh_token=${tokens.refreshToken}`)
   return parts.join('; ')
-}
-
-function isTextPing(raw) {
-  const text = raw.toString('utf8').trim()
-  if (text === 'ping') return true
-  if (!text.startsWith('{')) return false
-  try {
-    const json = JSON.parse(text)
-    const type = String(json.type || json.event || '').toLowerCase()
-    return type === 'ping'
-  } catch {
-    return false
-  }
 }
 
 function safeSend(ws, payload) {
@@ -132,15 +120,15 @@ class TradeseaTradesWebSocket extends WebSocketBase {
     })
 
     upstream.on('message', (raw, isBinary) => {
-      if (isTextPing(raw)) {
-        safeSend(upstream, 'pong')
+      if (isWsPing(raw)) {
+        safeSend(upstream, buildWsPongReply(raw))
         return
       }
 
       const text = isBinary ? '' : raw.toString('utf8').trim()
-      if (text === 'pong') {
+      if (isWsPong(text)) {
         if (clientWs.readyState === WebSocket.OPEN) {
-          safeSend(clientWs, 'pong')
+          safeSend(clientWs, buildWsPongReply(raw))
         }
         return
       }
@@ -180,7 +168,8 @@ class TradeseaTradesWebSocket extends WebSocketBase {
     })
 
     clientWs.on('message', (raw, isBinary) => {
-      if (isTextPing(raw)) {
+      if (isWsPing(raw)) {
+        safeSend(clientWs, buildWsPongReply(raw))
         if (upstream.readyState === WebSocket.OPEN) {
           try {
             upstream.send(raw, { binary: isBinary })

@@ -100,6 +100,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private refetchInFlight: Promise<void> | null = null
   private quoteSubs = new Map<string, QuoteSubscription>()
   private quoteBookListenerInstalled = false
+  private lastDispatchedQuote = new Map<string, { bid: number; ask: number }>()
 
   constructor(options: {
     mds: TradeseaMdsClient
@@ -191,8 +192,10 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     if (this.quoteBookListenerInstalled) return
     this.quoteBookListenerInstalled = true
     this.offMarketBook.push(
-      this.marketBook.subscribe((streamId) => {
-        this.dispatchQuotesForStream(streamId)
+      this.marketBook.subscribe((streamId, kind) => {
+        if (kind === 'bbo' || kind === 'ltp') {
+          this.dispatchQuotesForStream(streamId)
+        }
       })
     )
   }
@@ -222,6 +225,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       if (sub.streamId !== streamId) continue
       const quote = this.buildTvQuote(streamId, sub.symbolKey)
       if (!quote) continue
+      const prev = this.lastDispatchedQuote.get(streamId)
+      if (prev && prev.bid === quote.v.bid && prev.ask === quote.v.ask) continue
+      this.lastDispatchedQuote.set(streamId, { bid: quote.v.bid, ask: quote.v.ask })
       try {
         sub.callback([quote])
       } catch {
@@ -295,7 +301,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.quoteSubs.delete(listenerGuid)
   }
 
-  subscribeMarketBook(listener: (streamId: string) => void): () => void {
+  subscribeMarketBook(
+    listener: (streamId: string, kind: import('./tradeseaMarketBook').MarketBookUpdateKind) => void
+  ): () => void {
     return this.marketBook.subscribe(listener)
   }
 

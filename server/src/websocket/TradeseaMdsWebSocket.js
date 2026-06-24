@@ -6,21 +6,15 @@ import Database from '../config/Database.js'
 import PropsController from '../controllers/PropsController.js'
 import TradeseaIdentityService from '../services/tradesea/TradeseaIdentityService.js'
 import { getStreamEndpoints } from '../services/tradesea/TradeseaAccountPolicy.js'
+import {
+  translateClientToUpstream,
+  translateUpstreamToClient,
+  buildWsPongReply,
+  isWsPing,
+  isWsPong,
+} from './mds/MdsProtocol.js'
 
 const TRADESEA_ORIGIN = 'https://app.tradesea.ai'
-
-function isTextPing(raw) {
-  const text = raw.toString('utf8').trim()
-  if (text === 'ping') return true
-  if (!text.startsWith('{')) return false
-  try {
-    const json = JSON.parse(text)
-    const type = String(json.type || json.event || '').toLowerCase()
-    return type === 'ping'
-  } catch {
-    return false
-  }
-}
 
 function safeSend(ws, payload) {
   if (ws.readyState !== WebSocket.OPEN) return
@@ -40,8 +34,7 @@ function buildAuthCookieHeader(tokens) {
 
 /**
  * Proxies Tradesea market-data MDS WebSocket (sandbox delayed or prod).
- * Upstream: wss://api-mds-stream-delayed.tradesea.ai/v1/wss/{account.userId}/{fingerprint}
- * (Not the same id as trades unified WS — that uses account.id.)
+ * Client speaks the MDS protocol; backend translates to/from Tradesea f:1..7 frames.
  *
  * Client: ws://host/tradesea-mds-ws?accountId=&token=&connectionGroupId=
  */
@@ -133,22 +126,23 @@ class TradeseaMdsWebSocket extends WebSocketBase {
 
     upstream.on('message', (raw, isBinary) => {
       if (clientClosed) return
-      if (isTextPing(raw)) {
-        safeSend(upstream, 'pong')
+      if (isWsPing(raw)) {
+        safeSend(upstream, buildWsPongReply(raw))
         return
       }
 
       const text = isBinary ? '' : raw.toString('utf8').trim()
-      if (text === 'pong') {
+      if (isWsPong(text)) {
         if (clientWs.readyState === WebSocket.OPEN) {
-          safeSend(clientWs, 'pong')
+          safeSend(clientWs, buildWsPongReply(raw))
         }
         return
       }
 
       if (clientWs.readyState === WebSocket.OPEN) {
         try {
-          clientWs.send(raw, { binary: isBinary })
+          const out = translateUpstreamToClient(raw, isBinary)
+          if (out != null) clientWs.send(out, { binary: isBinary && typeof out !== 'string' })
         } catch {
           /* ignore */
         }
@@ -197,8 +191,8 @@ class TradeseaMdsWebSocket extends WebSocketBase {
 
     clientWs.on('message', (raw, isBinary) => {
       if (clientClosed) return
-      if (isTextPing(raw)) {
-        safeSend(clientWs, 'pong')
+      if (isWsPing(raw)) {
+        safeSend(clientWs, buildWsPongReply(raw))
         if (upstream.readyState === WebSocket.OPEN) {
           try {
             upstream.send(raw, { binary: isBinary })
@@ -213,12 +207,14 @@ class TradeseaMdsWebSocket extends WebSocketBase {
 
       if (upstream.readyState === WebSocket.OPEN) {
         try {
-          upstream.send(raw, { binary: isBinary })
+          const out = translateClientToUpstream(raw, isBinary)
+          if (out != null) upstream.send(out, { binary: isBinary && typeof out !== 'string' })
         } catch {
           /* ignore */
         }
       } else if (!isBinary) {
-        pending.push(raw)
+        const out = translateClientToUpstream(raw, isBinary)
+        if (out != null) pending.push(typeof out === 'string' ? out : out)
       }
     })
 

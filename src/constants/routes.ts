@@ -17,6 +17,10 @@ export const ROUTES = {
   PRACTICE: '/',
   /** Simulated accounts — `/practice/trade/:accountId` */
   PRACTICE_TRADE: '/practice/trade',
+  /** Live prop-firm trading terminal */
+  TRADE: '/trade',
+  /** @deprecated use ROUTES.TRADE */
+  LIVE_TRADE: '/live/trade',
 } as const
 
 export type Route = (typeof ROUTES)[keyof typeof ROUTES]
@@ -44,6 +48,11 @@ export const practiceTradeNewsPath = practiceSessionNewsPath
 
 export function practiceSessionPadPath(accountId: string): string {
   return `${ROUTES.PRACTICE_TRADE}/${accountId}/pad`
+}
+
+/** Live trade terminal — account is chosen in the header dropdown on `/trade`. */
+export function liveTradePath(_accountId?: string): string {
+  return ROUTES.TRADE
 }
 
 /** @deprecated use practiceSessionPadPath */

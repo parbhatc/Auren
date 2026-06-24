@@ -125,6 +125,7 @@ export default function TradePanel(props: TradePanelProps) {
   const mobileSheet = fullWidth && hideDetach
   const [tab, setTab] = useState<TradePanelTab>(() => readInitialTab(accountId, mobileSheet))
   const rootSymbol = chartSymbol.includes(':') ? chartSymbol.split(':')[1]! : chartSymbol
+  const [ltpTick, setLtpTick] = useState(0)
   const [bookTick, setBookTick] = useState(0)
   const [panelUi, setPanelUi] = useState(() => getTradePanelSettings())
   const [account, setAccount] = useState<PracticeAccount | undefined>(() =>
@@ -181,20 +182,34 @@ export default function TradePanel(props: TradePanelProps) {
   subscribeMarketBookRef.current = subscribeMarketBook
 
   const bookTickRafRef = useRef<number | null>(null)
+  const ltpTickRafRef = useRef<number | null>(null)
   useEffect(() => {
     const sub = subscribeMarketBookRef.current
     if (!sub) return
-    return sub(() => {
-      if (bookTickRafRef.current != null) return
-      bookTickRafRef.current = requestAnimationFrame(() => {
-        bookTickRafRef.current = null
-        setBookTick((n) => n + 1)
-      })
+    return sub((_streamId, kind) => {
+      const bump =
+        kind === 'ltp'
+          ? () => {
+              if (ltpTickRafRef.current != null) return
+              ltpTickRafRef.current = requestAnimationFrame(() => {
+                ltpTickRafRef.current = null
+                setLtpTick((n) => n + 1)
+              })
+            }
+          : () => {
+              if (bookTickRafRef.current != null) return
+              bookTickRafRef.current = requestAnimationFrame(() => {
+                bookTickRafRef.current = null
+                setBookTick((n) => n + 1)
+              })
+            }
+      bump()
     })
   }, [chartSymbol, accountId])
   useEffect(() => {
     return () => {
       if (bookTickRafRef.current != null) cancelAnimationFrame(bookTickRafRef.current)
+      if (ltpTickRafRef.current != null) cancelAnimationFrame(ltpTickRafRef.current)
     }
   }, [])
 
@@ -248,6 +263,7 @@ export default function TradePanel(props: TradePanelProps) {
           <DomTab
             props={props}
             book={book}
+            ltpTick={ltpTick}
             bookTick={bookTick}
             tickSize={tickSize}
             maxQty={maxQty}

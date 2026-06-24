@@ -1,5 +1,5 @@
 import type { OrderSide, OrderType } from './order'
-import type { TradeseaMarketBook } from '../services/tradesea/tradeseaMarketBook'
+import type { TradeseaMarketBook, MarketBookUpdateKind } from '../services/tradesea/tradeseaMarketBook'
 import type { DomPositionContext } from '../services/tradesea/tradeseaPnL'
 import type { TradeseaSearchSymbolResult } from '../services/tradesea/tradeseaSymbolInfo'
 import type { TradingMode } from './tradingMode'
@@ -67,7 +67,9 @@ export type TradePanelProps = {
   markPrice?: number | null
   tickSize?: number
   getMarketBook?: () => TradeseaMarketBook | null
-  subscribeMarketBook?: (onUpdate: () => void) => () => void
+  subscribeMarketBook?: (
+    onUpdate: (streamId: string, kind: MarketBookUpdateKind) => void
+  ) => () => void
   ensureMarketBook?: () => void
   getChartPositionUpl?: () => number | null
   getDomPositionContext?: () => DomPositionContext | null

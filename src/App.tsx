@@ -25,6 +25,7 @@ import PracticeTradePage from './pages/trading/practice/TradePage'
 import PracticeTradePadPage from './pages/trading/practice/PadPage'
 import PracticeStatsPage from './pages/trading/practice/StatsPage'
 import PracticeNewsPage from './pages/trading/practice/NewsPage'
+import LiveTradePage from './pages/trading/live/TradePage'
 import NotFound from './components/common/NotFound'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import GuestRoute from './components/common/GuestRoute'
@@ -34,6 +35,7 @@ import Loading from './components/common/Loading'
 import { authAPI } from './api/auth.api'
 import { t } from './utils/translator'
 import { ROUTES } from './constants/routes'
+import { getTradeTradeseaAccount, saveTradeTradeseaAccount } from './constants/trade'
 import { useTheme } from './hooks/useTheme'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -57,6 +59,17 @@ const LegacyTradeToPracticeRedirect = () => {
   const prefix = `/trade/${practiceAccountId ?? ''}`
   const tail = location.pathname.startsWith(prefix) ? location.pathname.slice(prefix.length) : ''
   return <Navigate to={`${ROUTES.PRACTICE_TRADE}/${practiceAccountId ?? ''}${tail}${location.search}`} replace />
+}
+
+/** /live/trade/:accountId → /trade (legacy live URLs) */
+const LegacyLiveTradeRedirect = () => {
+  const { accountId } = useParams<{ accountId: string }>()
+  const id = String(accountId || '').trim()
+  if (id) {
+    const existing = getTradeTradeseaAccount()
+    saveTradeTradeseaAccount(id, existing.accountLabel || id)
+  }
+  return <Navigate to={ROUTES.TRADE} replace />
 }
 
 function App() {
@@ -134,6 +147,14 @@ function App() {
         <Route path="/practice" element={<Navigate to={ROUTES.HOME} replace />} />
         <Route path="/trade/:firmId/:accountId/*" element={<LegacyRedirect />} />
         <Route path="/backtest/*" element={<LegacyRedirect />} />
+        <Route
+          path={ROUTES.TRADE}
+          element={
+            <ProtectedRoute>
+              <LiveTradePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/trade/:practiceAccountId/*" element={<LegacyTradeToPracticeRedirect />} />
         <Route
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId/stats`}
@@ -158,6 +179,10 @@ function App() {
               <PracticeTradePadPage />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path={`${ROUTES.LIVE_TRADE}/:accountId`}
+          element={<LegacyLiveTradeRedirect />}
         />
         <Route
           path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId`}

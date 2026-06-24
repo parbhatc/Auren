@@ -624,9 +624,23 @@ export class TradeseaTradeCache extends ChartTradeCache {
     }
 
     const accountId = this.propFirm.selectedAccountId
-    const positionId = String(position.positionId || '')
-    if (!accountId || !positionId) {
-      super.handleClosePosition(position, _price, _exitTime, context)
+    if (!accountId) {
+      aurenToast.error('Select a Tradesea account first')
+      return
+    }
+
+    let positionId = String(position.positionId || '')
+    if (!positionId) {
+      const symbol = String(position.symbol || this.activeChartSymbol())
+      const matches = findPositionsForInstrument(this.propFirm.positions, symbol)
+      if (matches[0]?.id) {
+        positionId = String(matches[0].id)
+        position.positionId = positionId
+      }
+    }
+
+    if (!positionId) {
+      aurenToast.error('No open position to close')
       return
     }
 

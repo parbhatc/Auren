@@ -1,4 +1,4 @@
-/** Tradesea accounts supported in Nexus (sandbox-2 + Lucid only). */
+/** Tradesea accounts supported in Nexus (sandbox / sandbox-2 + Lucid). */
 
 export const TRADESEA_DELAYED = {
   MDS_STREAM: 'wss://api-mds-stream-delayed.tradesea.ai/v1/wss',
@@ -17,17 +17,25 @@ export const TRADESEA_TRADES_DELPROD = {
   TRADE_WRITE: 'https://api-trades-w-delprod.tradesea.ai/v1',
 }
 
-/** Live / non-delayed accounts */
+/** Live / non-delayed accounts (non-Lucid brokers) */
 export const TRADESEA_TRADES_PROD = {
   TRADE_READ: 'https://api-trades-r.tradesea.ai/v1',
   TRADE_WRITE: 'https://api-trades-w.tradesea.ai/v1',
 }
 
-/** @deprecated use TRADESEA_TRADES_DELPROD */
-export const TRADESEA_LUCID_TRADES = TRADESEA_TRADES_DELPROD
+/** Lucid live funded accounts (prod market data + prod trade write/read) */
+export const TRADESEA_TRADES_LIVE = {
+  TRADE_READ: 'https://prod-trade-read.tradesea.ai/v1',
+  TRADE_WRITE: 'https://prod-trade-write.tradesea.ai/v1',
+}
+
+/** @deprecated use TRADESEA_TRADES_LIVE */
+export const TRADESEA_LUCID_TRADES = TRADESEA_TRADES_LIVE
 
 export function isSandboxAccount(account) {
-  return account?.propFirm === 'sandbox-2'
+  if (!account) return false
+  const firm = String(account.propFirm || '').toLowerCase()
+  return firm === 'sandbox' || firm === 'sandbox-2'
 }
 
 export function isLucidAccount(account) {
@@ -47,11 +55,9 @@ export function usesDelayedMarketData(account) {
   return account?.accountType === 'RD' || isSandboxAccount(account)
 }
 
-/** Delayed trades REST (sandbox-2 + Lucid + RD). */
+/** Delayed trades REST (sandbox + RD). Lucid live uses TRADESEA_TRADES_LIVE. */
 export function isDelayedTradeseaAccount(account) {
-  return (
-    account?.accountType === 'RD' || isSandboxAccount(account) || isLucidAccount(account)
-  )
+  return usesDelayedMarketData(account)
 }
 
 export function pickDefaultAccountId(accounts) {
@@ -63,7 +69,9 @@ export function pickDefaultAccountId(accounts) {
 }
 
 export function getTradesRestOrigins(account) {
-  return isDelayedTradeseaAccount(account) ? TRADESEA_TRADES_DELPROD : TRADESEA_TRADES_PROD
+  if (isDelayedTradeseaAccount(account)) return TRADESEA_TRADES_DELPROD
+  if (isLucidAccount(account)) return TRADESEA_TRADES_LIVE
+  return TRADESEA_TRADES_PROD
 }
 
 /** User-data unified WS: wss://…/v1/users/{account.id}/ws/unified */
