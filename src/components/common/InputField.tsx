@@ -13,37 +13,43 @@ class InputField extends Component<InputFieldProps> {
       autoComplete,
       isDark,
       error,
+      compact = false,
+      className = '',
     } = this.props
 
     const hasError = !!error
 
     return (
-      <div className="space-y-2">
+      <div className={`${compact ? 'space-y-1' : 'space-y-2'} ${className}`}>
         <label
           htmlFor={id}
-          className={`block text-sm font-medium transition-colors duration-300 ${
-            isDark ? 'text-slate-300' : 'text-slate-700'
-          }`}
+          className={`block font-medium transition-colors duration-300 ${
+            compact ? 'text-xs' : 'text-sm'
+          } ${isDark ? 'text-slate-300' : 'text-slate-700'}`}
         >
           {label}
         </label>
         <div className="relative group">
           {Icon && (
           <Icon
-            className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors duration-300 ${
+            className={`absolute left-3.5 top-1/2 transform -translate-y-1/2 transition-colors duration-200 ${
+              compact ? 'w-4 h-4' : 'w-5 h-5'
+            } ${
               hasError
                 ? 'text-red-400'
-                : `group-focus-within:text-blue-400 ${isDark ? 'text-slate-500' : 'text-slate-400'}`
+                : `group-focus-within:text-violet-400 ${isDark ? 'text-slate-500' : 'text-slate-400'}`
             }`}
           />
           )}
           <input
             id={id}
             type={type}
-            className={`w-full ${Icon ? 'pl-12' : 'pl-4'} pr-4 py-3 rounded-lg outline-none transition-all duration-300 disabled:cursor-not-allowed border focus:shadow-lg ${
+            className={`w-full min-w-0 max-w-full ${Icon ? 'pl-11' : 'pl-4'} pr-4 rounded-xl outline-none transition-all duration-200 disabled:cursor-not-allowed border focus:ring-2 focus:ring-violet-500/25 ${
+              compact ? 'py-2.5 text-base sm:text-sm' : 'py-3 text-base'
+            } ${
               hasError
-                ? 'border-red-500 focus:border-red-500 focus:shadow-red-500/20'
-                : 'focus:border-blue-500 focus:shadow-blue-500/20'
+                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                : 'focus:border-violet-500/70'
             } ${
               isDark
                 ? `${
@@ -67,9 +73,9 @@ class InputField extends Component<InputFieldProps> {
         {hasError && (
           <p
             id={`${id}-error`}
-            className={`text-sm mt-1 transition-colors duration-300 ${
-              isDark ? 'text-red-400' : 'text-red-600'
-            }`}
+            className={`mt-0.5 transition-colors duration-300 line-clamp-2 ${
+              compact ? 'text-xs' : 'text-sm'
+            } ${isDark ? 'text-red-400' : 'text-red-600'}`}
             role="alert"
           >
             {error?.message}

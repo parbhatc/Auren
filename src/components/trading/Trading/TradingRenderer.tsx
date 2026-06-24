@@ -626,6 +626,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             padProps={padProps}
             practiceMaxQty={practiceMaxQty}
             isDark={isDark}
+            showMobileNav={this.state.showNav}
             mobileOrderOpen={Boolean(this.state.practiceMobileOrderOpen)}
             mobileSettingsOpen={Boolean(this.state.practiceMobileSettingsOpen)}
             onCloseMobileOrder={() => this.setState({ practiceMobileOrderOpen: false })}

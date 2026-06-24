@@ -7,17 +7,14 @@ import { t } from '../../../utils/translator'
 import { ResetPasswordProps } from '../../../types'
 import AuthPageLayout from '../../layout/AuthPageLayout'
 import LoginCard from '../../common/LoginCard'
-import Logo from '../../common/Logo'
 import InputField from '../../common/InputField'
 import PageHeader from '../../common/PageHeader'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import SubmitButton from '../../common/SubmitButton'
+import { AuthBackLink } from '../shared/AuthBackLink'
+import { authInfoBoxClass, authLinkClass } from '../shared/authTheme'
 
-/**
- * Reset Password page renderer component
- * Handles password reset with code from email link
- */
 class Renderer extends Component<ResetPasswordProps> {
   render() {
     const {
@@ -40,42 +37,41 @@ class Renderer extends Component<ResetPasswordProps> {
     return (
       <AuthPageLayout isDark={isDark} toggleTheme={toggleTheme}>
         <LoginCard isDark={isDark}>
-          <Logo isDark={isDark} />
+          <div className="mb-5">
+            <AuthBackLink to={ROUTES.LOGIN} label={t('auth.resetPassword.backToLogin')} isDark={isDark} />
+          </div>
 
           <PageHeader
             title={t('auth.resetPassword.title')}
             subtitle={t('auth.resetPassword.subtitle')}
             isDark={isDark}
+            compact
           />
 
-          <ErrorMessage message={error} isDark={isDark} className="mb-4" />
-          <SuccessMessage message={success} isDark={isDark} className="mb-4" />
+          <ErrorMessage message={error} isDark={isDark} className="mb-4 !rounded-xl !p-3 !text-sm" />
+          <SuccessMessage message={success} isDark={isDark} className="mb-4 !rounded-xl !p-3 !text-sm" />
 
           {verifying ? (
-            <div className="text-center py-8">
+            <div className="py-10 text-center">
               <div
-                className={`animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4 ${
-                  isDark ? 'border-blue-400' : 'border-blue-600'
+                className={`mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-t-transparent ${
+                  isDark ? 'border-violet-400' : 'border-violet-600'
                 }`}
-              ></div>
+              />
               <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 {t('auth.resetPassword.verifying')}
               </p>
             </div>
           ) : codeValid && code && email ? (
-            <form className="space-y-5 animate-scale-in" onSubmit={handleSubmit(onSubmit)}>
-              <div
-                className={`p-4 rounded-lg border ${
-                  isDark ? 'bg-blue-950/20 border-blue-700/50' : 'bg-blue-50 border-blue-200'
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className={`w-4 h-4 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-                  <p className={`text-sm font-medium ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
+            <form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
+              <div className={authInfoBoxClass(isDark)}>
+                <div className="mb-2 flex items-center gap-2">
+                  <Shield className={`h-4 w-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+                  <p className={`text-sm font-medium ${isDark ? 'text-violet-200' : 'text-violet-800'}`}>
                     {t('auth.resetPassword.codeVerified')}
                   </p>
                 </div>
-                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                <p className={`text-xs break-all ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   {decodeURIComponent(email)}
                 </p>
               </div>
@@ -88,10 +84,7 @@ class Renderer extends Component<ResetPasswordProps> {
                 icon={Lock}
                 register={register('password', {
                   required: ERROR_MESSAGES.REQUIRED_FIELD,
-                  minLength: {
-                    value: 6,
-                    message: ERROR_MESSAGES.PASSWORD_TOO_SHORT,
-                  },
+                  minLength: { value: 6, message: ERROR_MESSAGES.PASSWORD_TOO_SHORT },
                 })}
                 autoComplete="new-password"
                 isDark={isDark}
@@ -122,31 +115,18 @@ class Renderer extends Component<ResetPasswordProps> {
               </SubmitButton>
             </form>
           ) : (
-            <div className="text-center">
-              <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            <div className="py-4 text-center lg:text-left">
+              <p className={`mb-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 {t('auth.resetPassword.invalidLink')}
               </p>
               <Link
                 to={ROUTES.FORGOT_PASSWORD}
-                className={`inline-block text-sm font-medium transition-all duration-300 hover:underline ${
-                  isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
-                }`}
+                className={`text-sm font-medium transition-colors hover:underline ${authLinkClass(isDark)}`}
               >
                 {t('auth.resetPassword.requestNewLink')}
               </Link>
             </div>
           )}
-
-          <div className="mt-6 space-y-3 text-center">
-            <Link
-              to={ROUTES.LOGIN}
-              className={`block text-sm font-medium transition-all duration-300 hover:underline ${
-                isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
-              }`}
-            >
-              {t('auth.resetPassword.backToLogin')}
-            </Link>
-          </div>
         </LoginCard>
       </AuthPageLayout>
     )
@@ -154,4 +134,3 @@ class Renderer extends Component<ResetPasswordProps> {
 }
 
 export default Renderer
-

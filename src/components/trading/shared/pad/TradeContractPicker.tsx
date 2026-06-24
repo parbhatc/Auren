@@ -14,8 +14,6 @@ const MENU_WIDTH_PX = 320
 const MOBILE_PICKER_MQ = '(max-width: 1023px)'
 const MOBILE_MODAL_Z = 10050
 
-type PickTarget = 'chart' | 'trade'
-
 function isMobilePickerViewport(): boolean {
   return typeof window !== 'undefined' && window.matchMedia(MOBILE_PICKER_MQ).matches
 }
@@ -58,53 +56,14 @@ function isActiveResult(result: TradeseaSearchSymbolResult, streamLabel: string)
 type TradeContractPickerProps = {
   tradeProductRoot: string
   chartProductRoot?: string
+  chartStreamLabel?: string
   tradeStreamLabel: string
   onPickTrade: (symbol: string) => void
-  onPickChart?: (symbol: string) => void
   disabled?: boolean
   searchSymbols?: (query: string) => Promise<TradeseaSearchSymbolResult[]>
   autoChangeTradeContract?: boolean
   onAutoChangeTradeContract?: (enabled: boolean) => void
   placement?: 'above' | 'below'
-}
-
-function TargetButton({
-  label,
-  value,
-  selected,
-  onClick,
-  compact,
-}: {
-  label: string
-  value: string
-  selected: boolean
-  onClick: () => void
-  compact?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex min-w-0 flex-1 flex-col items-start rounded-xl border px-3 text-left transition ${
-        compact ? 'py-2' : 'py-2.5'
-      } ${
-        selected
-          ? 'border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/30'
-          : 'border-[#334155] bg-[#0b1220] hover:border-[#475569] hover:bg-[#111827]'
-      }`}
-    >
-      <span className={`font-medium uppercase tracking-wider text-[#64748b] ${compact ? 'text-[9px]' : 'text-[10px]'}`}>
-        {label}
-      </span>
-      <span
-        className={`mt-0.5 w-full truncate font-semibold uppercase tracking-wide text-[#e6edf3] ${
-          compact ? 'text-xs' : 'text-sm'
-        }`}
-      >
-        {value}
-      </span>
-    </button>
-  )
 }
 
 export function PadTradeSymbolPicker({
@@ -116,10 +75,10 @@ export function PadTradeSymbolPicker({
     TradePanelProps,
     | 'chartSymbol'
     | 'chartProductRoot'
+    | 'chartSymbolHint'
     | 'tradeProductRoot'
     | 'searchSymbols'
     | 'onChartSymbolChange'
-    | 'onChartProductChange'
     | 'autoChangeTradeContract'
     | 'onAutoChangeTradeContract'
   >
@@ -133,10 +92,16 @@ export function PadTradeSymbolPicker({
     chartSymbolToProductRoot(props.chartSymbol) ||
     props.chartSymbol.replace(/^CME:/i, '').toUpperCase()
 
+  const chartRoot = props.chartProductRoot?.trim().toUpperCase() || tradeRoot
+  const chartStream =
+    props.chartSymbolHint?.trim() ||
+    (chartRoot ? `CME:${chartRoot}` : props.chartSymbol)
+
   return (
     <TradeContractPicker
       tradeProductRoot={tradeRoot}
       chartProductRoot={props.chartProductRoot}
+      chartStreamLabel={chartStream}
       tradeStreamLabel={props.chartSymbol}
       searchSymbols={props.searchSymbols}
       disabled={disabled}
@@ -144,7 +109,6 @@ export function PadTradeSymbolPicker({
       autoChangeTradeContract={props.autoChangeTradeContract}
       onAutoChangeTradeContract={props.onAutoChangeTradeContract}
       onPickTrade={(sym) => props.onChartSymbolChange?.(sym)}
-      onPickChart={props.onChartProductChange ? (sym) => props.onChartProductChange?.(sym) : undefined}
     />
   )
 }
@@ -152,9 +116,9 @@ export function PadTradeSymbolPicker({
 export function TradeContractPicker({
   tradeProductRoot,
   chartProductRoot,
+  chartStreamLabel,
   tradeStreamLabel,
   onPickTrade,
-  onPickChart,
   disabled,
   searchSymbols,
   autoChangeTradeContract = true,
@@ -166,7 +130,6 @@ export function TradeContractPicker({
   const [results, setResults] = useState<TradeseaSearchSymbolResult[]>([])
   const [loading, setLoading] = useState(false)
   const [autoChange, setAutoChange] = useState(autoChangeTradeContract)
-  const [pickTarget, setPickTarget] = useState<PickTarget>('trade')
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({})
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -174,14 +137,14 @@ export function TradeContractPicker({
   const searchRef = useRef<HTMLInputElement>(null)
   const searchSymbolsRef = useRef(searchSymbols)
   const searchRequestRef = useRef(0)
-  const seedQueryRef = useRef('NQ')
   searchSymbolsRef.current = searchSymbols
 
   const tradeRoot = tradeProductRoot.trim().toUpperCase()
   const chartRoot = chartProductRoot?.trim().toUpperCase() || tradeRoot
-  const chartSelectable = Boolean(onPickChart)
+  const chartStream = chartStreamLabel?.trim() || (chartRoot ? `CME:${chartRoot}` : tradeStreamLabel)
   const mobileModal = isMobilePickerViewport()
   const compact = !mobileModal
+  const tradeMatchesChart = chartRoot === tradeRoot
 
   useEffect(() => {
     setAutoChange(autoChangeTradeContract)
@@ -247,11 +210,9 @@ export function TradeContractPicker({
   }, [mobileModal, placement])
 
   const openDropdown = useCallback(() => {
-    const seed = pickTarget === 'chart' ? chartRoot : tradeRoot
-    seedQueryRef.current = seed || 'NQ'
-    setQuery('')
+    setQuery(tradeRoot || '')
     setOpen(true)
-  }, [chartRoot, pickTarget, tradeRoot])
+  }, [tradeRoot])
 
   useEffect(() => {
     if (!open) return
@@ -288,7 +249,12 @@ export function TradeContractPicker({
 
   useEffect(() => {
     if (!open) return
-    const id = window.requestAnimationFrame(() => searchRef.current?.focus())
+    const id = window.requestAnimationFrame(() => {
+      const input = searchRef.current
+      if (!input) return
+      input.focus()
+      input.select()
+    })
     return () => window.cancelAnimationFrame(id)
   }, [open])
 
@@ -297,8 +263,7 @@ export function TradeContractPicker({
     const search = searchSymbolsRef.current
     if (!search) return
 
-    const q = query.trim() || (pickTarget === 'chart' ? chartRoot : tradeRoot) || 'NQ'
-    seedQueryRef.current = q
+    const q = query.trim() || tradeRoot || 'NQ'
     const requestId = ++searchRequestRef.current
 
     const handle = window.setTimeout(() => {
@@ -319,24 +284,21 @@ export function TradeContractPicker({
     }, query.trim() ? SEARCH_DEBOUNCE_MS : 0)
 
     return () => window.clearTimeout(handle)
-  }, [open, query, pickTarget, chartRoot, tradeRoot])
+  }, [open, query, tradeRoot])
 
   const pick = (result: TradeseaSearchSymbolResult) => {
-    const sym = pickStreamSymbol(result)
-    if (pickTarget === 'chart' && onPickChart) {
-      onPickChart(sym)
-    } else {
-      onPickTrade(sym)
+    onPickTrade(pickStreamSymbol(result))
+    close()
+  }
+
+  const useChartContract = () => {
+    if (!tradeMatchesChart) {
+      onPickTrade(chartStream)
     }
     close()
   }
 
-  const activeStreamForHighlight =
-    pickTarget === 'chart' ? chartRoot : tradeStreamLabel
-
   const shellPad = mobileModal ? 'px-4 pb-4' : 'p-2.5'
-  const searchHint =
-    pickTarget === 'chart' ? 'Search to change chart symbol' : 'Search to change trade contract'
 
   const menu = open ? (
     <>
@@ -367,7 +329,7 @@ export function TradeContractPicker({
             mobileModal ? 'px-4 py-3' : 'px-2.5 py-2'
           }`}
         >
-          <p className="text-sm font-semibold text-[#e6edf3]">Symbols</p>
+          <p className="text-sm font-semibold text-[#e6edf3]">Trade contract</p>
           <div className="flex items-center gap-2">
             {loading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#64748b]" /> : null}
             {mobileModal ? (
@@ -385,37 +347,49 @@ export function TradeContractPicker({
 
         {searchSymbols ? (
           <div className={`flex min-h-0 flex-1 flex-col ${shellPad}`}>
-            <div className={`shrink-0 ${compact ? 'space-y-2 pt-2' : 'space-y-2.5 pt-3'}`}>
-              <div className="flex gap-2">
-                {chartSelectable ? (
-                  <TargetButton
-                    label="Chart"
-                    value={chartRoot}
-                    selected={pickTarget === 'chart'}
-                    onClick={() => setPickTarget('chart')}
-                    compact={compact}
-                  />
-                ) : null}
-                <TargetButton
-                  label="Trade"
-                  value={tradeRoot}
-                  selected={pickTarget === 'trade'}
-                  onClick={() => setPickTarget('trade')}
-                  compact={compact}
-                />
-              </div>
+            <div className={`flex shrink-0 items-center gap-2 ${compact ? 'pt-2' : 'pt-3'}`}>
+              <button
+                type="button"
+                onClick={useChartContract}
+                disabled={tradeMatchesChart}
+                className={`flex min-w-0 flex-1 flex-col items-start rounded-xl border px-3 text-left transition ${
+                  compact ? 'py-2' : 'py-2.5'
+                } ${
+                  tradeMatchesChart
+                    ? 'cursor-default border-[#334155]/80 bg-[#0b1220]/60 opacity-70'
+                    : 'border-[#334155] bg-[#0b1220] hover:border-violet-500/40 hover:bg-[#111827]'
+                }`}
+              >
+                <span
+                  className={`font-medium uppercase tracking-wider text-[#64748b] ${
+                    compact ? 'text-[9px]' : 'text-[10px]'
+                  }`}
+                >
+                  Use chart contract
+                </span>
+                <span
+                  className={`mt-0.5 w-full truncate font-semibold uppercase tracking-wide text-[#e6edf3] ${
+                    compact ? 'text-xs' : 'text-sm'
+                  }`}
+                >
+                  {chartRoot}
+                </span>
+              </button>
 
               {onAutoChangeTradeContract ? (
                 <div
-                  className={`flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] px-3 ${
-                    compact ? 'py-1.5' : 'py-2'
+                  className={`flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-[#334155] bg-[#0b1220] px-2.5 ${
+                    compact ? 'py-2' : 'py-2.5'
                   }`}
+                  title="Auto change trade when chart symbol changes"
                 >
-                  <div className="min-w-0">
-                    <p className={`font-medium text-[#cbd5e1] ${compact ? 'text-xs' : 'text-sm'}`}>
-                      Auto change trade
-                    </p>
-                  </div>
+                  <span
+                    className={`whitespace-nowrap font-medium uppercase tracking-wider text-[#64748b] ${
+                      compact ? 'text-[8px]' : 'text-[9px]'
+                    }`}
+                  >
+                    Auto
+                  </span>
                   <Toggle
                     checked={autoChange}
                     onChange={(checked) => {
@@ -443,7 +417,7 @@ export function TradeContractPicker({
                     close()
                   }
                 }}
-                placeholder={searchHint}
+                placeholder="Search trade contract"
                 autoComplete="off"
                 spellCheck={false}
                 className={`w-full rounded-lg border border-[#334155] bg-[#020617] text-[#e6edf3] outline-none placeholder:text-[#64748b] focus:border-violet-500/50 ${
@@ -465,9 +439,8 @@ export function TradeContractPicker({
                 </p>
               ) : (
                 results.map((result) => {
-                  const active = isActiveResult(result, activeStreamForHighlight)
-                  const chartMatch = isActiveResult(result, chartRoot)
                   const tradeMatch = isActiveResult(result, tradeStreamLabel)
+                  const chartMatch = isActiveResult(result, chartRoot)
                   const ticker = listItemTicker(result)
                   const label = resultLabel(result)
                   return (
@@ -475,12 +448,12 @@ export function TradeContractPicker({
                       key={`${result.symbol}-${result.streamTicker || result.ticker || ''}`}
                       type="button"
                       role="option"
-                      aria-selected={active}
+                      aria-selected={tradeMatch}
                       onClick={() => pick(result)}
                       className={`flex w-full items-center gap-2.5 text-left transition ${
                         compact ? 'rounded-md px-2 py-1.5' : 'rounded-lg px-2.5 py-2'
                       } ${
-                        active
+                        tradeMatch
                           ? 'bg-violet-500/15 text-violet-100'
                           : 'text-[#94a3b8] hover:bg-[#1e293b]'
                       }`}
@@ -495,9 +468,9 @@ export function TradeContractPicker({
                       <span className={`min-w-0 flex-1 truncate ${compact ? 'text-[11px]' : 'text-sm'}`}>
                         {label}
                       </span>
-                      {(chartSelectable && chartMatch) || tradeMatch ? (
+                      {tradeMatch || chartMatch ? (
                         <span className="flex shrink-0 gap-1">
-                          {chartSelectable && chartMatch ? (
+                          {chartMatch ? (
                             <span className="rounded bg-[#1e293b] px-1 py-0.5 text-[9px] font-medium uppercase text-[#94a3b8]">
                               C
                             </span>
@@ -536,7 +509,7 @@ export function TradeContractPicker({
         className="flex max-w-full items-center gap-1 rounded-md border border-[#475569]/60 bg-[#0f172a]/80 px-1.5 py-0.5 text-left hover:border-violet-500/40 disabled:opacity-60"
         aria-expanded={open}
         aria-haspopup="listbox"
-        title="Change chart or trade symbol"
+        title="Change trade contract"
       >
         <span className="truncate text-[11px] font-medium uppercase tracking-wide text-[#e6edf3]">
           {tradeRoot}

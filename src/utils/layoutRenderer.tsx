@@ -169,18 +169,23 @@ export const renderLayout = (
 export const renderPracticeTradeLayout = (
   chartElement: JSX.Element,
   panelElement: JSX.Element | null,
-  options?: { panelWidth?: number; mobileScalpBar?: JSX.Element | null }
+  options?: {
+    panelWidth?: number
+    mobileScalpBar?: JSX.Element | null
+    /** When false, chart uses full height and quick trade sits on the bottom edge (no nav gap). */
+    showMobileNav?: boolean
+  }
 ) => {
   const panelWidth = options?.panelWidth ?? 332
   const mobileScalpBar = options?.mobileScalpBar ?? null
+  const reserveMobileNavGap = Boolean(mobileScalpBar && options?.showMobileNav !== false)
+  const mobileNavPadClass = reserveMobileNavGap
+    ? 'max-lg:pb-[calc(2.25rem+max(0.25rem,env(safe-area-inset-bottom)))]'
+    : ''
   return (
     <div className="flex flex-col lg:flex-row flex-1 min-h-0 min-w-0 w-full h-full gap-0 lg:gap-4 pr-0 lg:pr-2">
       <div
-        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${
-          mobileScalpBar
-            ? 'max-lg:pb-[calc(2.25rem+max(0.25rem,env(safe-area-inset-bottom)))]'
-            : ''
-        }`}
+        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${mobileNavPadClass}`}
       >
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {chartElement}

@@ -3,6 +3,7 @@ import type { TradeseaDatafeed } from '../../../../services/tradesea/TradeseaDat
 import { resolveTradePanelBidAsk } from '../../../../services/tradesea/tradeseaMarketBook'
 import { chartSymbolToProductRoot } from '../../../../services/tradesea/tradeseaSymbolInfo'
 import type { TradeseaSearchSymbolResult } from '../../../../services/tradesea/tradeseaSymbolInfo'
+import { candleDebug } from '../../../../services/tradesea/candleDebug'
 import { aurenToast } from '../../../../utils/aurenToast'
 import { saveTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange } from '../../../../utils/tradePadSymbol'
 import {
@@ -133,6 +134,7 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     onChartSymbolChange: (sym: string) => {
       const root = chartSymbolToProductRoot(sym)
       if (!root) return
+      candleDebug.tradePadChartPick(root)
       const label =
         activeFirm?.chartServices?.datafeed?.resolveStreamInstrument?.(`CME:${root}`) ??
         `CME:${root}`

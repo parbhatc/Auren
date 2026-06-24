@@ -32,6 +32,9 @@ export function TradeHeader({
   onReconnectMds,
   showStatsBar = true,
   showAccountSelector = true,
+  showTradingSettings = true,
+  showLogoAlways = false,
+  hideNavToggle = false,
   practiceAccountStatus,
   liveMode = false,
   liveAccounts = [],
@@ -61,6 +64,12 @@ export function TradeHeader({
   showStatsBar?: boolean
   /** Account dropdown in header row */
   showAccountSelector?: boolean
+  /** Trading limits & lockout settings button */
+  showTradingSettings?: boolean
+  /** Show Auren logo on mobile as well as desktop */
+  showLogoAlways?: boolean
+  /** Never show the menu button to restore navigation */
+  hideNavToggle?: boolean
   practiceAccountStatus?: 'blown' | 'passed'
   liveMode?: boolean
   liveAccounts?: FormattedAccount[]
@@ -112,10 +121,17 @@ export function TradeHeader({
     hasOpenPosition,
   }
 
+  const showMobileHeaderActions = !showStatsBar
+  const headerActionVisibility = showMobileHeaderActions ? 'block' : 'hidden lg:block'
+
   return (
-    <div className={`relative shrink-0 z-[110] ${shell}`}>
+    <div
+      className={`relative shrink-0 z-[110] ${shell} ${
+        showMobileHeaderActions ? 'pt-[env(safe-area-inset-top,0px)]' : ''
+      }`}
+    >
       <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
-        {!showNav && (
+        {!hideNavToggle && !showNav && (
           <button
             type="button"
             onClick={onShowNav}
@@ -129,7 +145,7 @@ export function TradeHeader({
           </button>
         )}
 
-        <div className="hidden lg:block shrink-0 self-center">
+        <div className={`${showLogoAlways ? 'block' : 'hidden lg:block'} shrink-0 self-center`}>
           <Logo
             isDark={isDark}
             compact
@@ -171,13 +187,15 @@ export function TradeHeader({
             <AccountStatsBar {...statsProps} inline />
           </div>
         ) : (
-          <div className="flex-1 min-w-0 hidden lg:block" aria-hidden />
+          <div className="flex-1 min-w-0" aria-hidden />
         )}
 
-        <div className="hidden lg:block flex-1 min-w-0" aria-hidden />
+        {showStatsBar ? (
+          <div className="hidden lg:block flex-1 min-w-0" aria-hidden />
+        ) : null}
 
         <div className="flex items-center gap-0.5 shrink-0 self-center">
-          {accountId && !practiceAccountStatus ? (
+          {accountId && !practiceAccountStatus && showTradingSettings ? (
             <div className="hidden lg:block">
               <HeaderTradingSettings practiceAccountId={accountId} isDark={isDark} />
             </div>
@@ -191,7 +209,7 @@ export function TradeHeader({
               localStorage.removeItem('token')
               navigate(ROUTES.LOGIN)
             }}
-            className={`hidden lg:block p-1.5 rounded ${
+            className={`${headerActionVisibility} p-1.5 rounded ${
               isDark
                 ? 'text-slate-500 hover:text-red-400 hover:bg-slate-800'
                 : 'text-slate-500 hover:text-red-600 hover:bg-slate-100'
@@ -200,7 +218,7 @@ export function TradeHeader({
           >
             <LogOut className="w-4 h-4" />
           </button>
-          <div className="hidden lg:block">
+          <div className={headerActionVisibility}>
             <HeaderThemeButton isDark={isDark} onToggle={toggleTheme} />
           </div>
         </div>

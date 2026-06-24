@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { BarChart3, ChevronLeft, Home, PanelRight, Settings2, TrendingUp } from 'lucide-react'
+import { BarChart3, ChevronDown, ChevronLeft, Home, PanelRight, Settings2, TrendingUp } from 'lucide-react'
 import { ROUTES, practiceTradePath, practiceTradeStatsPath } from '../../constants/routes'
 import { getPracticeAccountById } from '../../constants/practice'
 import { TradingNavProps } from '../../types/common'
@@ -158,6 +158,10 @@ class TradingNav extends Component<TradingNavProps> {
 
     const isHomeActive = currentPath === ROUTES.HOME || currentPath.startsWith(`${ROUTES.HOME}?`)
 
+    const mobileHideClass = `shrink-0 flex flex-col items-center justify-center rounded-md px-1 py-0.5 transition-colors ${
+      isDark ? 'text-slate-500 active:text-slate-300 hover:text-slate-300' : 'text-slate-500 active:text-slate-700 hover:text-slate-700'
+    }`
+
     // Mobile Bottom Nav — compact tab bar
     const bottomNav = showMobileNav ? (
       <nav
@@ -169,6 +173,18 @@ class TradingNav extends Component<TradingNavProps> {
         aria-label="Practice navigation"
       >
         <div className="flex h-9 max-h-9 items-stretch px-1">
+          {onToggleNav ? (
+            <button
+              type="button"
+              onClick={onToggleNav}
+              className={mobileHideClass}
+              aria-label="Hide navigation"
+              title="Hide navigation"
+            >
+              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="max-w-full truncate text-[8px] font-medium leading-none">Hide</span>
+            </button>
+          ) : null}
           {(isPracticeTrade || isLiveTrade) && (
             <button
               type="button"

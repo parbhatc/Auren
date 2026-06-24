@@ -1,9 +1,42 @@
 import { DateRangeSelectorProps } from '../../../types/common'
 
+function StatsDateInput({
+  id,
+  value,
+  min,
+  max,
+  isDark,
+  onChange,
+}: {
+  id: string
+  value: string
+  min?: string
+  max?: string
+  isDark: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <div
+      className={`date-input-shell ${isDark ? 'date-input-shell-dark' : 'date-input-shell-light'}`}
+    >
+      <input
+        id={id}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="date-input-field"
+      />
+    </div>
+  )
+}
+
 const DateRangeSelector = ({
   isDark,
   practiceMode,
   dateRange,
+  referenceDate,
   onDateRangeChange,
   formatDateForInput,
 }: DateRangeSelectorProps & { practiceMode?: boolean }) => {
@@ -11,7 +44,11 @@ const DateRangeSelector = ({
     if (type === 'all') {
       const endDate = new Date()
       const startDate = new Date()
-      startDate.setDate(endDate.getDate() - 30)
+      if (practiceMode) {
+        startDate.setFullYear(endDate.getFullYear() - 5)
+      } else {
+        startDate.setDate(endDate.getDate() - 30)
+      }
       onDateRangeChange({ startDate: formatDateForInput(startDate), endDate: formatDateForInput(endDate) })
     } else if (type === 'today') {
       const today = new Date()
@@ -36,9 +73,11 @@ const DateRangeSelector = ({
     lastMonth: 'Last Month',
   }
 
+  const todayMax = formatDateForInput(referenceDate)
+
   return (
     <div
-      className={`mb-4 sm:mb-6 rounded-xl border max-w-3xl ${practiceMode ? '' : 'mx-auto'} ${
+      className={`mb-4 sm:mb-6 rounded-xl border max-w-3xl min-w-0 w-full overflow-hidden ${practiceMode ? '' : 'mx-auto'} ${
         practiceMode
           ? isDark
             ? 'bg-slate-950/80 border-slate-700/80'
@@ -48,19 +87,19 @@ const DateRangeSelector = ({
             : 'bg-white/50 border-slate-200/50 backdrop-blur-sm'
       }`}
     >
-      <div className="p-3 sm:p-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+      <div className="p-3 sm:p-4 min-w-0 overflow-hidden">
+        <div className="flex flex-col gap-3 min-w-0 max-w-full">
+          <div className="flex flex-col gap-2 min-w-0 sm:flex-row sm:items-center sm:flex-wrap">
+            <span className={`shrink-0 text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               Quick Select:
             </span>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 min-w-0 max-w-full">
               {(['all', 'today', 'lastWeek', 'lastMonth'] as const).map((key) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => handleQuickSelect(key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 ${
                     practiceMode
                       ? isDark
                         ? 'bg-violet-500/15 hover:bg-violet-500/25 text-violet-200 border border-violet-500/30'
@@ -76,41 +115,41 @@ const DateRangeSelector = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+          <div className="grid grid-cols-1 gap-3 min-w-0 w-full max-w-full lg:grid-cols-[1fr_auto_1fr] lg:items-end">
+            <div className="min-w-0 w-full max-w-full overflow-hidden">
+              <label
+                htmlFor="stats-start-date"
+                className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
+              >
                 Start Date
               </label>
-              <input
-                type="date"
+              <StatsDateInput
+                id="stats-start-date"
                 value={dateRange.startDate}
-                onChange={(e) => onDateRangeChange({ ...dateRange, startDate: e.target.value })}
-                max={dateRange.endDate}
-                className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-600 text-slate-100'
-                    : 'bg-white border-slate-300 text-slate-900'
-                }`}
+                max={dateRange.endDate || undefined}
+                isDark={isDark}
+                onChange={(startDate) => onDateRangeChange({ ...dateRange, startDate })}
               />
             </div>
-            <div className="pt-6 shrink-0">
+
+            <div className="hidden lg:flex pb-2 shrink-0 px-1 self-end">
               <span className={`text-sm font-medium ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>→</span>
             </div>
-            <div className="flex-1">
-              <label className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+
+            <div className="min-w-0 w-full max-w-full overflow-hidden">
+              <label
+                htmlFor="stats-end-date"
+                className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
+              >
                 End Date
               </label>
-              <input
-                type="date"
+              <StatsDateInput
+                id="stats-end-date"
                 value={dateRange.endDate}
-                onChange={(e) => onDateRangeChange({ ...dateRange, endDate: e.target.value })}
-                min={dateRange.startDate}
-                max={new Date().toISOString().split('T')[0]}
-                className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                  isDark
-                    ? 'bg-slate-800 border-slate-600 text-slate-100'
-                    : 'bg-white border-slate-300 text-slate-900'
-                }`}
+                min={dateRange.startDate || undefined}
+                max={todayMax}
+                isDark={isDark}
+                onChange={(endDate) => onDateRangeChange({ ...dateRange, endDate })}
               />
             </div>
           </div>

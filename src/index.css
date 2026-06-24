@@ -29,6 +29,20 @@ body {
 #root {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Practice stats — iOS Safari nested scroll + viewport fixes */
+.practice-stats-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (min-width: 1024px) {
+  .practice-stats-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
 
 /* Custom animations */
@@ -219,6 +233,120 @@ body {
 .no-spinner {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* iOS Safari: native date inputs overflow their box unless clipped by a shell */
+.date-input-shell {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 2.25rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: 0.5rem;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.date-input-shell-dark {
+  color-scheme: dark;
+  background-color: rgb(30 41 59);
+  border-color: rgb(71 85 105);
+}
+
+.date-input-shell-light {
+  color-scheme: light;
+  background-color: #fff;
+  border-color: rgb(203 213 225);
+}
+
+.date-input-field {
+  display: block;
+  flex: 1 1 0%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 0.625rem;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.25;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (min-width: 640px) {
+  .date-input-field {
+    font-size: 0.875rem;
+  }
+}
+
+.date-input-shell-dark .date-input-field {
+  color: rgb(241 245 249);
+}
+
+.date-input-shell-light .date-input-field {
+  color: rgb(15 23 42);
+}
+
+.date-input-field::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+}
+
+.date-input-field::-webkit-datetime-edit {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.date-input-field::-webkit-datetime-edit-fields-wrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.date-input-field::-webkit-datetime-edit-text,
+.date-input-field::-webkit-datetime-edit-month-field,
+.date-input-field::-webkit-datetime-edit-day-field,
+.date-input-field::-webkit-datetime-edit-year-field {
+  padding: 0;
+}
+
+.date-input-shell-dark .date-input-field::-webkit-date-and-time-value,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit-fields-wrapper,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit-text,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit-month-field,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit-day-field,
+.date-input-shell-dark .date-input-field::-webkit-datetime-edit-year-field {
+  color: rgb(241 245 249);
+}
+
+.date-input-shell-light .date-input-field::-webkit-date-and-time-value,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit-fields-wrapper,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit-text,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit-month-field,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit-day-field,
+.date-input-shell-light .date-input-field::-webkit-datetime-edit-year-field {
+  color: rgb(15 23 42);
+}
+
+.date-input-field::-webkit-calendar-picker-indicator {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  width: 1rem;
+  height: 1rem;
+  opacity: 0.75;
+  cursor: pointer;
 }
 
 /* Practice trade DOM ladder */

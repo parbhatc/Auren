@@ -16,6 +16,7 @@ type TerminalTradeLayoutProps = {
   padProps: TradePanelProps
   practiceMaxQty: number
   isDark: boolean
+  showMobileNav?: boolean
   mobileOrderOpen: boolean
   mobileSettingsOpen: boolean
   onCloseMobileOrder: () => void
@@ -29,6 +30,7 @@ export function TerminalTradeLayout({
   padProps,
   practiceMaxQty,
   isDark,
+  showMobileNav = true,
   mobileOrderOpen,
   mobileSettingsOpen,
   onCloseMobileOrder,
@@ -58,8 +60,10 @@ export function TerminalTradeLayout({
               props={padProps}
               maxQty={practiceMaxQty}
               isDark={isDark}
+              showMobileNav={showMobileNav}
             />
           ),
+          showMobileNav,
         }
       )}
       <MobileOrderSheet

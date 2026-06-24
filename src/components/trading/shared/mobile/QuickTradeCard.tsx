@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Minus, Plus, TrendingDown, TrendingUp } from 'lucide-react'
+import {
+  FlipHorizontal2,
+  Layers,
+  LogOut,
+  Minus,
+  Plus,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
 import { TradeSideButton } from '../../../common/TradeSideButton'
 import {
   PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
@@ -12,16 +20,13 @@ import {
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
-
-const QTY_CHIP_LIMIT = 6
+import { MobileMarketLabel, MobileQtyInput, MOBILE_MARKET_BTN } from './mobileQuickTradeUi'
 
 const MOBILE_FLUSH_SHELL =
   'max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:shadow-none'
-const MOBILE_HEADER_PAD = 'px-3 py-2.5 max-lg:px-2 max-lg:py-1.5'
-const MOBILE_BODY_PAD = 'p-3 pt-2 space-y-2.5 max-lg:px-2 max-lg:pt-1.5 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))]'
-const MOBILE_PRESET_PAD = 'flex justify-center px-3 pt-2.5 pb-1 max-lg:px-2 max-lg:pt-0 max-lg:pb-0'
-const MOBILE_BUY_SELL_GRID = 'grid grid-cols-2 gap-2'
-const MOBILE_BUY_SELL_BTN = 'max-lg:h-12 text-sm'
+
+const FOCUS_RING =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]'
 
 export function QuickTradeCard({
   props,
@@ -34,7 +39,6 @@ export function QuickTradeCard({
   maxQty: number
   isDark: boolean
   className?: string
-  /** Shown in the quick-trade header (e.g. mobile float / minimize). */
   headerActions?: ReactNode
 }) {
   const [ui, setUi] = useState<TradePanelSettings>(() => getTradePanelSettings())
@@ -59,201 +63,315 @@ export function QuickTradeCard({
   const positionActionCount =
     (ui.hideClosePosition ? 0 : 1) + (ui.hideReverse ? 0 : 1) + (ui.hideFlattenAll ? 0 : 1)
 
-  if (isDark) {
-    return (
+  const shell = isDark
+    ? 'border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)]'
+    : 'border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40'
+  const presetShell = isDark
+    ? 'border-[#334155] bg-[#020617]'
+    : 'border-slate-200 bg-slate-50'
+  const presetActive = isDark ? 'bg-[#8b5cf6] text-white' : 'bg-violet-600 text-white'
+  const presetIdle = isDark
+    ? 'text-[#94a3b8] hover:bg-[#1e293b] hover:text-[#e6edf3]'
+    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+  const offline = isDark ? 'text-[#7d8590]' : 'text-slate-400'
+
+  const presetQtyStrip = presets.length > 0 ? (
+    <PresetQtyStrip
+      props={props}
+      presets={presets}
+      qty={qty}
+      isDark={isDark}
+      disabled={tradeDisabled}
+    />
+  ) : (
+    <QtyStepper {...props} variant={isDark ? 'dark' : 'light'} disabled={tradeDisabled} compact />
+  )
+
+  const mobilePositionActions =
+    showPositionActions && positionActionCount > 0 ? (
       <div
-        className={`overflow-hidden rounded-2xl border border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)] ${MOBILE_FLUSH_SHELL} ${className}`}
-        aria-label="Quick trade"
+        className="grid w-full min-w-0 gap-1"
+        style={{ gridTemplateColumns: `repeat(${positionActionCount}, minmax(0, 1fr))` }}
       >
-        <header className={`flex items-center justify-between gap-2 border-b border-[#334155] bg-[#020617]/60 ${MOBILE_HEADER_PAD}`}>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
-              Quick trade
-            </p>
-            <div className="mt-0.5">
-              <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
-            </div>
-            {tradeDisabled ? (
-              <p className="mt-1 text-[10px] text-[#7d8590]">Market data offline</p>
-            ) : null}
-          </div>
-          {headerActions ? (
-            <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
-          ) : null}
-          <QtyStepper {...props} variant="dark" disabled={tradeDisabled} />
-        </header>
-
-        {presets.length > 0 && (
-          <div className={MOBILE_PRESET_PAD}>
-            <div className="flex w-fit max-w-full justify-center rounded-xl border border-[#334155] bg-[#020617] p-1 gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-              {presets.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  disabled={tradeDisabled}
-                  onClick={() => props.onQuantityUpdate(p)}
-                  className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${TRADE_OFFLINE_DISABLED_CLASS} ${
-                    qty === p
-                      ? 'bg-[#8b5cf6] text-white shadow-sm'
-                      : 'text-[#94a3b8] hover:bg-[#1e293b] hover:text-[#e6edf3]'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
+        {!ui.hideClosePosition && (
+          <DomStyleAction
+            compact
+            onClick={props.onClose}
+            disabled={tradeDisabled}
+            title="Close position"
+            isDark={isDark}
+            tone="close"
+          >
+            <LogOut className="h-3 w-3 shrink-0 opacity-75" aria-hidden />
+            Close
+          </DomStyleAction>
         )}
-
-        <div className={MOBILE_BODY_PAD}>
-          {!ui.hideBuySell && (
-            <div className={MOBILE_BUY_SELL_GRID}>
-              <TradeSideButton
-                side="buy"
-                variant="market"
-                disabled={tradeDisabled}
-                onClick={props.onBuy}
-                title="Market buy"
-                className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-              >
-                <TrendingUp className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                Buy
-              </TradeSideButton>
-              <TradeSideButton
-                side="sell"
-                variant="market"
-                disabled={tradeDisabled}
-                onClick={props.onSell}
-                title="Market sell"
-                className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-              >
-                <TrendingDown className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                Sell
-              </TradeSideButton>
-            </div>
-          )}
-
-          {showPositionActions && positionActionCount > 0 && (
-            <div
-              className={`grid gap-1.5 ${
-                positionActionCount === 1
-                  ? 'grid-cols-1'
-                  : positionActionCount === 2
-                    ? 'grid-cols-2'
-                    : 'grid-cols-3'
-              }`}
-            >
-              {!ui.hideClosePosition && (
-                <SecondaryAction label="Close" onClick={props.onClose} disabled={tradeDisabled} />
-              )}
-              {!ui.hideReverse && (
-                <SecondaryAction label="Reverse" onClick={props.onReverse} disabled={tradeDisabled} />
-              )}
-              {!ui.hideFlattenAll && (
-                <SecondaryAction label="Flatten" onClick={props.onFlatten} disabled={tradeDisabled} />
-              )}
-            </div>
-          )}
-        </div>
+        {!ui.hideReverse && (
+          <DomStyleAction
+            compact
+            onClick={props.onReverse}
+            disabled={tradeDisabled}
+            title="Reverse position"
+            isDark={isDark}
+            tone="reverse"
+          >
+            <FlipHorizontal2 className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
+            Reverse
+          </DomStyleAction>
+        )}
+        {!ui.hideFlattenAll && (
+          <DomStyleAction
+            compact
+            onClick={props.onFlatten}
+            disabled={tradeDisabled}
+            title="Flatten all positions"
+            isDark={isDark}
+            tone="flatten"
+          >
+            <Layers className="h-3 w-3 shrink-0 opacity-85" aria-hidden />
+            Flatten
+          </DomStyleAction>
+        )}
       </div>
-    )
-  }
+    ) : null
+
+  const desktopPositionActions =
+    showPositionActions && positionActionCount > 0 ? (
+      <div className="flex flex-wrap items-center justify-center gap-1">
+        {!ui.hideClosePosition && (
+          <DomStyleAction
+            onClick={props.onClose}
+            disabled={tradeDisabled}
+            title="Close position"
+            isDark={isDark}
+            tone="close"
+          >
+            <LogOut className="h-3 w-3 shrink-0 opacity-75" aria-hidden />
+            Close
+          </DomStyleAction>
+        )}
+        {!ui.hideReverse && (
+          <DomStyleAction
+            onClick={props.onReverse}
+            disabled={tradeDisabled}
+            title="Reverse position"
+            isDark={isDark}
+            tone="reverse"
+          >
+            <FlipHorizontal2 className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
+            Reverse
+          </DomStyleAction>
+        )}
+        {!ui.hideFlattenAll && (
+          <DomStyleAction
+            onClick={props.onFlatten}
+            disabled={tradeDisabled}
+            title="Flatten all positions"
+            isDark={isDark}
+            tone="flatten"
+          >
+            <Layers className="h-3 w-3 shrink-0 opacity-85" aria-hidden />
+            Flatten
+          </DomStyleAction>
+        )}
+      </div>
+    ) : null
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40 ${MOBILE_FLUSH_SHELL} ${className}`}
+      className={`overflow-hidden rounded-2xl border ${shell} ${MOBILE_FLUSH_SHELL} ${className}`}
       aria-label="Quick trade"
     >
-      <header className={`flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90 ${MOBILE_HEADER_PAD}`}>
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-            Quick trade
-          </p>
-          <div className="mt-0.5">
-            <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
-          </div>
-          {tradeDisabled ? (
-            <p className="mt-1 text-[10px] text-slate-400">Market data offline</p>
-          ) : null}
-        </div>
+      <div className="relative px-2 py-1.5 max-lg:px-2 max-lg:py-1.5 max-lg:pb-[max(0.35rem,env(safe-area-inset-bottom))]">
         {headerActions ? (
-          <div className="flex shrink-0 items-center gap-0.5">{headerActions}</div>
+          <div className="absolute right-0 top-0 z-10 hidden shrink-0 items-center gap-0.5 lg:flex">
+            {headerActions}
+          </div>
         ) : null}
-        <QtyStepper {...props} variant="light" disabled={tradeDisabled} />
-      </header>
 
-      {presets.length > 0 && (
-        <div className={MOBILE_PRESET_PAD}>
-          <div className="flex w-fit max-w-full justify-center rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1 overflow-x-auto">
-            {presets.map((p) => (
-              <button
-                key={p}
-                type="button"
-                disabled={tradeDisabled}
-                onClick={() => props.onQuantityUpdate(p)}
-                className={`shrink-0 min-w-[2.25rem] h-8 px-2 rounded-lg font-mono text-sm font-semibold tabular-nums transition ${TRADE_OFFLINE_DISABLED_CLASS} ${
-                  qty === p
-                    ? 'bg-violet-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        {tradeDisabled ? (
+          <p className={`mb-1 pr-16 text-[9px] ${offline}`}>Market data offline</p>
+        ) : null}
 
-      <div className={MOBILE_BODY_PAD}>
         {!ui.hideBuySell && (
-          <div className={MOBILE_BUY_SELL_GRID}>
-            <TradeSideButton
-              side="buy"
-              variant="market"
-              disabled={tradeDisabled}
-              onClick={props.onBuy}
-              title="Market buy"
-              className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-            >
-              <TrendingUp className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-              Buy
-            </TradeSideButton>
-            <TradeSideButton
-              side="sell"
-              variant="market"
-              disabled={tradeDisabled}
-              onClick={props.onSell}
-              title="Market sell"
-              className={`${MOBILE_BUY_SELL_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-            >
-              <TrendingDown className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-              Sell
-            </TradeSideButton>
-          </div>
+          <>
+            <div className="flex flex-col gap-1.5 lg:hidden">
+              <div className="relative flex items-center gap-1.5 pr-12">
+                <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+                <MobileQtyInput props={props} isDark={isDark} disabled={tradeDisabled} />
+                <div className="min-w-0 flex-1">{presetQtyStrip}</div>
+                <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
+                  {headerActions ?? null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <TradeSideButton
+                  side="buy"
+                  variant="market"
+                  disabled={tradeDisabled}
+                  onClick={props.onBuy}
+                  title={`Market buy ${qty} contract${qty === 1 ? '' : 's'}`}
+                  className={`${MOBILE_MARKET_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                >
+                  <MobileMarketLabel side="buy" qty={qty} />
+                </TradeSideButton>
+
+                <TradeSideButton
+                  side="sell"
+                  variant="market"
+                  disabled={tradeDisabled}
+                  onClick={props.onSell}
+                  title={`Market sell ${qty} contract${qty === 1 ? '' : 's'}`}
+                  className={`${MOBILE_MARKET_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                >
+                  <MobileMarketLabel side="sell" qty={qty} />
+                </TradeSideButton>
+              </div>
+
+              {mobilePositionActions}
+            </div>
+
+            <div className="hidden flex-col gap-1 lg:flex">
+              <div className="flex items-stretch gap-1.5 pr-14">
+                <TradeSideButton
+                  side="buy"
+                  variant="market"
+                  disabled={tradeDisabled}
+                  onClick={props.onBuy}
+                  title="Market buy"
+                  className={`min-w-0 flex-1 !h-10 gap-1.5 text-xs font-semibold ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                >
+                  <TrendingUp className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                  Buy
+                </TradeSideButton>
+
+                <div className="flex min-w-0 shrink flex-col items-center justify-center gap-0.5 px-0.5">
+                  <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+                  <QtyStepper
+                    {...props}
+                    variant={isDark ? 'dark' : 'light'}
+                    disabled={tradeDisabled}
+                    compact
+                  />
+                </div>
+
+                <TradeSideButton
+                  side="sell"
+                  variant="market"
+                  disabled={tradeDisabled}
+                  onClick={props.onSell}
+                  title="Market sell"
+                  className={`min-w-0 flex-1 !h-10 gap-1.5 text-xs font-semibold ${TRADE_OFFLINE_DISABLED_CLASS}`}
+                >
+                  <TrendingDown className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                  Sell
+                </TradeSideButton>
+              </div>
+
+              {presets.length > 0 && (
+                <div className="flex justify-center overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                  <div className={`flex w-fit max-w-full gap-0.5 rounded-lg border p-0.5 ${presetShell}`}>
+                    {presets.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        disabled={tradeDisabled}
+                        onClick={() => props.onQuantityUpdate(p)}
+                        className={`h-6 min-w-[1.75rem] shrink-0 rounded-md px-1.5 font-mono text-[11px] font-semibold tabular-nums transition ${TRADE_OFFLINE_DISABLED_CLASS} ${
+                          qty === p ? presetActive : presetIdle
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {desktopPositionActions}
+            </div>
+          </>
         )}
 
-        {showPositionActions && positionActionCount > 0 && (
-          <div
-            className={`grid gap-1.5 ${
-              positionActionCount === 1
-                ? 'grid-cols-1'
-                : positionActionCount === 2
-                  ? 'grid-cols-2'
-                  : 'grid-cols-3'
-            }`}
-          >
-            {!ui.hideClosePosition && (
-              <SecondaryAction label="Close" onClick={props.onClose} light disabled={tradeDisabled} />
-            )}
-            {!ui.hideReverse && (
-              <SecondaryAction label="Reverse" onClick={props.onReverse} light disabled={tradeDisabled} />
-            )}
-            {!ui.hideFlattenAll && (
-              <SecondaryAction label="Flatten" onClick={props.onFlatten} light disabled={tradeDisabled} />
-            )}
+        {ui.hideBuySell && (presetQtyStrip || mobilePositionActions) ? (
+          <div className="flex flex-col gap-1.5 lg:hidden">
+            <div className="relative flex items-center gap-1.5 pr-12">
+              <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+              <MobileQtyInput props={props} isDark={isDark} disabled={tradeDisabled} />
+              <div className="min-w-0 flex-1">{presetQtyStrip}</div>
+              <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
+                {headerActions ?? null}
+              </div>
+            </div>
+            {mobilePositionActions}
           </div>
-        )}
+        ) : null}
       </div>
+    </div>
+  )
+}
+
+function PresetQtyStrip({
+  props,
+  presets,
+  qty,
+  isDark,
+  disabled,
+}: {
+  props: TradePanelProps
+  presets: number[]
+  qty: number
+  isDark: boolean
+  disabled?: boolean
+}) {
+  const circle =
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition active:scale-95'
+  const stepBtn = isDark
+    ? 'bg-white/10 text-[#94a3b8] hover:bg-white/15'
+    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+  const presetIdle = isDark
+    ? 'bg-white/10 text-[#94a3b8] hover:bg-white/15'
+    : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+  const presetActive = isDark
+    ? 'bg-[#e8eaed] font-bold text-[#14181f] shadow-sm'
+    : 'bg-slate-900 font-bold text-white shadow-sm'
+
+  return (
+    <div
+      className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-x-auto [-webkit-overflow-scrolling:touch]"
+      aria-label="Quantity"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => props.onQuantityChange(-1)}
+        className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+        aria-label="Decrease quantity"
+      >
+        <Minus className="h-3.5 w-3.5" aria-hidden />
+      </button>
+
+      {presets.map((p) => (
+        <button
+          key={p}
+          type="button"
+          disabled={disabled}
+          onClick={() => props.onQuantityUpdate(p)}
+          className={`${circle} ${TRADE_OFFLINE_DISABLED_CLASS} ${qty === p ? presetActive : presetIdle}`}
+        >
+          {p}
+        </button>
+      ))}
+
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => props.onQuantityChange(1)}
+        className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+        aria-label="Increase quantity"
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden />
+      </button>
     </div>
   )
 }
@@ -265,10 +383,11 @@ function QtyStepper({
   onQuantityBlur,
   variant,
   disabled,
+  compact = false,
 }: Pick<
   TradePanelProps,
   'quantity' | 'onQuantityChange' | 'onQuantityInputChange' | 'onQuantityBlur'
-> & { variant: 'dark' | 'light'; disabled?: boolean }) {
+> & { variant: 'dark' | 'light'; disabled?: boolean; compact?: boolean }) {
   const shell =
     variant === 'dark'
       ? 'border-[#475569] bg-[#020617]'
@@ -279,17 +398,20 @@ function QtyStepper({
       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
   const input = variant === 'dark' ? 'text-[#e6edf3]' : 'text-slate-900'
   const divider = variant === 'dark' ? 'border-[#334155]' : 'border-slate-200'
+  const radius = compact ? 'rounded-md' : 'rounded-xl'
+  const btnPad = compact ? 'px-1.5' : 'px-2.5'
+  const inputW = compact ? 'w-7 text-xs' : 'w-9 text-sm'
 
   return (
-    <div className={`flex items-stretch rounded-xl border overflow-hidden ${shell}`}>
+    <div className={`flex items-stretch overflow-hidden border ${radius} ${shell}`}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => onQuantityChange(-1)}
-        className={`px-2.5 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+        className={`flex items-center justify-center ${btnPad} ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         aria-label="Decrease quantity"
       >
-        <Minus className="w-3.5 h-3.5" aria-hidden />
+        <Minus className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} aria-hidden />
       </button>
       <input
         type="text"
@@ -298,45 +420,69 @@ function QtyStepper({
         disabled={disabled}
         onChange={(e) => onQuantityInputChange(e.target.value)}
         onBlur={onQuantityBlur}
-        className={`no-spinner w-9 bg-transparent text-center text-sm font-bold font-mono tabular-nums outline-none border-x ${divider} ${input}`}
+        className={`no-spinner bg-transparent text-center font-bold font-mono tabular-nums outline-none border-x ${divider} ${input} ${inputW}`}
         aria-label="Contract quantity"
       />
       <button
         type="button"
         disabled={disabled}
         onClick={() => onQuantityChange(1)}
-        className={`px-2.5 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+        className={`flex items-center justify-center ${btnPad} ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         aria-label="Increase quantity"
       >
-        <Plus className="w-3.5 h-3.5" aria-hidden />
+        <Plus className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} aria-hidden />
       </button>
     </div>
   )
 }
 
-function SecondaryAction({
-  label,
+function DomStyleAction({
   onClick,
-  light = false,
-  disabled = false,
+  disabled,
+  title,
+  isDark,
+  tone,
+  compact = false,
+  className = '',
+  children,
 }: {
-  label: string
   onClick: () => void
-  light?: boolean
   disabled?: boolean
+  title: string
+  isDark: boolean
+  tone: 'close' | 'reverse' | 'flatten'
+  compact?: boolean
+  className?: string
+  children: ReactNode
 }) {
+  const toneClass = isDark
+    ? {
+        close: 'border border-slate-600/80 bg-slate-800/70 text-slate-200 hover:border-slate-500 hover:bg-slate-700/80',
+        reverse:
+          'border border-violet-500/35 bg-violet-500/10 text-violet-200 hover:bg-violet-500/16',
+        flatten:
+          'border border-amber-500/40 bg-amber-500/12 text-amber-200 hover:bg-amber-500/20',
+      }[tone]
+    : {
+        close: 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+        reverse: 'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+        flatten: 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+      }[tone]
+
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`h-9 rounded-xl text-[11px] font-semibold transition active:scale-[0.98] ${TRADE_OFFLINE_DISABLED_CLASS} ${
-        light
-          ? 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-          : 'border border-[#475569] bg-[#1e293b]/80 text-[#adbac7] hover:bg-[#334155] hover:text-[#e6edf3]'
-      }`}
+      title={title}
+      aria-label={title}
+      className={`inline-flex items-center justify-center transition-all duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 ${FOCUS_RING} ${toneClass} ${TRADE_OFFLINE_DISABLED_CLASS} ${
+        compact
+          ? 'h-7 min-w-0 w-full gap-0.5 rounded-lg px-1 text-[9px] font-semibold'
+          : 'h-7 w-auto shrink-0 gap-1 rounded-lg px-2.5 text-[10px] font-semibold'
+      } ${className}`}
     >
-      {label}
+      {children}
     </button>
   )
 }

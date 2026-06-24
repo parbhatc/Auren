@@ -170,20 +170,20 @@ export function EvalStatsPanel({
 
       {effectiveTarget != null && passBalance > floor && (
         <div className="space-y-2 pt-1">
-          <div className="flex justify-between items-end gap-2 text-[10px] uppercase tracking-wide font-semibold">
-            <div className={isDark ? 'text-slate-500' : 'text-slate-500'}>
+          <div className="flex justify-between items-end gap-1 sm:gap-2 text-[10px] uppercase tracking-wide font-semibold min-w-0">
+            <div className={`min-w-0 shrink ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               <span className="block">{t('practice.evalStats.start')}</span>
               <span className={`text-sm normal-case tabular-nums ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                 {formatMoney(startBalance)}
               </span>
             </div>
-            <div className={`text-center ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <div className={`min-w-0 shrink text-center ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               <span className="block">{t('practice.evalStats.mll')}</span>
               <span className={`text-sm normal-case tabular-nums ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                 {formatMoney(floor)}
               </span>
             </div>
-            <div className={`text-right ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <div className={`min-w-0 shrink text-right ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
               <span className="block">{t('practice.evalStats.target')}</span>
               <span
                 className={`text-sm normal-case tabular-nums ${isDark ? 'text-violet-300' : 'text-violet-700'}`}

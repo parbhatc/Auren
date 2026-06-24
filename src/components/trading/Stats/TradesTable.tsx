@@ -24,7 +24,7 @@ const TradesTable = ({
         })
       : trades
   return (
-    <div className={`rounded-lg sm:rounded-xl shadow-lg border ${
+    <div className={`min-w-0 rounded-lg sm:rounded-xl shadow-lg border ${
       isDark
         ? 'bg-slate-800/90 border-slate-700 backdrop-blur-sm'
         : 'bg-white/90 border-slate-200 backdrop-blur-sm'
@@ -35,7 +35,7 @@ const TradesTable = ({
         </h2>
         
         {/* Trades Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <table className="w-full">
             <thead>
               <tr className={`border-b ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>

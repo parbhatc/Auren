@@ -11,6 +11,7 @@ import type { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { debugPracticeChartSymbol } from './practiceChartSymbolDebug'
 import { saveLoadedCandlesChunk } from '../debug/candleDebugCapture'
+import { candleDebug } from './candleDebug'
 import { tradeseaDollarsPerPoint, tradeseaDollarsPerTick } from './tradeseaPnL'
 import {
   tradeseaInstrumentsAllSymbolsUrl,
@@ -45,11 +46,8 @@ export type { TradeseaMarketBook } from './tradeseaMarketBook'
 const HISTORY_CACHE_TTL_MS = 90_000
 const HISTORY_MAX_RETRIES = 4
 const HISTORY_RETRY_BASE_MS = 1_200
-/** After MDS `open`, wait for resubscribeAll before candle sync. */
-const MDS_RECONNECT_BACKFILL_MS = 450
-const REFETCH_CANDLES_MIN_INTERVAL_MS = 4_000
-/** Allow MDS to refresh bars this many periods behind the latest seen time. */
-const MAX_BAR_LOOKBACK_PERIODS = 8
+/** Wait for MDS resubscribeAll before verifying book subs. */
+const MDS_OPEN_BOOK_VERIFY_MS = 450
 
 type UdfHistoryResponse = {
   s?: string
@@ -97,14 +95,12 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private historyFetchChain: Promise<unknown> = Promise.resolve()
   private historyInflight = new Map<string, Promise<UdfHistoryResponse>>()
   private historyCache = new Map<string, { expires: number; data: UdfHistoryResponse }>()
-  private lastRefetchCandlesAt = 0
   private chartResetCallback: (() => void) | null = null
   private chartSymbolChangeRequest: ((symbol: string) => void) | null = null
-  private refetchInFlight: Promise<void> | null = null
   private quoteSubs = new Map<string, QuoteSubscription>()
   private quoteBookListenerInstalled = false
   private lastDispatchedQuote = new Map<string, { bid: number; ask: number }>()
-  private reconnectSyncTimer: ReturnType<typeof setTimeout> | null = null
+  private mdsOpenTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: {
     mds: TradeseaMdsClient
@@ -121,7 +117,12 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.ensureMarketBookWired()
     this.offMarketBook.push(
       this.mds.on('open', () => {
-        this.onMdsReconnect()
+        this.onMdsOpen()
+      })
+    )
+    this.offMarketBook.push(
+      this.mds.on('connection', (state) => {
+        if (state === 'connecting') candleDebug.mdsConnecting()
       })
     )
   }
@@ -285,6 +286,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.installQuoteBookListener()
     this.ensureMarketBookSubscription(keys.chartSymbol)
 
+    candleDebug.quotesSubscribe(keys.chartSymbol, listenerGuid)
+
     this.quoteSubs.set(listenerGuid, {
       streamId: keys.streamId,
       symbolKey: keys.symbolKey,
@@ -302,6 +305,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   unsubscribeQuotes(listenerGuid: string): void {
+    if (this.quoteSubs.has(listenerGuid)) {
+      candleDebug.quotesUnsubscribe(listenerGuid)
+    }
     this.quoteSubs.delete(listenerGuid)
   }
 
@@ -311,8 +317,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return this.marketBook.subscribe(listener)
   }
 
-  /** MDS reconnected — sync bootstrap metadata; verify book subs after resubscribeAll. */
-  private onMdsReconnect(): void {
+  /** MDS opened — refresh bootstrap metadata and verify book subs. */
+  private onMdsOpen(): void {
     const streamTickers = new Set<string>()
     let candleResolution = '1'
     for (const [key] of this.subIdByKey.entries()) {
@@ -330,19 +336,15 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       )
     }
 
+    candleDebug.mdsOpen([...streamTickers], candleResolution)
+
     const chartSymbols = [...this.resKeyToChartSymbol.values()]
       .map((s) => String(s || '').trim())
       .filter(Boolean)
 
-    if (this.reconnectSyncTimer) clearTimeout(this.reconnectSyncTimer)
-    // resubscribeAll runs ~150ms after open; sync candles + book only if still missing.
-    this.reconnectSyncTimer = setTimeout(() => {
-      this.reconnectSyncTimer = null
-      for (const resKey of this.subIdByKey.keys()) {
-        const parsed = this.parseResKey(resKey)
-        if (parsed) this.invalidateHistoryCacheForStream(parsed.streamId)
-      }
-      void this.syncCandlesAfterReconnect()
+    if (this.mdsOpenTimer) clearTimeout(this.mdsOpenTimer)
+    this.mdsOpenTimer = setTimeout(() => {
+      this.mdsOpenTimer = null
       for (const label of chartSymbols) {
         const streamId = this.streamSymbol(label)
         if (streamId && this.mds.hasBookSubscriptionsFor(streamId)) {
@@ -351,11 +353,11 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         }
         this.ensureMarketBookSubscription(label)
       }
-    }, MDS_RECONNECT_BACKFILL_MS)
+    }, MDS_OPEN_BOOK_VERIFY_MS)
   }
 
   refreshMdsSubscriptions(): void {
-    this.onMdsReconnect()
+    this.onMdsOpen()
   }
 
   /** Ensure MDS LTP / BBA / depth / quotes for order pad (per stream ticker). */
@@ -365,6 +367,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
     const tracked = this.bookSubIdsByStream.get(streamId)
     if (tracked && tracked.length > 0) {
+      candleDebug.bookSubscribeSkip(chartSymbol, 'dedicated')
       this.logSymbol(
         'ensureMarketBookSubscription:skip',
         { chartSymbol, streamId, reason: 'dedicated' },
@@ -374,6 +377,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     }
     if (this.mds.hasBookSubscriptionsFor(streamId)) {
       this.bookSubIdsByStream.set(streamId, [])
+      candleDebug.bookSubscribeSkip(chartSymbol, 'active')
       this.logSymbol(
         'ensureMarketBookSubscription:skip',
         { chartSymbol, streamId, reason: 'active' },
@@ -386,16 +390,24 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       this.bookSubIdsByStream.delete(streamId)
     }
     this.logSymbol('ensureMarketBookSubscription', { chartSymbol, streamId }, { force: true })
-    const subs = [
-      this.mds.subscribeLtp([streamId]),
-      this.mds.subscribeBestBidAsk([streamId]),
-      this.mds.subscribeQuotes([streamId]),
-      this.mds.subscribeTtv([streamId]),
-    ]
+    const bookEntries: Array<{ kind: string; subId: number }> = []
+    const ltpId = this.mds.subscribeLtp([streamId])
+    bookEntries.push({ kind: 'ltp', subId: ltpId })
+    const bbaId = this.mds.subscribeBestBidAsk([streamId])
+    bookEntries.push({ kind: 'bba', subId: bbaId })
+    const quotesId = this.mds.subscribeQuotes([streamId])
+    bookEntries.push({ kind: 'quotes', subId: quotesId })
+    const ttvId = this.mds.subscribeTtv([streamId])
+    bookEntries.push({ kind: 'ttv', subId: ttvId })
+    const subs = [ltpId, bbaId, quotesId, ttvId]
     if (this.mds.isMarketDepthEntitled()) {
       const depthId = this.mds.subscribeDepth([streamId])
-      if (depthId >= 0) subs.push(depthId)
+      if (depthId >= 0) {
+        subs.push(depthId)
+        bookEntries.push({ kind: 'dom', subId: depthId })
+      }
     }
+    candleDebug.bookSubscribe(chartSymbol, bookEntries)
     this.bookSubIdsByStream.set(streamId, subs)
   }
 
@@ -411,7 +423,27 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     })
   }
 
-  /** TradingView `resetData()` after reconnect backfill (Tradesea fillAllMissingBars + resetChartData). */
+  clearHistoryCache(): void {
+    this.historyCache.clear()
+  }
+
+  /** Drop candle WS subs + listener maps before BWC remount (e.g. MDS reconnect). */
+  teardownCandleStreams(): void {
+    for (const subId of this.subIdByKey.values()) {
+      this.mds.unsubscribe(subId)
+    }
+    this.subIdByKey.clear()
+    this.keyToSubs.clear()
+    this.lastBarTimeByKey.clear()
+    this.lastBarByKey.clear()
+    this.resKeyToChartSymbol.clear()
+    if (this.offCandles) {
+      this.offCandles()
+      this.offCandles = null
+    }
+  }
+
+  /** @deprecated Prefer MDS open listener in AurenChart; kept for callers that set it explicitly. */
   setChartResetCallback(callback: (() => void) | null): void {
     this.chartResetCallback = callback
   }
@@ -460,15 +492,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return bars
   }
 
-  private invalidateHistoryCacheForStream(streamId: string): void {
-    for (const key of [...this.historyCache.keys()]) {
-      if (key.startsWith(`${streamId}|`)) this.historyCache.delete(key)
-    }
-    for (const key of [...this.historyInflight.keys()]) {
-      if (key.startsWith(`${streamId}|`)) this.historyInflight.delete(key)
-    }
-  }
-
   private dispatchBarToSubscribers(
     resKey: string,
     resolution: string,
@@ -479,34 +502,47 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     const subs = this.keyToSubs.get(resKey)
     if (!subs?.size) return
 
-    const periodMs = this.barPeriodMs(resolution)
     const barTime = this.alignBarTimeMs(bar.time, resolution)
     const normalizedBar: Bar = { ...bar, time: barTime }
     const last = this.lastBarTimeByKey.get(resKey) ?? 0
     const alignedLast = last > 0 ? this.alignBarTimeMs(last, resolution) : 0
 
-    // Skip closed bars already on the chart; always allow forming bar (same period) and newer bars.
-    if (!options?.force && alignedLast > 0 && barTime < alignedLast) {
-      const maxLookback = periodMs * MAX_BAR_LOOKBACK_PERIODS
-      if (alignedLast - barTime > maxLookback) return
-      return
-    }
+    const chartSymbolForBar =
+      this.resKeyToChartSymbol.get(resKey) ?? streamId
 
-    if (
-      !options?.force &&
-      alignedLast > 0 &&
-      barTime > alignedLast + periodMs * 1.5
-    ) {
-      void this.scheduleGapFill(resKey, streamId, resolution, alignedLast, barTime)
+    if (!options?.force && alignedLast > 0 && barTime < alignedLast) {
+      candleDebug.skipOlder({
+        chartSymbol: chartSymbolForBar,
+        resolution,
+        barTimeMs: barTime,
+        lastTimeMs: alignedLast,
+      })
+      return
     }
 
     const nextLast = Math.max(alignedLast, barTime)
     this.lastBarTimeByKey.set(resKey, nextLast)
     this.lastBarByKey.set(resKey, normalizedBar)
 
-    const chartSymbolForBar =
-      this.resKeyToChartSymbol.get(resKey) ?? streamId
     this.lastBarByKey.set(this.keyFor(chartSymbolForBar, resolution), normalizedBar)
+
+    if (alignedLast === 0 || barTime > alignedLast) {
+      candleDebug.newBar({
+        chartSymbol: chartSymbolForBar,
+        resolution,
+        barTimeMs: barTime,
+        close: normalizedBar.close,
+        prevTimeMs: alignedLast > 0 ? alignedLast : undefined,
+      })
+    } else {
+      candleDebug.forming({
+        resKey,
+        chartSymbol: chartSymbolForBar,
+        resolution,
+        barTimeMs: barTime,
+        close: normalizedBar.close,
+      })
+    }
 
     subs.forEach((cb) => {
       try {
@@ -523,122 +559,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.tradeHandler?.onRealTimeBar(chartSymbolForBar, resolution, normalizedBar)
   }
 
-  private scheduleGapFill(
-    resKey: string,
-    streamId: string,
-    resolution: string,
-    fromMs: number,
-    toMs: number
-  ): void {
-    void this.fillMissingBarsForKey(resKey, streamId, resolution, fromMs, toMs).catch((err) => {
-      console.warn('[TradeseaDatafeed] gap fill failed:', err)
-    })
-  }
-
-  private async fillMissingBarsForKey(
-    resKey: string,
-    streamId: string,
-    resolution: string,
-    fromMs: number,
-    toMs: number,
-    options?: { reconnectSync?: boolean }
-  ): Promise<void> {
-    const subs = this.keyToSubs.get(resKey)
-    if (!subs?.size) return
-
-    const periodMs = this.barPeriodMs(resolution)
-    const fromSec = Math.floor((fromMs - periodMs) / 1000)
-    const toSec = Math.floor(Math.max(toMs, Date.now()) / 1000) + periodMs
-
-    const params = new URLSearchParams()
-    params.set('connection-user-id', this.userId)
-    params.set('connection-group-id', this.connectionGroupId)
-    params.set('symbol', streamId)
-    params.set('resolution', resolution)
-    params.set('from', String(fromSec))
-    params.set('to', String(toSec))
-    params.set('countback', '500')
-    params.set('currencyCode', 'USD')
-
-    this.invalidateHistoryCacheForStream(streamId)
-    const data = await this.fetchHistoryUdf(params, { skipCache: true })
-    const bars = this.udfRowsToBars(data, resolution)
-    if (!bars.length) return
-
-    const minTime = this.alignBarTimeMs(fromMs, resolution) - periodMs
-    const ordered = bars
-      .filter((b) => b.time >= minTime)
-      .sort((a, b) => a.time - b.time)
-    if (!ordered.length) return
-
-    const alignedLast = this.lastBarTimeByKey.get(resKey)
-    const minDispatch =
-      alignedLast != null && alignedLast > 0
-        ? this.alignBarTimeMs(alignedLast, resolution)
-        : 0
-
-    for (const bar of ordered) {
-      if (minDispatch > 0 && bar.time < minDispatch) continue
-      // reconnectSync: force-apply anchor + gap bars so finalized H/L/C replaces stale forming snapshot
-      const force =
-        Boolean(options?.reconnectSync) ||
-        (minDispatch > 0 && bar.time === minDispatch)
-      this.dispatchBarToSubscribers(resKey, resolution, streamId, bar, { force })
-    }
-
-    const chartSymbol = this.resKeyToChartSymbol.get(resKey)
-    if (chartSymbol) {
-      const info = this.getSymbolInfo(chartSymbol)
-      if (info && bars.length > 0) {
-        this.rememberLastBar(info, resolution, bars[bars.length - 1])
-      }
-    }
-  }
-
-  /** After MDS reconnect: refresh forming bar + any missed closed bars (no full chart reload). */
-  private syncCandlesAfterReconnect(): Promise<void> {
-    const now = Date.now()
-    if (now - this.lastRefetchCandlesAt < REFETCH_CANDLES_MIN_INTERVAL_MS) {
-      return this.refetchInFlight ?? Promise.resolve()
-    }
-    if (this.refetchInFlight) return this.refetchInFlight
-
-    this.lastRefetchCandlesAt = now
-    this.refetchInFlight = (async () => {
-      const tasks: Promise<void>[] = []
-      for (const resKey of this.subIdByKey.keys()) {
-        const parsed = this.parseResKey(resKey)
-        if (!parsed) continue
-        const { streamId, resolution } = parsed
-        const chartSymbol = this.resKeyToChartSymbol.get(resKey) ?? streamId
-        const lastMs =
-          this.lastBarTimeByKey.get(resKey) ??
-          this.lastBarByKey.get(resKey)?.time ??
-          this.lastBarByKey.get(this.keyFor(chartSymbol, resolution))?.time
-        if (!lastMs) continue
-
-        const periodMs = this.barPeriodMs(resolution)
-        const alignedLast = this.alignBarTimeMs(lastMs, resolution)
-        this.invalidateHistoryCacheForStream(streamId)
-        tasks.push(
-          this.fillMissingBarsForKey(
-            resKey,
-            streamId,
-            resolution,
-            alignedLast,
-            Date.now() + periodMs,
-            { reconnectSync: true }
-          )
-        )
-      }
-      await Promise.all(tasks)
-    })().finally(() => {
-      this.refetchInFlight = null
-    })
-
-    return this.refetchInFlight
-  }
-
   private normalizeBarTimeMs(time: number): number {
     if (!Number.isFinite(time) || time <= 0) return Date.now()
     return time < 1e12 ? time * 1000 : time
@@ -646,11 +566,38 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   /** Snap bar open time to resolution boundary (ms) so history + MDS ticks match. */
   private alignBarTimeMs(time: number, resolution: string): number {
-    const periodMs = this.barPeriodMs(resolution)
-    const periodSec = Math.max(1, Math.floor(periodMs / 1000))
+    const periodSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
     const ms = this.normalizeBarTimeMs(time)
     const sec = Math.floor(ms / 1000)
     return Math.floor(sec / periodSec) * periodSec * 1000
+  }
+
+  private alignBarTimeSec(timeSec: number, resolution: string): number {
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
+    const sec = Math.floor(timeSec)
+    return Math.floor(sec / barSec) * barSec
+  }
+
+  private buildHistoryParams(
+    symbol: string,
+    resolution: string,
+    fromSec: number,
+    toSec: number,
+    countback: number
+  ): URLSearchParams {
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
+    const alignedFrom = Math.floor(fromSec / barSec) * barSec
+    const alignedTo = Math.ceil(toSec / barSec) * barSec
+    const params = new URLSearchParams()
+    params.set('connection-user-id', this.userId)
+    params.set('connection-group-id', this.connectionGroupId)
+    params.set('symbol', symbol)
+    params.set('resolution', resolution)
+    params.set('from', String(alignedFrom))
+    params.set('to', String(alignedTo))
+    params.set('countback', String(countback))
+    params.set('currencyCode', 'USD')
+    return params
   }
 
   private normalizeLiveBar(bar: Bar, resolution: string): Bar {
@@ -761,11 +708,17 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   private historyCacheKey(params: URLSearchParams): string {
+    const resolution = params.get('resolution') || '1'
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
+    const from = Number(params.get('from'))
+    const to = Number(params.get('to'))
+    const alignedFrom = Number.isFinite(from) ? Math.floor(from / barSec) * barSec : from
+    const alignedTo = Number.isFinite(to) ? Math.ceil(to / barSec) * barSec : to
     return [
       params.get('symbol'),
-      params.get('resolution'),
-      params.get('from'),
-      params.get('to'),
+      resolution,
+      alignedFrom,
+      alignedTo,
       params.get('countback'),
     ].join('|')
   }
@@ -802,6 +755,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     if (!options?.skipCache) {
       const cached = this.historyCache.get(cacheKey)
       if (cached && cached.expires > now) {
+        const sym = params.get('symbol') || ''
+        const res = params.get('resolution') || '1'
+        candleDebug.cacheHit(sym, res)
         return cached.data
       }
     }
@@ -869,80 +825,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       expires: Date.now() + HISTORY_CACHE_TTL_MS,
     })
     return out
-  }
-
-  /** Historical bars for practice TP/SL replay after reconnect (skips cache). Paginates when needed. */
-  async fetchHistoryBars(
-    chartSymbol: string,
-    resolution: string,
-    fromSec: number,
-    toSec: number
-  ): Promise<Bar[]> {
-    await this.whenSymbolsReady()
-    const symbol = this.streamSymbol(chartSymbol)
-    const from = Math.floor(fromSec)
-    const to = Math.floor(toSec)
-    if (to <= from) return []
-
-    const barSec = tradeseaResolutionToSeconds(resolution)
-    const maxBarsPerRequest = 5000
-    const maxChunkSec = Math.max(barSec, (maxBarsPerRequest - 1) * barSec)
-
-    const merged: Bar[] = []
-    let chunkFrom = from
-
-    while (chunkFrom < to) {
-      const chunkTo = Math.min(to, chunkFrom + maxChunkSec)
-      const chunk = await this.fetchHistoryBarsChunk(symbol, resolution, chunkFrom, chunkTo, barSec)
-      if (chunk.length) {
-        merged.push(...chunk)
-        const lastSec = Math.floor(chunk[chunk.length - 1].time / 1000)
-        const nextFrom = lastSec + barSec
-        chunkFrom = nextFrom > chunkFrom ? nextFrom : chunkTo + barSec
-      } else {
-        chunkFrom = chunkTo + barSec
-      }
-    }
-
-    if (!merged.length) return []
-    const byTime = new Map<number, Bar>()
-    for (const bar of merged) {
-      byTime.set(bar.time, bar)
-    }
-    return [...byTime.values()].sort((a, b) => a.time - b.time)
-  }
-
-  private async fetchHistoryBarsChunk(
-    symbol: string,
-    resolution: string,
-    fromSec: number,
-    toSec: number,
-    barSec: number
-  ): Promise<Bar[]> {
-    const from = Math.floor(fromSec)
-    const to = Math.floor(toSec)
-    if (to <= from) return []
-
-    const estimatedBars = Math.ceil((to - from) / barSec) + 2
-    const countback = Math.min(5000, Math.max(2, estimatedBars))
-
-    const params = new URLSearchParams()
-    params.set('connection-user-id', this.userId)
-    params.set('connection-group-id', this.connectionGroupId)
-    params.set('symbol', symbol)
-    params.set('resolution', resolution)
-    params.set('from', String(from))
-    params.set('to', String(to))
-    params.set('countback', String(countback))
-    params.set('currencyCode', 'USD')
-
-    try {
-      const data = await this.fetchHistoryUdf(params, { skipCache: true })
-      return this.udfRowsToBars(data, resolution).sort((a, b) => a.time - b.time)
-    } catch (err) {
-      console.warn('[TradeseaDatafeed] fetchHistoryBarsChunk failed:', err)
-      return []
-    }
   }
 
   whenSymbolsReady(): Promise<void> {
@@ -1202,9 +1084,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         { force: true }
       )
     }
-    const from = Math.floor(periodParams.from)
-    const to = Math.floor(periodParams.to)
     const barSec = tradeseaResolutionToSeconds(String(resolution))
+    const from = this.alignBarTimeSec(Math.floor(periodParams.from), String(resolution))
+    const to = this.alignBarTimeSec(Math.floor(periodParams.to), String(resolution)) + barSec
     const estimatedBars = Math.ceil((to - from) / barSec) + 2
     const countback = Math.min(
       5000,
@@ -1213,19 +1095,18 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         : Math.max(301, estimatedBars)
     )
 
-    const params = new URLSearchParams()
-    params.set('connection-user-id', this.userId)
-    params.set('connection-group-id', this.connectionGroupId)
-    params.set('symbol', symbol)
-    params.set('resolution', String(resolution))
-    params.set('from', String(from))
-    params.set('to', String(to))
-    params.set('countback', String(countback))
-    params.set('currencyCode', 'USD')
+    const params = this.buildHistoryParams(symbol, String(resolution), from, to, countback)
 
     this.fetchHistoryUdf(params)
       .then((data) => {
         if (data.s === 'no_data' || !data.t?.length) {
+          candleDebug.history({
+            chartSymbol,
+            resolution: String(resolution),
+            bars: 0,
+            noData: true,
+            firstLoad: Boolean(periodParams.firstDataRequest),
+          })
           onResult([], { noData: true })
           return
         }
@@ -1233,6 +1114,14 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           throw new Error(data.errmsg || data.message || `History status: ${data.s}`)
         }
         const bars = this.udfRowsToBars(data, String(resolution))
+        candleDebug.history({
+          chartSymbol,
+          resolution: String(resolution),
+          bars: bars.length,
+          firstTimeMs: bars[0]?.time,
+          lastTimeMs: bars[bars.length - 1]?.time,
+          firstLoad: Boolean(periodParams.firstDataRequest),
+        })
         if (bars.length > 0) {
           this.rememberLastBar(symbolInfo, String(resolution), bars[bars.length - 1])
         }
@@ -1294,11 +1183,26 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       { force: true }
     )
 
-    if (isNewStream) {
-      this.ensureMarketBookSubscription(chartSymbol)
-      const subId = this.mds.subscribeCandles([symbol], [String(resolution)])
-      this.subIdByKey.set(key, subId)
+    const mdsState = this.mds.getConnectionState()
+    const subId = isNewStream
+      ? (() => {
+          this.ensureMarketBookSubscription(chartSymbol)
+          const id = this.mds.subscribeCandles([symbol], [String(resolution)])
+          this.subIdByKey.set(key, id)
+          return id
+        })()
+      : this.subIdByKey.get(key) ?? -1
 
+    candleDebug.subscribe(chartSymbol, String(resolution), subId, {
+      listenerGuid,
+      mdsState,
+    })
+
+    if (isNewStream && mdsState === 'connected') {
+      candleDebug.mdsOpen([symbol], String(resolution))
+    }
+
+    if (isNewStream) {
       if (!this.offCandles) {
         this.offCandles = this.mds.on('candles', (msg) => {
           const streamId = String(msg.id || '')

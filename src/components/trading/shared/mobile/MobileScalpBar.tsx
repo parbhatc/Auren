@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { TradeSideButton } from '../../../common/TradeSideButton'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 import { QuickTradeCard } from './QuickTradeCard'
 import { FloatingTradePadIcon } from './MobileTradeIcons'
+import {
+  COMPACT_MARKET_BTN,
+  MobileQtyStepper,
+} from './mobileQuickTradeUi'
 import {
   getMobileTradePrefs,
   PRACTICE_MOBILE_TRADE_PREFS_EVENT,
@@ -17,89 +21,61 @@ function CompactQuickTrade({
   props,
   isDark,
   onExpand,
+  dockBottom = false,
 }: {
   props: TradePanelProps
   isDark: boolean
   onExpand: () => void
+  dockBottom?: boolean
 }) {
   const tradeDisabled = !isTradePanelTradingEnabled(props)
+  const qty = Number(props.quantity) || 1
   const shell = isDark
     ? 'border-[#475569] bg-[#0f172a]'
     : 'border-slate-200 bg-white'
-  const btn = isDark
+  const iconBtn = isDark
     ? 'text-[#7d8590] hover:bg-[#1e293b] hover:text-[#e6edf3]'
     : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-  const input = isDark ? 'text-[#e6edf3]' : 'text-slate-900'
-  const divider = isDark ? 'border-[#334155]' : 'border-slate-200'
 
   return (
     <div
-      className={`rounded-2xl border px-2 py-2 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-2 ${shell}`}
+      className={`relative rounded-2xl border px-2 py-1.5 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-1.5 ${
+        dockBottom ? 'max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))]' : ''
+      } ${shell}`}
     >
-      <div className="flex items-center gap-2 max-lg:gap-1.5">
-        <button
-          type="button"
-          onClick={onExpand}
-          className={`shrink-0 p-1.5 rounded-lg ${btn}`}
-          aria-label="Expand quick trade"
-          title="Expand quick trade"
-        >
-          <ChevronUp className="w-4 h-4" aria-hidden />
-        </button>
-        <div className="min-w-0 shrink">
-          <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
-        </div>
-        <div
-          className={`flex shrink-0 items-stretch rounded-lg border overflow-hidden ${
-            isDark ? 'border-[#475569] bg-[#020617]' : 'border-slate-200 bg-slate-50'
-          }`}
-        >
-          <button
-            type="button"
-            disabled={tradeDisabled}
-            onClick={() => props.onQuantityChange(-1)}
-            className={`px-2 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-            aria-label="Decrease quantity"
-          >
-            <Minus className="w-3.5 h-3.5" aria-hidden />
-          </button>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={props.quantity}
-            disabled={tradeDisabled}
-            onChange={(e) => props.onQuantityInputChange(e.target.value)}
-            onBlur={props.onQuantityBlur}
-            className={`no-spinner w-8 bg-transparent text-center text-sm font-bold font-mono tabular-nums outline-none border-x ${divider} ${input}`}
-            aria-label="Contract quantity"
-          />
-          <button
-            type="button"
-            disabled={tradeDisabled}
-            onClick={() => props.onQuantityChange(1)}
-            className={`px-2 flex items-center justify-center ${btn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-            aria-label="Increase quantity"
-          >
-            <Plus className="w-3.5 h-3.5" aria-hidden />
-          </button>
-        </div>
+      <button
+        type="button"
+        onClick={onExpand}
+        className={`absolute right-1 top-1 z-10 rounded p-0.5 ${iconBtn}`}
+        aria-label="Expand quick trade"
+        title="Expand quick trade"
+      >
+        <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+      </button>
+
+      <div className="flex items-center gap-1 pr-6">
+        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+
+        <MobileQtyStepper props={props} isDark={isDark} disabled={tradeDisabled} />
+
         <TradeSideButton
           side="buy"
           variant="market"
           disabled={tradeDisabled}
           onClick={props.onBuy}
-          title="Market buy"
-          className={`flex-1 min-w-0 !h-9 max-lg:!h-10 text-xs ${TRADE_OFFLINE_DISABLED_CLASS}`}
+          title={`Market buy ${qty} contract${qty === 1 ? '' : 's'}`}
+          className={`${COMPACT_MARKET_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Buy
         </TradeSideButton>
+
         <TradeSideButton
           side="sell"
           variant="market"
           disabled={tradeDisabled}
           onClick={props.onSell}
-          title="Market sell"
-          className={`flex-1 min-w-0 !h-9 max-lg:!h-10 text-xs ${TRADE_OFFLINE_DISABLED_CLASS}`}
+          title={`Market sell ${qty} contract${qty === 1 ? '' : 's'}`}
+          className={`${COMPACT_MARKET_BTN} ${TRADE_OFFLINE_DISABLED_CLASS}`}
         >
           Sell
         </TradeSideButton>
@@ -114,11 +90,13 @@ export function MobileScalpBar({
   props,
   maxQty,
   isDark,
+  showMobileNav = true,
 }: {
   accountId: string
   props: TradePanelProps
   maxQty: number
   isDark: boolean
+  showMobileNav?: boolean
 }) {
   const [prefs, setPrefs] = useState(() => getMobileTradePrefs(accountId))
 
@@ -167,18 +145,21 @@ export function MobileScalpBar({
     </>
   )
 
+  const dockBottom = !showMobileNav
+
   if (prefs.quickTradeMinimized) {
     return (
       <CompactQuickTrade
         props={props}
         isDark={isDark}
+        dockBottom={dockBottom}
         onExpand={() => setMobileQuickTradeMinimized(accountId, false)}
       />
     )
   }
 
   return (
-    <div className="max-h-[min(42dvh,360px)] overflow-y-auto overscroll-y-contain">
+    <div className="max-lg:overflow-hidden">
       <QuickTradeCard
         props={props}
         maxQty={maxQty}

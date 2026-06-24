@@ -1,6 +1,8 @@
 import { CSSProperties, useEffect, useId, useRef } from 'react'
 import type { AurenChartProps } from '../../types/chart'
 import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import { TradeseaMdsClient } from '../tradesea/TradeseaMdsClient'
+import type { TradeseaStreamConfig } from '../../api/tradesea.api'
 import {
   bwcHasExecutionShapes,
   bwcHasOrderLines,
@@ -16,17 +18,21 @@ import {
 import { setupChartKeyboardShortcuts } from '../../components/common/chartKeyboardShortcuts'
 import { schedulePageScrollReset } from '../../utils/resetPageScroll'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
+import { candleDebug } from '../tradesea/candleDebug'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
-  mds?: unknown
+  mds?: TradeseaMdsClient
   trades?: unknown
   datafeed: TradeseaDatafeed
   streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }
+
+/** After MDS resubscribeAll (~150ms) before forcing a BWC history reload. */
+const CHART_RELOAD_AFTER_MDS_OPEN_MS = 500
 
 function chartShellHtml(chartId: string): string {
   return `
@@ -112,6 +118,60 @@ export default function AurenChart(props: AurenChartProps) {
   const chartId = `auren-chart-${uid}`
 
   const datafeedSource = (props.tradeseaServices as AurenChartServices | null | undefined)?.datafeed
+  const mds = (props.tradeseaServices as AurenChartServices | null | undefined)?.mds
+  const mdsHadConnectedRef = useRef(false)
+  const chartReloadInFlightRef = useRef(false)
+  const chartReloadQueuedRef = useRef(false)
+
+  useEffect(() => {
+    if (!mds || !datafeedSource) return
+    if (mds.getConnectionState() === 'connected') {
+      mdsHadConnectedRef.current = true
+    }
+
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null
+
+    const runChartReload = async () => {
+      const widget = widgetRef.current
+      if (!widget?.reset) return
+      if (chartReloadInFlightRef.current) {
+        chartReloadQueuedRef.current = true
+        return
+      }
+      chartReloadInFlightRef.current = true
+      try {
+        datafeedSource.clearHistoryCache()
+        candleDebug.chartReload()
+        await widget.reset({ data: true })
+        candleDebug.chartReloadDone()
+      } catch (err) {
+        console.warn('[AurenChart] MDS reconnect chart reload failed:', err)
+      } finally {
+        chartReloadInFlightRef.current = false
+        if (chartReloadQueuedRef.current) {
+          chartReloadQueuedRef.current = false
+          void runChartReload()
+        }
+      }
+    }
+
+    const off = mds.on('open', () => {
+      if (!mdsHadConnectedRef.current) {
+        mdsHadConnectedRef.current = true
+        return
+      }
+      if (reloadTimer) clearTimeout(reloadTimer)
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null
+        void runChartReload()
+      }, CHART_RELOAD_AFTER_MDS_OPEN_MS)
+    })
+
+    return () => {
+      off()
+      if (reloadTimer) clearTimeout(reloadTimer)
+    }
+  }, [mds, datafeedSource])
 
   useEffect(() => {
     const shell = shellRef.current
@@ -202,6 +262,8 @@ export default function AurenChart(props: AurenChartProps) {
         })
 
         const sym = widget.getSymbol?.() ?? initialSymbol
+        const res = widget.getResolution?.() ?? resolution
+        candleDebug.chartReady(sym, res)
         notifySymbolChange(sym)
 
         await propsRef.current.onChartReady?.()
@@ -219,7 +281,7 @@ export default function AurenChart(props: AurenChartProps) {
       })
       widgetRef.current?.destroy?.()
       widgetRef.current = null
-      datafeedSource.setChartResetCallback?.(null)
+      datafeedSource.teardownCandleStreams()
       datafeedSource.setChartSymbolChangeRequest?.(null)
       schedulePageScrollReset()
     }

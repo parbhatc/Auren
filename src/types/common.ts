@@ -52,6 +52,7 @@ export interface PageHeaderProps {
   title: string
   subtitle: string
   isDark: boolean
+  compact?: boolean
 }
 
 export interface AuthLinkProps {
@@ -149,6 +150,8 @@ export interface InputFieldProps {
   autoComplete?: string
   isDark: boolean
   error?: { message?: string }
+  compact?: boolean
+  className?: string
 }
 
 export interface ContractQuantityControlProps {

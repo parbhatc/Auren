@@ -22,10 +22,6 @@ import { saveSelectedAccountId } from '../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../constants/trade'
 import { practiceTradePanelClass } from '../Practice/practiceTradeTheme'
 import { EvalStatsPanel } from '../Practice/EvalStatsPanel'
-import {
-  getInitialPracticeShowNav,
-  savePracticeShowNav,
-} from '../../../utils/practiceTradePreferences'
 
 /**
  * Unified Stats page renderer component
@@ -111,9 +107,6 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
     }
 
     const initialCurrentMonth = new Date()
-    if (props.practiceMode) {
-      initialDateRange = { startDate: '', endDate: '' }
-    }
 
     this.state = {
       selectedAccount: 'Account 1',
@@ -144,9 +137,7 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
     
     // Load showNav state from localStorage
     const savedShowNav = localStorage.getItem('trading_show_nav')
-    if (this.props.practiceMode && this.props.practiceAccountId) {
-      this.setState({ showNav: getInitialPracticeShowNav(this.props.practiceAccountId) })
-    } else if (savedShowNav !== null) {
+    if (!this.props.practiceMode && savedShowNav !== null) {
       this.setState({ showNav: savedShowNav === 'true' })
     }
 
@@ -795,7 +786,9 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
     return (
       <div
         className={`${
-          practiceMode ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen'
+          practiceMode
+            ? 'practice-stats-shell min-h-dvh flex flex-col lg:h-dvh lg:max-h-dvh lg:overflow-hidden'
+            : 'min-h-screen'
         } transition-all duration-700 ease-in-out flex ${
           practiceMode
             ? isDark
@@ -806,71 +799,64 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
               : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
         }`}
       >
-        {/* Navigation - Desktop sidebar (animated) */}
-        <div className={`hidden lg:block transition-all duration-300 ease-in-out ${
-          showNav ? `${practiceMode ? 'w-11' : 'w-16'} opacity-100` : 'w-0 opacity-0 overflow-hidden'
-        }`}>
-          {showNav && (
-            <TradingNav
-              compact={practiceMode}
-              isDark={isDark}
-              navigate={navigate}
-              currentPath={window.location.pathname}
-              onToggleNav={() => {
-                this.setState({ showNav: false })
-                if (practiceMode && this.props.practiceAccountId) {
-                  savePracticeShowNav(this.props.practiceAccountId, false)
-                } else {
+        {/* Navigation - Desktop sidebar (non-practice stats only) */}
+        {!practiceMode && (
+          <div className={`hidden lg:block transition-all duration-300 ease-in-out ${
+            showNav ? 'w-16 opacity-100' : 'w-0 opacity-0 overflow-hidden'
+          }`}>
+            {showNav && (
+              <TradingNav
+                compact={false}
+                isDark={isDark}
+                navigate={navigate}
+                currentPath={window.location.pathname}
+                onToggleNav={() => {
+                  this.setState({ showNav: false })
                   localStorage.setItem('trading_show_nav', 'false')
-                }
-              }}
-              showDesktopNav={true}
-              showMobileNav={false}
-            />
-          )}
-        </div>
+                }}
+                showDesktopNav={true}
+                showMobileNav={false}
+              />
+            )}
+          </div>
+        )}
         
-        {/* Mobile Bottom Nav - Animated */}
-        <div className={`lg:hidden fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out transform z-50 ${
-          showNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-        }`}>
-          {showNav && (
-            <TradingNav
-              compact={practiceMode}
-              isDark={isDark}
-              navigate={navigate}
-              currentPath={window.location.pathname}
-              onToggleNav={() => {
-                this.setState({ showNav: false })
-                if (practiceMode && this.props.practiceAccountId) {
-                  savePracticeShowNav(this.props.practiceAccountId, false)
-                } else {
+        {/* Mobile Bottom Nav - non-practice stats only */}
+        {!practiceMode && (
+          <div className={`lg:hidden fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out transform z-50 ${
+            showNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+          }`}>
+            {showNav && (
+              <TradingNav
+                compact={false}
+                isDark={isDark}
+                navigate={navigate}
+                currentPath={window.location.pathname}
+                onToggleNav={() => {
+                  this.setState({ showNav: false })
                   localStorage.setItem('trading_show_nav', 'false')
-                }
-              }}
-              showDesktopNav={false}
-              showMobileNav={true}
-            />
-          )}
-        </div>
+                }}
+                showDesktopNav={false}
+                showMobileNav={true}
+              />
+            )}
+          </div>
+        )}
 
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className={`flex flex-col min-w-0 flex-1 ${practiceMode ? 'lg:min-h-0' : 'min-h-0'}`}>
           {practiceMode ? (
             <TradeHeader
               isDark={isDark}
               navigate={navigate}
               toggleTheme={toggleTheme}
               practiceAccountId={this.props.practiceAccountId}
-              showNav={showNav}
-              onShowNav={() => {
-                this.setState({ showNav: true })
-                if (practiceMode && this.props.practiceAccountId) {
-                  savePracticeShowNav(this.props.practiceAccountId, true)
-                } else {
-                  localStorage.setItem('trading_show_nav', 'true')
-                }
-              }}
+              showNav
+              onShowNav={() => {}}
+              hideNavToggle
               showStatsBar={false}
+              showAccountSelector={false}
+              showTradingSettings={false}
+              showLogoAlways
             />
           ) : (
           <StatsHeader
@@ -912,14 +898,14 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
           <main
             className={
               practiceMode
-                ? 'flex-1 min-h-0 flex flex-col px-2 py-2 pb-20 lg:pb-2 overflow-hidden'
+                ? 'flex flex-col px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:flex-1 lg:min-h-0 lg:overflow-hidden'
                 : 'flex-1 overflow-auto py-3 sm:py-4 pb-20 lg:pb-4 px-4 sm:px-6 lg:px-8'
             }
           >
           <div
             className={
               practiceMode
-                ? `flex-1 min-h-0 overflow-auto p-3 sm:p-4 ${practiceTradePanelClass(isDark)}`
+                ? `min-w-0 p-3 sm:p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden practice-stats-scroll ${practiceTradePanelClass(isDark)}`
                 : ''
             }
           >

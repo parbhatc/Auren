@@ -1,6 +1,8 @@
 import type { Bar, IDatafeedChartApi, LibrarySymbolInfo, ResolutionString } from '../../types/chart'
 import { tradeseaResolutionToSeconds } from '../tradesea/tradeseaResolutions'
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import { candleDebug } from '../tradesea/candleDebug'
+import { librarySymbolDisplayName } from '../tradesea/tradeseaSymbolInfo'
 
 type BwcResolution = { id: string; label: string; sec: number }
 
@@ -103,6 +105,19 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
       const now = Math.floor(Date.now() / 1000)
       const from = periodParams.from ?? now - 86400 * 7
       const to = periodParams.to ?? now
+      const chartSymbol = librarySymbolDisplayName(symbolInfo)
+      const barSec = secForResolution(resolution)
+      const requestBars =
+        periodParams.countBack != null
+          ? Math.max(1, periodParams.countBack)
+          : Math.max(1, Math.ceil((to - from) / barSec) + 2)
+      candleDebug.bwcGetBarsRequest({
+        chartSymbol,
+        resolution,
+        bars: requestBars,
+        fromSec: from,
+        toSec: to,
+      })
       return new Promise<{ bars: Bar[]; noData?: boolean }>((resolve, reject) => {
         source.getBars(
           symbolInfo,
@@ -113,11 +128,21 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
             countBack: periodParams.countBack,
             firstDataRequest: periodParams.firstDataRequest,
           },
-          (bars, meta) =>
-            resolve({
-              bars: bars.map(normalizeBarForBwc),
+          (bars, meta) => {
+            const normalized = bars.map(normalizeBarForBwc)
+            candleDebug.bwcGetBarsResult({
+              chartSymbol,
+              resolution,
+              bars: normalized.length,
+              firstTimeSec: normalized[0]?.time,
+              lastTimeSec: normalized[normalized.length - 1]?.time,
               noData: meta.noData,
-            }),
+            })
+            resolve({
+              bars: normalized,
+              noData: meta.noData,
+            })
+          },
           reject
         )
       })
@@ -129,6 +154,12 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
       onTick: (bar: Bar) => void,
       listenerGuid: string
     ) {
+      const chartSymbol = librarySymbolDisplayName(symbolInfo)
+      candleDebug.bwcSubscribeBars({
+        chartSymbol,
+        resolution,
+        listenerGuid,
+      })
       source.subscribeBars(
         symbolInfo,
         resolution as ResolutionString,
@@ -151,6 +182,14 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
       onQuotes: (quotes: unknown[]) => void,
       listenerGuid: string
     ) {
+      const list = Array.isArray(symbolInfos) ? symbolInfos : [symbolInfos]
+      const info = list[0]
+      if (info) {
+        candleDebug.bwcSubscribeQuotes({
+          chartSymbol: librarySymbolDisplayName(info),
+          listenerGuid,
+        })
+      }
       source.subscribeQuotes?.(symbolInfos, onQuotes, listenerGuid)
     },
 
@@ -174,6 +213,12 @@ export type BwcWidget = {
   getResolution?: () => string
   setSymbol?: (symbol: string) => void | Promise<void>
   reload?: (opts?: { force?: boolean }) => void | Promise<unknown>
+  reset?: (opts?: {
+    price?: boolean
+    time?: boolean
+    data?: boolean
+    viewport?: boolean
+  }) => void | Promise<unknown>
   destroy?: () => void
   onChartReady?: (cb: () => void) => void
   onShortcut?: (shortcut: (string | number)[], cb: () => void) => void
