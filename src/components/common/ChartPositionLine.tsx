@@ -6,6 +6,7 @@ import {
   TRADING_SIDE_CHART,
 } from '../../constants/tradingSide'
 import { debugTradeseaSl } from '../../services/tradesea/tradeseaDebug'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 import type { OrderSide } from '../../types/order'
 import { resolvePositionLineBracketType } from '../../utils/practiceBracketMath'
 
@@ -25,6 +26,8 @@ class ChartPositionLine {
   private line: any
   /** Prevents duplicate TV order lines while createOrderLine is in flight. */
   private orderLineCreatePromise: Promise<any> | null = null
+  private lastPositionPnlText = ''
+  private lastPositionProfit = true
 
   constructor(props: ChartPositionLineProps) {
     this.props = props
@@ -40,6 +43,8 @@ class ChartPositionLine {
   /** Clear TV widget ref after remove() so sync does not touch a destroyed line. */
   detachTvLine(): void {
     this.line = null
+    this.lastPositionPnlText = ''
+    this.lastPositionProfit = true
   }
 
   private setTvLineText(tvLine: any, text: string): void {
@@ -267,22 +272,56 @@ class ChartPositionLine {
     if(!this.line || !bar){
       return;
     }
+    if (isBwcChartPanning()) {
+      whenBwcPanEnds(() => this.updatePositionLineByBar(bar, size, tickSize, tickValue))
+      return
+    }
     if(this.line.isMoving){
       return;
     }
-    let barClose = bar.close;
-    let entryPrice = this.props.entryPrice;
-    let pnl = this.calcPnL(entryPrice, barClose, size, tickSize, tickValue);
-    let text = this.formatDollar(pnl, "-")
-    this.line.setPrice(entryPrice);
-    this.setTvLineText(this.line, text);
-    this.line.setQuantity(size.toString());
-    if(pnl >= 0){
-      this.setLineColor(this.line);
-    }else{
-      this.setLineColor(this.line, false);
+    const barClose = bar.close;
+    const entryPrice = this.props.entryPrice;
+    const pnl = this.calcPnL(entryPrice, barClose, size, tickSize, tickValue);
+    const profit = pnl >= 0;
+    const text = this.formatDollar(pnl, "-");
+    const textChanged = text !== this.lastPositionPnlText;
+    const zoneChanged = profit !== this.lastPositionProfit;
+    if (!textChanged && !zoneChanged) {
+      return;
     }
-    this.applyPositionPillOffset(this.line);
+    const { fill, text: textColor } = chartLineColors(profit);
+    try {
+      if (typeof this.line.applyAppearance === "function") {
+        const patch: { text?: string; profit?: boolean; fill?: string; textColor?: string } = {};
+        if (textChanged) {
+          this.lastPositionPnlText = text;
+          patch.text = text;
+        }
+        if (zoneChanged) {
+          this.lastPositionProfit = profit;
+          patch.profit = profit;
+          patch.fill = fill;
+          patch.textColor = textColor;
+        }
+        this.line.applyAppearance(patch);
+      } else {
+        if (textChanged) {
+          this.lastPositionPnlText = text;
+          this.line.setText(text);
+        }
+        if (zoneChanged) {
+          this.lastPositionProfit = profit;
+          this.applyChartLineColor(this.line, profit);
+        }
+      }
+    } catch (err) {
+      debugTradeseaSl('chart:line-update-error', {
+        symbol: this.props.symbol,
+        lineType: 'position',
+        message: err instanceof Error ? err.message : String(err),
+      })
+      this.detachTvLine()
+    }
   }
   
   private async createStopLossLine(){

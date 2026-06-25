@@ -3,20 +3,53 @@
  * Manages caching of trade-related data for charts
  */
 
-import ChartPositionCache from "./ChartPositionCache"
+import { BwcPositionBridge, BwcPositionLineHandle, type BwcWidgetWithOverlay } from '../../chart/bwcPositionBridge'
 import { chartSymbolToProductRoot } from '../../services/tradesea/tradeseaSymbolInfo'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 
 class ChartTradeCache {
   protected handler: any
   protected chart: any
+  protected widget: any
   protected cache: Map<string, any>
   protected create_stop_loss_and_take_profit_lines: boolean = true
+  private bwcPositionBridge: BwcPositionBridge | null = null
+  private pendingRealtimeWhilePan: {
+    symbol: string
+    bar: unknown
+    tickSize: number | null
+    tickValue: number | null
+  } | null = null
 
-  constructor(handler: any, chart: any) {
+  constructor(handler: any, chartOrWidget: any) {
     this.handler = handler
-    this.chart = chart
+    if (chartOrWidget?.chart && typeof chartOrWidget.chart === 'function') {
+      this.widget = chartOrWidget
+      this.chart = chartOrWidget.chart()
+    } else {
+      this.widget = handler?.widget ?? null
+      this.chart = chartOrWidget
+    }
     this.cache = new Map<string, any>()
     this.create_stop_loss_and_take_profit_lines = true
+  }
+
+  getWidget(): unknown {
+    return this.widget ?? this.handler?.widget ?? null
+  }
+
+  /** Chart position pill UPL — driven by BWC onLiveBar, not trade-handler bars. */
+  protected onPositionUplChange(_pnl: number): void {}
+
+  private getPositionBridge(): BwcPositionBridge | null {
+    const widget = this.getWidget() as BwcWidgetWithOverlay | null
+    if (!widget?.positionOverlay) return null
+    if (!this.bwcPositionBridge) {
+      this.bwcPositionBridge = new BwcPositionBridge(widget, this, (pnl) =>
+        this.onPositionUplChange(pnl)
+      )
+    }
+    return this.bwcPositionBridge
   }
 
   protected calcPnL(entryPrice: number, currentPrice: number, positionSize: number, tickSize: number, tickValue: number): number {
@@ -69,6 +102,7 @@ class ChartTradeCache {
   }
 
   onFlattenAllPosition() {
+    this.getPositionBridge()?.clear()
     // Remove all position lines
     for(let [, position] of this.cache){
       if(position){
@@ -147,36 +181,76 @@ class ChartTradeCache {
     return null
   }
 
+  /** Active chart position for BWC `onLiveBar` UPL updates. */
+  getActivePositionForUpl(): { key: string; entry: number; contracts: number } | null {
+    const resolved = this.getPositionForActiveChart()
+    if (!resolved?.position?.contracts) return null
+    return {
+      key: resolved.key,
+      entry: Number(resolved.position.entry),
+      contracts: Number(resolved.position.contracts),
+    }
+  }
+
+  calcMarkPnl(cacheKey: string, entry: number, mark: number, contracts: number): number {
+    const datafeed = this.getDatafeed()
+    const tickSize = datafeed?.getTickSize?.(cacheKey) ?? 0.25
+    const tickValue = datafeed?.getTickValue?.(cacheKey) ?? 0.5
+    return this.calcPnL(entry, mark, contracts, tickSize, tickValue)
+  }
+
+  /** Live bar hook for bracket fills (BWC onLiveBar path). */
+  notifyLiveBracketBar(
+    cacheKey: string,
+    bar: { low?: number; high?: number; close?: number; open?: number; time?: number }
+  ): void {
+    this.onLiveBracketBar(cacheKey, bar)
+  }
+
+  protected onLiveBracketBar(
+    _cacheKey: string,
+    _bar: { low?: number; high?: number; close?: number; open?: number; time?: number }
+  ): void {}
+
   onRealTimeBar(symbol: string, bar: any, tickSize: number|null = null, tickValue: number|null = null) {
+    if (isBwcChartPanning()) {
+      this.pendingRealtimeWhilePan = { symbol, bar, tickSize, tickValue }
+      whenBwcPanEnds(() => this.flushPanDeferredRealtime())
+      return
+    }
+
+    this.runRealTimeBar(symbol, bar, tickSize, tickValue)
+  }
+
+  /** Flush bar-driven trade overlay work deferred during chart pan. */
+  flushPanDeferredRealtime(): void {
+    const pending = this.pendingRealtimeWhilePan
+    this.pendingRealtimeWhilePan = null
+    if (!pending) return
+    this.runRealTimeBar(pending.symbol, pending.bar, pending.tickSize, pending.tickValue)
+  }
+
+  private runRealTimeBar(symbol: string, bar: any, tickSize: number|null = null, tickValue: number|null = null) {
     const resolved = this.getPositionForActiveChart(symbol)
     const cacheKey = resolved?.key ?? symbol
     let position = resolved?.position ?? this.cache.get(symbol)
 
     if(position){
-      // If position exists but has no line yet, create it now that we have bars
       if(!position.line && bar && bar.close !== null && bar.close !== undefined){
         const update = this.symbolMatchesActiveChart(symbol)
-        
         if(update){
           const currentPrice = bar.close || position.entry
           const line = this.createLines(cacheKey, position.entry, currentPrice, position.contracts, position.stopLoss, position.takeProfit)
           if(line){
             position.line = line
-            if(bar.close && bar.close !== position.entry){
-              line.updatePositionLine(position.entry, bar.close, position.contracts)
-            }
           }
         }
       }
-      
+
       if(!tickSize){
         let datafeed = this.getDatafeed()
         tickSize = datafeed.getTickSize(cacheKey)
         tickValue = datafeed.getTickValue(cacheKey)
-      }
-      // Only update position line if it exists (line is created when symbol matches chart symbol)
-      if (position.line && typeof position.line.get === 'function') {
-        position.line.get("position")?.updatePositionLineByBar(bar, position.contracts, tickSize, tickValue)
       }
       this.handlePriceUpdate(cacheKey, position.entry, bar, tickSize, tickValue)
     }
@@ -194,7 +268,7 @@ class ChartTradeCache {
         }
         if(position.line && typeof position.line.updatePositionLine === 'function'){
           position.line.updatePositionLine(position.entry, lastBar?.close ?? position.entry, position.contracts)
-        }else{
+        }else if(!position.line){
           let line = this.createLines(symbol, position.entry, lastBar?.close ?? position.entry, position.contracts, position.stopLoss, position.takeProfit)
           position.line = line;
         }
@@ -229,10 +303,14 @@ class ChartTradeCache {
       let isAddingContracts = isLong ? contracts > 0 : contracts < 0
 
       if(totalContracts === 0 || (isLong && totalContracts < 1) || (!isLong && totalContracts > 0)){
-        this.handleClosePosition(position, lastBarClose, lastBarTime)
-        if(totalContracts !== 0){
-          console.log('[Chart Trade Cache] reopened position: ', symbol, totalContracts)
-          this.onOpenPosition(symbol, price, totalContracts)
+        const reopenContracts = totalContracts
+        if (Math.abs(position.contracts) >= 1) {
+          this.handleClosePosition(position, lastBarClose, lastBarTime)
+        } else {
+          this.clearPositionLocal(position)
+        }
+        if (reopenContracts !== 0) {
+          return this.onOpenPosition(cacheKey, price, reopenContracts, stopLoss, takeProfit, entryTime, id, stopLossOrderId, takeProfitOrderId)
         }
         return null
       }
@@ -260,20 +338,6 @@ class ChartTradeCache {
         // Use current bar price if available, otherwise use entry price
         const currentPrice = lastBarClose || price
         line = this.createLines(cacheKey, price, currentPrice, contracts, stopLoss, takeProfit)
-        
-        if(line){
-          if(lastBar.close && lastBar.close !== price){
-            line.updatePositionLine(price, lastBar.close, contracts)
-          }
-        }
-        // Immediately update the line with current bar if available
-        if (line && lastBar && lastBar.close && lastBar.close !== price) {
-          setTimeout(() => {
-            if (line && typeof line.updatePositionLine === 'function') {
-              line.updatePositionLine(price, lastBar.close, contracts)
-            }
-          }, 100)
-        }
       } else {
         // No bar available yet - defer line creation until bars are loaded
         // The line will be created when onRealTimeBar is called with the first bar
@@ -313,28 +377,15 @@ class ChartTradeCache {
         position.contracts += contracts
       }
 
-      if(position.type === 'long'){
-        if(position.contracts < 1){
-          if(position.line){
-            if (typeof position.line.removeAll === 'function') {
-              position.line.removeAll()
-            } else if (typeof position.line.remove === 'function') {
-              position.line.remove('position')
-            }
+      if (Math.abs(position.contracts) < 1) {
+        if(position.line){
+          if (typeof position.line.removeAll === 'function') {
+            position.line.removeAll()
+          } else if (typeof position.line.remove === 'function') {
+            position.line.remove('position')
           }
-          update = false
         }
-      } else if(position.type === 'short'){
-        if(position.contracts < 1){
-          if(position.line){
-            if (typeof position.line.removeAll === 'function') {
-              position.line.removeAll()
-            } else if (typeof position.line.remove === 'function') {
-              position.line.remove('position')
-            }
-          }
-          update = false
-        }
+        update = false
       }
       if(update){
         this.handleUpdateSize(oldSize, position.contracts, position)
@@ -406,15 +457,19 @@ class ChartTradeCache {
   handleOpenPosition(_position: any) {
   }
     
-  handleClosePosition(position: any, _price: number, _exitTime: number, _context: string | undefined = undefined) { 
+  /** Drop cache + chart lines only (no broker / WS close). */
+  clearPositionLocal(position: { symbol: string; line?: { removeAll?: () => void } | null }) {
     this.cache.delete(position.symbol)
-    if(position.line && typeof position.line.removeAll === 'function'){
+    if (position.line && typeof position.line.removeAll === 'function') {
       position.line.removeAll()
     }
-
     if (this.cache.size === 0 && typeof this.handler?.onAllPositionsClosed === 'function') {
       this.handler.onAllPositionsClosed()
     }
+  }
+
+  handleClosePosition(position: any, _price: number, _exitTime: number, _context: string | undefined = undefined) { 
+    this.clearPositionLocal(position)
   }
   
   handleUpdateSize(_oldSize: number, newSize: number, position: any) {
@@ -435,19 +490,16 @@ class ChartTradeCache {
     }
   }
 
-  createLines(symbol: string, entryPrice: number, price: number, contracts: number, stopLoss: number | null | undefined, takeProfit: number | null | undefined){
-    let line = new ChartPositionCache(symbol, this)
-    line.createPositionLine(entryPrice, price, contracts, this.create_stop_loss_and_take_profit_lines)
-    if(stopLoss){
-      line.createStopLossLine(entryPrice, stopLoss, contracts)
-    }
-    if(takeProfit){
-      line.createTakeProfitLine(entryPrice, takeProfit, contracts)
-    }
-    return line;
+  createLines(symbol: string, entryPrice: number, _price: number, contracts: number, stopLoss: number | null | undefined, takeProfit: number | null | undefined){
+    const bridge = this.getPositionBridge()
+    if (!bridge) return null
+    void bridge.sync(symbol, entryPrice, contracts, stopLoss ?? null, takeProfit ?? null, {
+      createBrackets: this.create_stop_loss_and_take_profit_lines,
+    })
+    return bridge.createCompatHandle(symbol)
   }
 
-  setData(symbol: string, entry: number, stopLoss: number | null, takeProfit: number | null, contracts: number, entryTime: number, line: ChartPositionCache | null | undefined = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null) {
+  setData(symbol: string, entry: number, stopLoss: number | null, takeProfit: number | null, contracts: number, entryTime: number, line: BwcPositionLineHandle | null | undefined = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null) {
     let data = {symbol, entry, stopLoss, takeProfit, contracts, type: contracts > 0 ? "long" : "short", entryTime, line, id, stopLossOrderId, takeProfitOrderId, positionId: null as string | null}
     this.cache.set(symbol, data)
     return data

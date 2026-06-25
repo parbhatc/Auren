@@ -28,31 +28,87 @@ function isShortStopHit(stopLoss: number, ltp: number): boolean {
 }
 
 /**
- * Long take profit — supports targets above market (ltp >= tp) and pullback
- * targets between entry and market (ltp <= tp).
+ * Long take profit — standard target above entry fills when market trades at/through TP.
+ * TP at/below entry uses limit-style (ltp <= target).
  */
 function isLongTakeProfitHit(entry: number, takeProfit: number, ltp: number): boolean {
-  if (takeProfit > ltp) {
+  if (takeProfit > entry) {
     return ltp >= takeProfit
   }
-  if (takeProfit > entry && ltp > takeProfit) {
+  return ltp <= takeProfit
+}
+
+/**
+ * Short take profit — standard target below entry fills when market trades at/through TP.
+ */
+function isShortTakeProfitHit(entry: number, takeProfit: number, ltp: number): boolean {
+  if (takeProfit < entry) {
     return ltp <= takeProfit
   }
   return ltp >= takeProfit
 }
 
+export type BracketCrossHit = {
+  reason: 'stop_loss' | 'take_profit'
+  exitPrice: number
+}
+
 /**
- * Short take profit — supports targets below market (ltp <= tp) and pullback
- * targets between market and entry (ltp >= tp).
+ * Detect bracket fill on this tick, including gaps between the previous and current mark.
+ * Stop is evaluated before target when both cross on the same step.
  */
-function isShortTakeProfitHit(entry: number, takeProfit: number, ltp: number): boolean {
-  if (takeProfit < ltp) {
-    return ltp <= takeProfit
+export function resolveBracketCrossHit(
+  position: BracketPosition,
+  prevLtp: number | null | undefined,
+  ltp: number
+): BracketCrossHit | null {
+  if (!Number.isFinite(ltp)) return null
+
+  const stopLoss = position.stopLoss
+  const takeProfit = position.takeProfit
+  if (stopLoss == null && takeProfit == null) return null
+
+  const isLong = isLongPosition(position)
+  const entry = entryPrice(position)
+  const prev = prevLtp != null && Number.isFinite(prevLtp) ? prevLtp : null
+
+  if (isLong) {
+    if (stopLoss != null) {
+      if (ltp <= stopLoss && (prev == null || prev > stopLoss)) {
+        return { reason: 'stop_loss', exitPrice: stopLoss }
+      }
+    }
+    if (takeProfit != null && entry != null) {
+      if (takeProfit > entry) {
+        if (ltp >= takeProfit && (prev == null || prev < takeProfit)) {
+          return { reason: 'take_profit', exitPrice: takeProfit }
+        }
+      } else if (ltp <= takeProfit && (prev == null || prev > takeProfit)) {
+        return { reason: 'take_profit', exitPrice: takeProfit }
+      }
+    } else if (takeProfit != null && ltp >= takeProfit && (prev == null || prev < takeProfit)) {
+      return { reason: 'take_profit', exitPrice: takeProfit }
+    }
+  } else {
+    if (stopLoss != null) {
+      if (ltp >= stopLoss && (prev == null || prev < stopLoss)) {
+        return { reason: 'stop_loss', exitPrice: stopLoss }
+      }
+    }
+    if (takeProfit != null && entry != null) {
+      if (takeProfit < entry) {
+        if (ltp <= takeProfit && (prev == null || prev > takeProfit)) {
+          return { reason: 'take_profit', exitPrice: takeProfit }
+        }
+      } else if (ltp >= takeProfit && (prev == null || prev < takeProfit)) {
+        return { reason: 'take_profit', exitPrice: takeProfit }
+      }
+    } else if (takeProfit != null && ltp <= takeProfit && (prev == null || prev > takeProfit)) {
+      return { reason: 'take_profit', exitPrice: takeProfit }
+    }
   }
-  if (takeProfit < entry && ltp < takeProfit) {
-    return ltp >= takeProfit
-  }
-  return ltp <= takeProfit
+
+  return null
 }
 
 /**

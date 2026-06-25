@@ -13,9 +13,10 @@ import {
   entryTimeToMs,
   writeBracketCheckpointSec,
 } from './practiceBracketReplay'
-import { resolveBracketLtpHit } from '../../utils/practiceBracketMath'
+import { resolveBracketCrossHit } from '../../utils/practiceBracketMath'
 
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import { isBwcChartPanning } from '../../utils/bwcPan'
 
 
 
@@ -32,6 +33,28 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   private closingBracketIds = new Set<string>()
 
+  private bookTickRaf: number | null = null
+
+  private pendingBookStreamIds = new Set<string>()
+
+  /** Previous mark per cache key — detect bracket crosses between ticks. */
+  private lastBracketMark = new Map<string, number>()
+
+  private pendingBracketCloses = new Map<
+    string,
+    { price: number; time?: number; reason: 'stop_loss' | 'take_profit' }
+  >()
+
+  private readonly onChartLayoutResize = () => {
+    const widget = this.getWidget() as {
+      positionOverlay?: { refreshLayout?: () => void }
+      orderLines?: { requestRefresh?: () => void }
+    } | null
+    widget?.positionOverlay?.refreshLayout?.()
+    widget?.orderLines?.requestRefresh?.()
+    this.scheduleReconcilePositionLines()
+  }
+
   constructor(
 
     private tradeHandler: PracticeTradeHandler,
@@ -45,6 +68,11 @@ export class PracticeTradeCache extends ChartTradeCache {
     super(tradeHandler, chart)
 
     this.accountId = accountId
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.onChartLayoutResize, { passive: true })
+      window.visualViewport?.addEventListener('resize', this.onChartLayoutResize, { passive: true })
+    }
 
   }
 
@@ -184,6 +212,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     this.cache.delete(cacheKey)
     this.positionIds.delete(cacheKey)
+    this.clearBracketMark(cacheKey)
     this.tradeHandler.refreshUnrealizedPl()
     this.tradeHandler.onAccountUpdated?.()
     this.tradeHandler.syncAccountBlownState()
@@ -253,6 +282,10 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       this.handleOpenPosition(data)
 
+      if (mark != null && Number.isFinite(mark)) {
+        this.lastBracketMark.set(cacheKey, mark)
+      }
+
       if (stopLoss != null || takeProfit != null) {
         this.seedBracketCheckpoint(cacheKey, entryTime ?? data.entryTime)
       }
@@ -284,6 +317,10 @@ export class PracticeTradeCache extends ChartTradeCache {
       takeProfitOrderId
 
     )
+
+    if (mark != null && Number.isFinite(mark)) {
+      this.lastBracketMark.set(cacheKey, mark)
+    }
 
     if (stopLoss != null || takeProfit != null) {
       this.seedBracketCheckpoint(cacheKey, entryTime ?? opened?.entryTime)
@@ -326,6 +363,8 @@ export class PracticeTradeCache extends ChartTradeCache {
   private resolvePositionId(cacheKey: string): string | undefined {
     const direct = this.positionIds.get(cacheKey)
     if (direct) return direct
+    const cached = this.cache.get(cacheKey) as { positionId?: string } | undefined
+    if (cached?.positionId) return String(cached.positionId)
     const product = this.productSymbol(cacheKey).toUpperCase()
     for (const [key, id] of this.positionIds.entries()) {
       if (this.productSymbol(key).toUpperCase() === product) return id
@@ -437,6 +476,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   /** Retry line reconcile until bars / async order lines are ready (post-refresh symbol switches). */
   scheduleReconcilePositionLines(): void {
+    if (isBwcChartPanning()) return
     for (const id of this.reconcileTimers) clearTimeout(id)
     this.reconcileTimers = []
     for (const ms of [0, 200, 600, 1500, 3000]) {
@@ -458,6 +498,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   /** Create chart lines for open positions that match the active chart product (e.g. NQ vs MNQ). */
   reconcilePositionLines(): void {
+    if (isBwcChartPanning()) return
     for (const [cacheKey, position] of this.cache.entries()) {
       if (!position?.contracts) continue
 
@@ -471,7 +512,13 @@ export class PracticeTradeCache extends ChartTradeCache {
       }
 
       if (position.line) {
-        if (this.positionChartLinesReady(position.line)) continue
+        if (this.positionChartLinesReady(position.line)) {
+          const widget = this.getWidget() as {
+            positionOverlay?: { refreshLayout?: () => void }
+          } | null
+          widget?.positionOverlay?.refreshLayout?.()
+          continue
+        }
         const stale = position.line as { removeAll?: () => void }
         stale?.removeAll?.()
         position.line = null
@@ -512,19 +559,23 @@ export class PracticeTradeCache extends ChartTradeCache {
       break
     }
     super.onRealTimeBar(symbol, bar)
-
-    if (bar?.close == null) return
-    const barProduct = this.productSymbol(symbol).toUpperCase()
-    for (const [cacheKey, position] of this.cache.entries()) {
-      if (!position?.contracts) continue
-      if (position.stopLoss == null && position.takeProfit == null) continue
-      if (this.productSymbol(cacheKey).toUpperCase() !== barProduct) continue
-      this.checkLiveBracketFills(cacheKey, bar.close, bar.time)
-    }
   }
 
   /** MDS LTP tick — fastest bracket path while the chart session is online. */
   onMarketBookTick(streamId: string): void {
+    this.pendingBookStreamIds.add(streamId)
+    if (this.bookTickRaf != null) return
+    this.bookTickRaf = requestAnimationFrame(() => {
+      this.bookTickRaf = null
+      const streams = [...this.pendingBookStreamIds]
+      this.pendingBookStreamIds.clear()
+      for (const id of streams) {
+        this.processMarketBookTick(id)
+      }
+    })
+  }
+
+  private processMarketBookTick(streamId: string): void {
     const df = this.getDatafeed()
     if (!df?.getMarketBookForStream) return
     const book = df.getMarketBookForStream(streamId)
@@ -534,10 +585,11 @@ export class PracticeTradeCache extends ChartTradeCache {
     const streamKey = this.normalizeStreamKey(streamId)
     for (const [cacheKey, position] of this.cache.entries()) {
       if (!position?.contracts) continue
-      if (position.stopLoss == null && position.takeProfit == null) continue
       const posStream = this.normalizeStreamKey(this.streamForCacheKey(cacheKey))
       if (posStream !== streamKey) continue
-      this.checkLiveBracketFills(cacheKey, price, book?.updatedAt)
+      this.mergeOverlayBracketsIntoCache(cacheKey)
+      if (position.stopLoss == null && position.takeProfit == null) continue
+      this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
     }
   }
 
@@ -555,21 +607,48 @@ export class PracticeTradeCache extends ChartTradeCache {
     return colon >= 0 ? s.slice(colon + 1) : s
   }
 
-  /** On each LTP: SL on adverse cross; TP on rise or pullback target hit. */
-  private checkLiveBracketFills(
-    cacheKey: string,
-    price: number,
-    time?: number
-  ): void {
-    const position = this.cache.get(cacheKey)
-    if (!position?.contracts) return
+  /** On each mark tick: detect SL/TP cross from previous → current price. */
+  private checkMarkBracketFills(cacheKey: string, mark: number, time?: number): void {
+    this.mergeOverlayBracketsIntoCache(cacheKey)
+    const resolved = this.resolveCachePosition(cacheKey)
+    if (!resolved?.position?.contracts) return
+
+    const key = resolved.key
+    const position = resolved.position
     if (position.stopLoss == null && position.takeProfit == null) return
 
-    const hit = resolveBracketLtpHit(position as never, price)
+    const prev = this.lastBracketMark.get(key)
+    const hit = resolveBracketCrossHit(position as never, prev, mark)
+    this.lastBracketMark.set(key, mark)
     if (!hit) return
 
+    this.closeOnBracketHit(key, position, hit.exitPrice, time, hit.reason)
+  }
+
+  private clearBracketMark(cacheKey: string): void {
+    this.lastBracketMark.delete(cacheKey)
+    const product = this.productSymbol(cacheKey).toUpperCase()
+    for (const key of [...this.lastBracketMark.keys()]) {
+      if (this.productSymbol(key).toUpperCase() === product) {
+        this.lastBracketMark.delete(key)
+      }
+    }
+  }
+
+  private closeOnBracketHit(
+    cacheKey: string,
+    position: Record<string, unknown>,
+    price: number,
+    time: number | undefined,
+    reason: 'stop_loss' | 'take_profit'
+  ): void {
     const posId = this.resolvePositionId(cacheKey)
-    if (!posId || this.closingBracketIds.has(posId)) return
+    if (!posId) {
+      this.pendingBracketCloses.set(cacheKey, { price, time, reason })
+      return
+    }
+    this.pendingBracketCloses.delete(cacheKey)
+    if (this.closingBracketIds.has(posId)) return
     this.closingBracketIds.add(posId)
 
     try {
@@ -587,6 +666,20 @@ export class PracticeTradeCache extends ChartTradeCache {
     } finally {
       this.closingBracketIds.delete(posId)
     }
+  }
+
+  private flushPendingBracketClose(cacheKey: string): void {
+    const pending = this.pendingBracketCloses.get(cacheKey)
+    if (!pending) return
+    const resolved = this.resolveCachePosition(cacheKey)
+    if (!resolved?.position?.contracts) return
+    this.closeOnBracketHit(
+      resolved.key,
+      resolved.position,
+      pending.price,
+      pending.time,
+      pending.reason
+    )
   }
 
   onSymbolChange(_symbol: string): void {
@@ -619,14 +712,12 @@ export class PracticeTradeCache extends ChartTradeCache {
     const posId = this.resolvePositionId(position.symbol)
     const exitTimeSec = Math.floor(entryTimeToMs(exitTime) / 1000)
 
-    if (!posId) {
-      aurenToast.error('Could not close position')
-      return
-    }
-
     const ws = this.tradeHandler.getAccountWs()
-    if (!ws) {
-      aurenToast.error('Account connection unavailable')
+    if (!posId || !ws) {
+      if (!this.tradeHandler.suppressCloseToasts) {
+        aurenToast.error(!posId ? 'Could not close position' : 'Account connection unavailable')
+      }
+      super.handleClosePosition(position, price, exitTime)
       return
     }
 
@@ -848,40 +939,56 @@ export class PracticeTradeCache extends ChartTradeCache {
 
 
 
+  protected onPositionUplChange(pnl: number): void {
+    this.tradeHandler.setUnrealizedPl(pnl)
+  }
+
+  protected onLiveBracketBar(
+    cacheKey: string,
+    bar: { close?: number; open?: number; time?: number }
+  ): void {
+    if (isBwcChartPanning()) return
+    const mark = bar.close ?? bar.open
+    if (mark == null || !Number.isFinite(mark)) return
+    this.checkMarkBracketFills(cacheKey, mark, bar.time)
+  }
+
+  /** Keep cache SL/TP aligned with BWC widget.positionOverlay (source of truth on chart). */
+  private mergeOverlayBracketsIntoCache(cacheKey: string): void {
+    const widget = this.getWidget() as {
+      positionOverlay?: {
+        getPosition: () => {
+          entry: number
+          qty: number
+          stopLoss: number | null
+          takeProfit: number | null
+        } | null
+      }
+    } | null
+    const snap = widget?.positionOverlay?.getPosition()
+    const position = this.cache.get(cacheKey)
+    if (!snap || !position?.contracts) return
+    if (Math.sign(snap.qty) !== Math.sign(Number(position.contracts))) return
+    position.stopLoss = snap.stopLoss
+    position.takeProfit = snap.takeProfit
+  }
+
   async handlePriceUpdate(
-
     symbol: string,
-
-    entryPrice: number,
-
-    bar: { low?: number; high?: number; close?: number; time?: number },
-
-    tickSize?: number,
-
-    tickValue?: number
-
+    _entryPrice: number,
+    bar: { close?: number; time?: number },
+    _tickSize?: number,
+    _tickValue?: number
   ) {
-
-    const ticks = this.resolveTicks(symbol)
-
-    const size = tickSize ?? ticks.tickSize
-
-    const value = tickValue ?? ticks.tickValue
+    if (isBwcChartPanning()) return
 
     const resolved = this.getPositionForActiveChart(symbol)
     const cacheKey = resolved?.key ?? symbol
-    const position = resolved?.position ?? this.getPosition(symbol)
-
-    if (position && bar.close != null) {
-      this.checkLiveBracketFills(cacheKey, bar.close, bar.time)
+    const mark = bar.close
+    if (mark == null || !Number.isFinite(mark)) return
+    if (resolved?.position) {
+      this.checkMarkBracketFills(cacheKey, mark, bar.time)
     }
-
-    if (!position) return
-
-    const pnl = this.calcPnL(entryPrice, bar.close ?? entryPrice, position.contracts as number, size, value)
-
-    this.tradeHandler.setUnrealizedPl(pnl)
-
   }
 
   /** Backend closed the position (SL/TP bracket) — trade already recorded server-side. */
@@ -912,6 +1019,7 @@ export class PracticeTradeCache extends ChartTradeCache {
   applyServerPositionUpdate(position: PracticePosition): void {
     const cacheKey = this.chartCacheKeyForProduct(position.symbol)
     this.positionIds.set(cacheKey, position.id)
+    this.flushPendingBracketClose(cacheKey)
     const existing = this.cache.get(cacheKey)
     if (!existing) return
 

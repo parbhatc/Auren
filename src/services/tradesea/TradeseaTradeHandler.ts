@@ -11,7 +11,7 @@ import {
   calcAccountUnrealizedPl,
   signedContractsFromPosition,
 } from './tradeseaPnL'
-import { findPositionsForInstrument, instrumentsMatch } from './tradeseaPositions'
+import { isBwcChartPanning } from '../../utils/bwcPan'
 import { TradeseaDatafeed, type TradeseaMarketBook } from './TradeseaDatafeed'
 import type { PracticeChartDatafeed, PracticeMarketBook } from '../practice/practiceDatafeed'
 import { TradeseaTradeCache } from './TradeseaTradeCache'
@@ -19,6 +19,7 @@ import { normalizeTradeseaTradeInstrument } from './tradeseaInstrument'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { toTradeseaDelayedTicker } from './tradeseaStreamSymbol'
 import { isMarketClosedApiError, MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
+import { findPositionsForInstrument, instrumentsMatch } from './tradeseaPositions'
 
 export class TradeseaTradeHandler {
   private widget: any = null
@@ -59,6 +60,7 @@ export class TradeseaTradeHandler {
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number }): void {
     if (!this.tradeCache || !bar) return
+    if (isBwcChartPanning()) return
     this.tradeCache.onRealTimeBar(symbol, bar)
     if (bar.close != null) {
       debugTradeseaUpl('bar', { chartSymbol: symbol, markPrice: bar.close })
@@ -159,16 +161,21 @@ export class TradeseaTradeHandler {
       tickValue,
     })
 
-    this.propFirm.setUnrealizedPl(total, { fromStream: false })
-    this.onUnrealizedPnLUpdate?.(total)
-    this.propFirm.notifyAccountInfoChanged?.()
+    const totalRounded = Math.round(total * 100) / 100
+    const prevUpl = this.propFirm.upl
+    this.propFirm.setUnrealizedPl(totalRounded, { fromStream: false })
+    if (prevUpl !== this.propFirm.upl) {
+      this.onUnrealizedPnLUpdate?.(totalRounded)
+    }
   }
 
   /** Called when the chart cache has no open positions left. */
   onAllPositionsClosed(): void {
+    const prevUpl = this.propFirm.upl
     this.propFirm.setUnrealizedPl(0, { fromStream: false })
-    this.onUnrealizedPnLUpdate?.(0)
-    this.propFirm.notifyAccountInfoChanged?.()
+    if (prevUpl !== this.propFirm.upl) {
+      this.onUnrealizedPnLUpdate?.(0)
+    }
   }
 
   handleSymbolChange(symbol: string): void {

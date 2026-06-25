@@ -7,7 +7,8 @@ import {
 } from '../liveData/rithmicChartLive.js'
 import {
   normalizeBarTimeSec,
-  resolveBracketLtpHit,
+  resolveBracketCrossHit,
+  lastLtpByWatchId,
 } from '../../utils/practiceBracketMath.js'
 
 const BRACKET_EXCHANGE = 'CME'
@@ -111,6 +112,7 @@ async function decrementSymbolRef(symbol) {
 
 function removeWatch(positionId) {
   watchesById.delete(positionId)
+  lastLtpByWatchId.delete(positionId)
 }
 
 function ltpFromPayload(payload) {
@@ -151,9 +153,11 @@ function handleChartMarketEvent(_kind, payload) {
   const time = payload.marker ?? payload?.bar?.marker ?? payload?.bar?.time
 
   for (const watch of watchesForSymbol(symbol)) {
-    const reason = resolveBracketLtpHit(watch, ltp)
-    if (!reason) continue
-    void closeByBracket(watch, reason, ltp, time)
+    const prev = lastLtpByWatchId.get(watch.id)
+    const hit = resolveBracketCrossHit(watch, prev, ltp)
+    lastLtpByWatchId.set(watch.id, ltp)
+    if (!hit) continue
+    void closeByBracket(watch, hit.reason, hit.exitPrice, time)
   }
 }
 

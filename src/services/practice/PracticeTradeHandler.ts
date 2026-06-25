@@ -29,6 +29,7 @@ import {
 import { evaluatePracticeRules } from './practiceRules'
 import { evaluatePracticeLockout } from './practiceLockout'
 import { getPracticeDailyRealizedPl } from './practiceSessionReset'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
@@ -42,6 +43,8 @@ export class PracticeTradeHandler {
   private accountWs: PracticeAccountWsClient | null = null
   private accountPositionsHydrated = false
   private marketBookUnsub: (() => void) | null = null
+  private uplRefreshRaf: number | null = null
+  private uplDeferredWhilePan: number | null = null
   private blownEnforcing = false
   private blownModalShown = false
   private passedModalShown = false
@@ -90,10 +93,23 @@ export class PracticeTradeHandler {
   }
 
   setUnrealizedPl(value: number): void {
-    this.upl = value
-    this.propFirm.setUnrealizedPl(value, { fromStream: false })
-    this.onUnrealizedPnLUpdate?.(value)
-    this.propFirm.notifyAccountInfoChanged?.()
+    const rounded = Math.round(value * 100) / 100
+    if (this.upl === rounded) return
+    if (isBwcChartPanning()) {
+      this.uplDeferredWhilePan = rounded
+      whenBwcPanEnds(() => this.flushDeferredUnrealizedPl())
+      return
+    }
+    this.upl = rounded
+    this.propFirm.setUnrealizedPl(rounded, { fromStream: false })
+    this.onUnrealizedPnLUpdate?.(rounded)
+  }
+
+  private flushDeferredUnrealizedPl(): void {
+    if (this.uplDeferredWhilePan == null) return
+    const next = this.uplDeferredWhilePan
+    this.uplDeferredWhilePan = null
+    this.setUnrealizedPl(next)
   }
 
   getAccountInfo(): { balance: number; mll?: number; rpl: number; upl: number } {
@@ -123,7 +139,7 @@ export class PracticeTradeHandler {
       )
     }
 
-    this.tradeCache = new PracticeTradeCache(this, chart, this.practiceAccountId)
+    this.tradeCache = new PracticeTradeCache(this, widget, this.practiceAccountId)
     const df = chartDatafeed ?? this.propFirm.chartServices?.datafeed ?? null
     df?.setTradeHandler(this as never)
 
@@ -243,8 +259,13 @@ export class PracticeTradeHandler {
   /** Sum UP&L for every open position (any symbol), not only the active chart. */
   refreshUnrealizedPl(): void {
     const cache = this.tradeCache
+    const prevUpl = this.upl
     if (!cache?.hasAnyOpenPosition()) {
       this.setUnrealizedPl(0)
+      if (prevUpl !== this.upl) {
+        this.checkBlownWhileTrading()
+        this.checkPassedWhileTrading()
+      }
       return
     }
     const datafeed = this.propFirm.chartServices?.datafeed
@@ -269,8 +290,10 @@ export class PracticeTradeHandler {
       )
     }
     if (anyMark) this.setUnrealizedPl(total)
-    this.checkBlownWhileTrading()
-    this.checkPassedWhileTrading()
+    if (prevUpl !== this.upl) {
+      this.checkBlownWhileTrading()
+      this.checkPassedWhileTrading()
+    }
   }
 
   /** True when realized balance or equity (balance + UP&L) is at or below the drawdown floor. */
@@ -368,6 +391,10 @@ export class PracticeTradeHandler {
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number; low?: number; high?: number; time?: number }): void {
     if (!this.tradeCache || !bar) return
+    if (isBwcChartPanning()) {
+      whenBwcPanEnds(() => this.onRealTimeBar(symbol, _resolution, bar))
+      return
+    }
     const low = bar.low ?? bar.close
     const high = bar.high ?? bar.close
     const close = bar.close
@@ -376,8 +403,24 @@ export class PracticeTradeHandler {
     }
     this.tradeCache.onRealTimeBar(symbol, bar)
     if (close != null) {
-      this.refreshUnrealizedPl()
+      this.scheduleRefreshUnrealizedPl()
     }
+  }
+
+  private scheduleRefreshUnrealizedPl(): void {
+    if (isBwcChartPanning()) {
+      whenBwcPanEnds(() => this.scheduleRefreshUnrealizedPl())
+      return
+    }
+    if (this.uplRefreshRaf != null) return
+    this.uplRefreshRaf = requestAnimationFrame(() => {
+      this.uplRefreshRaf = null
+      if (isBwcChartPanning()) {
+        whenBwcPanEnds(() => this.refreshUnrealizedPl())
+        return
+      }
+      this.refreshUnrealizedPl()
+    })
   }
 
   /** Place a working limit (Join Bid / Join Ask / chart limit / order tab limit). */

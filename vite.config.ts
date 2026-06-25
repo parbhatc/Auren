@@ -1,23 +1,9 @@
-import { createRequire } from 'node:module'
-import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolveBwcRoot } from './scripts/resolve-bwc-root.mjs'
 import { betterweightChartStatic } from './vite.bwcStatic'
 
-const require = createRequire(import.meta.url)
-
-function resolveBetterweightChartRoot(): string {
-  try {
-    const sdkPath = require.resolve('betterweightchart')
-    return path.resolve(path.dirname(sdkPath), '..', '..')
-  } catch {
-    throw new Error(
-      'BetterweightChart is not installed. Run npm install (dependency: github:parbhatc/BetterweightChart)'
-    )
-  }
-}
-
-const bwcRoot = resolveBetterweightChartRoot()
+const bwcRoot = resolveBwcRoot()
 
 export default defineConfig({
   plugins: [react(), betterweightChartStatic(bwcRoot)],

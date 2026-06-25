@@ -257,14 +257,20 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         const handler = (activeFirm as any).getHandler?.()
         if (handler) {
           handler.onUnrealizedPnLUpdate = () => {
-            const accountInfo = activeFirm.getAccountInfo?.()
-            if (accountInfo) {
-              this.lastBalance = accountInfo.balance
-              this.lastRpl = accountInfo.rpl
-              this.lastUpl = accountInfo.upl
-            }
-            this.setState({})
+          const accountInfo = activeFirm.getAccountInfo?.()
+          if (!accountInfo) return
+          if (
+            accountInfo.balance === this.lastBalance &&
+            accountInfo.rpl === this.lastRpl &&
+            accountInfo.upl === this.lastUpl
+          ) {
+            return
           }
+          this.lastBalance = accountInfo.balance
+          this.lastRpl = accountInfo.rpl
+          this.lastUpl = accountInfo.upl
+          this.setState({})
+        }
         }
         import('../../../services/tradesea/tradeseaDebug').then(({ isTradeseaUplDebug }) => {
           if (isTradeseaUplDebug()) {

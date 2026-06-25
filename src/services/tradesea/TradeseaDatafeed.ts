@@ -40,6 +40,7 @@ import {
 } from './tradeseaSymbolInfo'
 import { TradeseaMarketBookStore, type TradeseaMarketBook } from './tradeseaMarketBook'
 import { isSymbolMarketOpen } from '../../utils/marketSession'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 
 export type { TradeseaMarketBook } from './tradeseaMarketBook'
 
@@ -101,6 +102,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private quoteBookListenerInstalled = false
   private lastDispatchedQuote = new Map<string, { bid: number; ask: number }>()
   private mdsOpenTimer: ReturnType<typeof setTimeout> | null = null
+  private tradeBarRaf: number | null = null
+  private pendingTradeBar: { symbol: string; resolution: string; bar: Bar } | null = null
 
   constructor(options: {
     mds: TradeseaMdsClient
@@ -429,6 +432,11 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   /** Drop candle WS subs + listener maps before BWC remount (e.g. MDS reconnect). */
   teardownCandleStreams(): void {
+    if (this.tradeBarRaf != null) {
+      cancelAnimationFrame(this.tradeBarRaf)
+      this.tradeBarRaf = null
+      this.pendingTradeBar = null
+    }
     for (const subId of this.subIdByKey.values()) {
       this.mds.unsubscribe(subId)
     }
@@ -556,7 +564,35 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     if (bookId && Number.isFinite(normalizedBar.close)) {
       this.marketBook.applyLtp(bookId, normalizedBar.close)
     }
-    this.tradeHandler?.onRealTimeBar(chartSymbolForBar, resolution, normalizedBar)
+    this.scheduleTradeHandlerBar(chartSymbolForBar, resolution, normalizedBar)
+  }
+
+  /** Run trade overlay after BWC paints (coalesced to one rAF per frame). */
+  private scheduleTradeHandlerBar(symbol: string, resolution: string, bar: Bar): void {
+    if (!this.tradeHandler) return
+    this.pendingTradeBar = { symbol, resolution, bar }
+    if (isBwcChartPanning()) {
+      whenBwcPanEnds(() => {
+        const pending = this.pendingTradeBar
+        if (!pending || !this.tradeHandler) return
+        this.pendingTradeBar = null
+        this.tradeHandler.onRealTimeBar(pending.symbol, pending.resolution, pending.bar)
+      })
+      return
+    }
+    if (this.tradeBarRaf != null) return
+    this.tradeBarRaf = requestAnimationFrame(() => {
+      this.tradeBarRaf = null
+      const pending = this.pendingTradeBar
+      this.pendingTradeBar = null
+      if (!pending || !this.tradeHandler) return
+      if (isBwcChartPanning()) {
+        this.pendingTradeBar = pending
+        this.scheduleTradeHandlerBar(pending.symbol, pending.resolution, pending.bar)
+        return
+      }
+      this.tradeHandler.onRealTimeBar(pending.symbol, pending.resolution, pending.bar)
+    })
   }
 
   private normalizeBarTimeMs(time: number): number {

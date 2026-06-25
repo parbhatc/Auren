@@ -44,43 +44,6 @@ export class TradeseaTradeCache extends ChartTradeCache {
 
   onRealTimeBar(symbol: string, bar: { close?: number }): void {
     super.onRealTimeBar(symbol, bar)
-    const cacheKey = this.activeChartSymbol()
-    if (cacheKey && bar?.close != null) {
-      this.refreshPositionLinePnl(cacheKey, bar.close)
-    }
-  }
-
-  handlePriceUpdate(
-    _symbol: string,
-    _entryPrice: number,
-    bar: { close?: number },
-    _tickSize: number,
-    _tickValue: number
-  ): void {
-    if (bar?.close != null) {
-      this.handler.updateUnrealizedFromMark(bar.close)
-    }
-  }
-
-  private refreshPositionLinePnl(cacheKey: string, markPrice: number): void {
-    const position = this.getPosition(cacheKey)
-    if (!position?.line || typeof position.line.get !== 'function') return
-
-    const datafeed = this.getDatafeed()
-    const tickSize = datafeed?.getTickSize?.(cacheKey) ?? 0.25
-    const tickValue = datafeed?.getTickValue?.(cacheKey) ?? 0.5
-    const posLine = position.line.get('position')
-    if (posLine?.updatePositionLineByBar) {
-      posLine.updatePositionLineByBar(
-        { close: markPrice },
-        position.contracts,
-        tickSize,
-        tickValue
-      )
-    } else if (posLine?.updatePositionLine) {
-      posLine.setPrice(markPrice)
-      posLine.updatePositionLine(position.contracts)
-    }
   }
 
   onOpenPosition(
@@ -114,11 +77,10 @@ export class TradeseaTradeCache extends ChartTradeCache {
         takeProfitOrderId
       )
       this.handleOpenPosition(data)
-      this.refreshPositionLinePnl(cacheKey, mark)
       return data
     }
 
-    const opened = super.onOpenPosition(
+    return super.onOpenPosition(
       cacheKey,
       price,
       contracts,
@@ -129,10 +91,6 @@ export class TradeseaTradeCache extends ChartTradeCache {
       stopLossOrderId,
       takeProfitOrderId
     )
-    if (opened) {
-      this.refreshPositionLinePnl(cacheKey, mark)
-    }
-    return opened
   }
 
   updateStopLoss(symbol: string, price: number | null, context?: string): void {
@@ -490,7 +448,6 @@ export class TradeseaTradeCache extends ChartTradeCache {
     }
 
     position.line.updatePositionLine(entry, mark, contracts)
-    this.refreshPositionLinePnl(cacheKey, mark)
 
     const slKey = `${entry}|${contracts}|${stopLoss}`
     const tpKey = `${entry}|${contracts}|${takeProfit}`

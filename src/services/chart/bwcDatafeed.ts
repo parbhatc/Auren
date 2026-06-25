@@ -222,6 +222,18 @@ export type BwcWidget = {
   destroy?: () => void
   onChartReady?: (cb: () => void) => void
   onShortcut?: (shortcut: (string | number)[], cb: () => void) => void
+  onLiveBar?: (cb: (bar: { close?: number; open?: number }) => void) => () => void
+  isChartPanning?: () => boolean
+  getSymbolInfo?: () => Record<string, unknown> | null | undefined
+  getBars?: () => Array<{ close?: number; open?: number }>
+  positionOverlay?: {
+    buy: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
+    sell: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
+    clear: () => void
+    modifyPosition?: (opts: { entry: number; qty: number }) => Promise<unknown> | unknown
+    refreshLayout?: () => number
+    getPosition: () => { entry: number; qty: number; stopLoss: number | null; takeProfit: number | null } | null
+  }
   [key: string]: unknown
 }
 

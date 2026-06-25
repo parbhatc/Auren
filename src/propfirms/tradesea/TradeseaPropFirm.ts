@@ -42,6 +42,7 @@ import {
 } from '../../services/tradesea/tradeseaMdsSymbols'
 import { chartSymbolToProductRoot } from '../../services/tradesea/tradeseaSymbolInfo'
 import { debugPracticeChartSymbol } from '../../services/tradesea/practiceChartSymbolDebug'
+import { isBwcChartPanning } from '../../utils/bwcPan'
 import {
   parseTradeseaTradesMessage,
   resolveAccountState,
@@ -150,6 +151,7 @@ export class TradeseaPropFirm extends PropFirmBase {
   }
 
   notifyAccountInfoChanged(): void {
+    if (isBwcChartPanning()) return
     this.onDataReady?.()
   }
 
