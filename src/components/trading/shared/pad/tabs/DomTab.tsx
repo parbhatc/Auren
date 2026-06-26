@@ -23,6 +23,7 @@ import { DomActionButtons } from '../DomActionButtons'
 import type { TradeseaMarketBook } from '../../../../../services/tradesea/tradeseaMarketBook'
 import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
 import { PadTradeSymbolPicker } from '../TradeContractPicker'
+import { useThrottledTick } from '../../../../../hooks/useThrottledTick'
 
 /** Must match LadderRow minHeight (22px row + 1px separator). */
 const DOM_ROW_HEIGHT_PX = 23
@@ -183,14 +184,18 @@ export function DomTab({
     [tradeDisabled, props.onSubmitOrder, props.onBuy, props.onSell]
   )
 
+  // Throttle position/PnL reads to ~10Hz so live PnL updates don't drive the
+  // whole ladder + terminal to re-render on every ~60Hz market tick. The ladder
+  // depth (rows) still updates at full rate; only the PnL-derived UI is gated.
+  const pnlTick = useThrottledTick(bookTick, 100)
   const domPosition = useMemo(() => {
-    void bookTick
+    void pnlTick
     return props.getDomPositionContext?.() ?? null
-  }, [props.getDomPositionContext, bookTick])
+  }, [props.getDomPositionContext, pnlTick])
   const positionUpl = useMemo(() => {
-    void bookTick
+    void pnlTick
     return props.getChartPositionUpl?.() ?? null
-  }, [props.getChartPositionUpl, bookTick])
+  }, [props.getChartPositionUpl, pnlTick])
 
   if (!rows.length && ltpPrice == null) {
     return (

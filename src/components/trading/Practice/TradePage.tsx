@@ -7,6 +7,7 @@ import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import { RefreshCw } from 'lucide-react'
 import TradingRenderer from '../Trading/TradingRenderer'
 import { t } from '../../../utils/translator'
+import { publishAccountStats } from '../../../services/trading/accountStatsStore'
 import {
   getPracticeAccountById,
   getPracticeAccountDisplayTitle,
@@ -111,7 +112,15 @@ function TradePageInner() {
           })
         }
         tradeseaFirm.practiceTradeHandler.onUnrealizedPnLUpdate = () => {
-          setUpdateTrigger((n) => n + 1)
+          const h = tradeseaFirm.practiceTradeHandler
+          if (!h) return
+          const info = h.getAccountInfo()
+          publishAccountStats({
+            balance: info.balance,
+            rpl: info.rpl,
+            upl: info.upl,
+            hasOpenPosition: h.hasAnyOpenPosition?.() ?? false,
+          })
         }
         tradeseaFirm.practiceTradeHandler.onAccountBlown = () => {
           setShowBlownModal(true)

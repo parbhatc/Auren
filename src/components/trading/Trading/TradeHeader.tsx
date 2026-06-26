@@ -4,7 +4,7 @@ import { ROUTES } from '../../../constants/routes'
 import Logo from '../../common/Logo'
 import { AccountSelector } from './AccountSelector'
 import { LiveAccountSelector } from './LiveAccountSelector'
-import { AccountStatsBar } from '../shared/account/AccountStatsBar'
+import { LiveAccountStats } from '../shared/account/AccountStatsBar'
 import { MdsNetworkStatusButton } from '../MdsNetworkStatusButton'
 import { HeaderThemeButton } from '../shared/header/HeaderThemeButton'
 import AccountStatusBar from '../shared/header/AccountStatusBar'
@@ -113,14 +113,9 @@ export function TradeHeader({
     ? 'border-slate-800 bg-slate-950/95 text-slate-200'
     : 'border-slate-200 bg-white/95 text-slate-800'
 
-  const statsProps = {
-    isDark,
-    balance,
-    rpl,
-    upl,
-    hasOpenPosition,
-  }
-
+  // BAL / RP&L / UP&L now read live from accountStatsStore via <LiveAccountStats>,
+  // so the header no longer re-renders on every PnL tick. balance/rpl/upl/
+  // hasOpenPosition props are retained for compatibility but unused here.
   const showMobileHeaderActions = !showStatsBar
   const headerActionVisibility = showMobileHeaderActions ? 'block' : 'hidden lg:block'
 
@@ -184,7 +179,7 @@ export function TradeHeader({
 
         {showStatsBar ? (
           <div className="lg:hidden flex-1 min-w-0 self-stretch py-0.5">
-            <AccountStatsBar {...statsProps} inline />
+            <LiveAccountStats isDark={isDark} inline />
           </div>
         ) : (
           <div className="flex-1 min-w-0" aria-hidden />
@@ -235,7 +230,7 @@ export function TradeHeader({
 
       {showStatsBar && (
         <div className="hidden lg:block">
-          <AccountStatsBar {...statsProps} />
+          <LiveAccountStats isDark={isDark} />
         </div>
       )}
 

@@ -35,6 +35,7 @@ import { createRunTrade } from './tradingRenderer/tradeActions'
 import { buildTradePadProps } from './tradingRenderer/buildTradePadProps'
 import { TradingRendererNav } from './tradingRenderer/TradingRendererNav'
 import { TradingChartHost } from './tradingRenderer/TradingChartHost'
+import { publishAccountStats } from '../../../services/trading/accountStatsStore'
 import { TerminalTradeLayout } from './tradingRenderer/TerminalTradeLayout'
 import { ClassicTradePanel } from './tradingRenderer/ClassicTradePanel'
 
@@ -61,9 +62,6 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     marketDataLive: true,
   }
 
-  private lastBalance: number = 0
-  private lastRpl: number = 0
-  private lastUpl: number = 0
   private lastFormattedAccountsKey = ''
 
   private handleMobileTradePrefsChange = () => {
@@ -211,19 +209,12 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     const activeFirm = this.getActiveFirm()
     if (activeFirm) {
-      const accountInfo = activeFirm.getAccountInfo?.()
-      if (accountInfo) {
-        this.lastBalance = accountInfo.balance
-        this.lastRpl = accountInfo.rpl
-        this.lastUpl = accountInfo.upl
-      }
-
       if (
         activeFirm.id === 'tradesea' &&
         typeof (activeFirm as any).setOnDataReady === 'function'
       ) {
         ;(activeFirm as any).setOnDataReady(() => {
-          this.setState({})
+          this.refreshTerminal()
         })
       }
 
@@ -257,20 +248,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         const handler = (activeFirm as any).getHandler?.()
         if (handler) {
           handler.onUnrealizedPnLUpdate = () => {
-          const accountInfo = activeFirm.getAccountInfo?.()
-          if (!accountInfo) return
-          if (
-            accountInfo.balance === this.lastBalance &&
-            accountInfo.rpl === this.lastRpl &&
-            accountInfo.upl === this.lastUpl
-          ) {
-            return
+            this.publishAccountStats()
           }
-          this.lastBalance = accountInfo.balance
-          this.lastRpl = accountInfo.rpl
-          this.lastUpl = accountInfo.upl
-          this.setState({})
-        }
         }
         import('../../../services/tradesea/tradeseaDebug').then(({ isTradeseaUplDebug }) => {
           if (isTradeseaUplDebug()) {
@@ -326,24 +305,14 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       }
     }, 500) as any
 
+    // Catch-all: publishes live stats to the store every 500ms and re-renders
+    // the terminal only if a structural input changed (backstop for any
+    // onDataReady signal the signature didn't capture).
     this.accountUpdateInterval = setInterval(() => {
-      const firm = this.getActiveFirm()
-      if (firm) {
-        const accountInfo = firm.getAccountInfo?.()
-        if (accountInfo) {
-          if (
-            accountInfo.balance !== this.lastBalance ||
-            accountInfo.rpl !== this.lastRpl ||
-            accountInfo.upl !== this.lastUpl
-          ) {
-            this.lastBalance = accountInfo.balance
-            this.lastRpl = accountInfo.rpl
-            this.lastUpl = accountInfo.upl
-            this.setState({})
-          }
-        }
-      }
+      this.refreshTerminal()
     }, 500) as any
+
+    this.publishAccountStats()
   }
 
   componentWillUnmount() {
@@ -369,6 +338,62 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
   private layoutCheckInterval?: NodeJS.Timeout
   private accountUpdateInterval?: NodeJS.Timeout
+
+  // Push live BAL/RP&L/UP&L into the external accountStatsStore so only the
+  // small <LiveAccountStats> readout re-renders — NOT the whole terminal. A
+  // setState here would reconcile + repaint the entire terminal (~50ms/commit)
+  // on every ~1¢ move, collapsing chart FPS while a position is open. The store
+  // dedupes by value, so calling this on every tick / 500ms poll is cheap.
+  private hasOpenPositionNow(): boolean {
+    const handler = this.getHandler()
+    return this.props.practiceMode
+      ? (handler as PracticeTradeHandler | undefined)?.hasAnyOpenPosition?.() ??
+          Boolean(handler?.tradeCache?.getPosition?.(this.state.selectedSymbol))
+      : Boolean(handler?.tradeCache?.getPosition?.(this.state.selectedSymbol))
+  }
+
+  private publishAccountStats = () => {
+    const firm = this.getActiveFirm()
+    const info = firm?.getAccountInfo?.()
+    if (!info) return
+    publishAccountStats({
+      balance: info.balance,
+      rpl: info.rpl,
+      upl: info.upl,
+      hasOpenPosition: this.hasOpenPositionNow(),
+    })
+  }
+
+  // Signature of everything the terminal render actually depends on EXCEPT the
+  // live BAL/RP&L/UP&L numbers (those flow to <LiveAccountStats> via the store).
+  // Lets refreshTerminal() skip setState for pure PnL ticks while still
+  // re-rendering on structural changes (account list/switch, symbol, position
+  // open/close).
+  private lastStructureSig = ''
+  private structureSignature(): string {
+    const firm = this.getActiveFirm()
+    const accounts = firm?.formattedAccounts?.length ?? this.props.accounts?.length ?? 0
+    return [
+      accounts,
+      this.state.selectedAccount,
+      this.state.selectedSymbol,
+      this.hasOpenPositionNow() ? 1 : 0,
+      (this.getHandler() as { pendingOrders?: unknown[] } | null)?.pendingOrders?.length ?? 0,
+    ].join('|')
+  }
+
+  // Publish live stats to the store (cheap, deduped) and re-render the terminal
+  // ONLY when a structural input changed. This is the key to holding 60fps with
+  // a position open: PnL ticks publish to the store but no longer reconcile the
+  // whole terminal.
+  private refreshTerminal = () => {
+    this.publishAccountStats()
+    const sig = this.structureSignature()
+    if (sig !== this.lastStructureSig) {
+      this.lastStructureSig = sig
+      this.setState({})
+    }
+  }
 
   handleStorageChange = () => {
     const newLayout = getSavedLayout(this.layoutStorageKey())

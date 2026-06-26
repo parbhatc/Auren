@@ -1,3 +1,9 @@
+import { useSyncExternalStore } from 'react'
+import {
+  getAccountStatsSnapshot,
+  subscribeAccountStats,
+} from '../../../../services/trading/accountStatsStore'
+
 export function formatStatMoney(
   value: number,
   options?: { emptyAsDash?: boolean; decimals?: number }
@@ -80,5 +86,24 @@ export function AccountStatsBar({
         </div>
       ))}
     </div>
+  )
+}
+
+/**
+ * Self-subscribing wrapper: reads BAL/RP&L/UP&L from the external
+ * accountStatsStore so live PnL updates re-render ONLY this readout, never the
+ * surrounding terminal. See services/trading/accountStatsStore.ts.
+ */
+export function LiveAccountStats({ isDark, inline = false }: { isDark: boolean; inline?: boolean }) {
+  const stats = useSyncExternalStore(subscribeAccountStats, getAccountStatsSnapshot)
+  return (
+    <AccountStatsBar
+      isDark={isDark}
+      balance={stats.balance}
+      rpl={stats.rpl}
+      upl={stats.upl}
+      hasOpenPosition={stats.hasOpenPosition}
+      inline={inline}
+    />
   )
 }
