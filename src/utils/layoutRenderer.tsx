@@ -174,10 +174,13 @@ export const renderPracticeTradeLayout = (
     mobileScalpBar?: JSX.Element | null
     /** When false, chart uses full height and quick trade sits on the bottom edge (no nav gap). */
     showMobileNav?: boolean
+    /** When false, the right column is a bare flex host (nested panels supply their own frames). */
+    panelFrame?: boolean
   }
 ) => {
   const panelWidth = options?.panelWidth ?? 332
   const mobileScalpBar = options?.mobileScalpBar ?? null
+  const panelFrame = options?.panelFrame !== false
   const reserveMobileNavGap = Boolean(mobileScalpBar && options?.showMobileNav !== false)
   const mobileNavPadClass = reserveMobileNavGap
     ? 'max-lg:pb-[calc(2.25rem+max(0.25rem,env(safe-area-inset-bottom)))]'
@@ -196,7 +199,11 @@ export const renderPracticeTradeLayout = (
       </div>
       {panelElement != null && (
         <div
-          className="hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/90"
+          className={
+            panelFrame
+              ? 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/90'
+              : 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden gap-3'
+          }
           style={{ width: panelWidth }}
         >
           {panelElement}

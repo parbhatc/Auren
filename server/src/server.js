@@ -7,12 +7,16 @@ import { closeRithmicChartLive } from './services/liveData/rithmicChartLive.js'
 import tradeseaTradesWebSocket from './websocket/TradeseaTradesWebSocket.js'
 import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
 import practiceAccountWebSocket from './websocket/PracticeAccountWebSocket.js'
+import BacktesterWebSocket from './websocket/BacktesterWebSocket.js'
+import BacktesterDataWebSocket from './websocket/BacktesterDataWebSocket.js'
 import webSocketManager from './websocket/WebSocketManager.js'
+import CSVLoader from './utils/CSVLoader.js'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
 import http from 'http'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import fs from 'fs'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -22,10 +26,19 @@ const __dirname = path.dirname(__filename)
  */
 class Server {
   constructor() {
+    const csvDir = path.join(__dirname, '..', 'data', 'backtester', 'csv')
+    if (!fs.existsSync(csvDir)) {
+      console.warn(`[Server] Backtester CSV directory not found: ${csvDir}`)
+    } else {
+      console.log(`[Server] Backtester CSV directory: ${csvDir}`)
+    }
+    this.csvLoader = new CSVLoader(csvDir)
     dotenv.config()
     this.port = process.env.PORT || 3001
     this.app = new App().getApp()
     this.server = null
+    this.backtesterWS = new BacktesterWebSocket(this)
+    this.backtesterDataWS = new BacktesterDataWebSocket(this)
   }
 
   /**
@@ -94,7 +107,10 @@ class Server {
       tradeseaMdsWebSocket.initialize(this.server)
       practiceAccountWebSocket.initialize(this.server)
 
-      webSocketManager.initialize(this.server, [])
+      webSocketManager.initialize(this.server, [
+        this.backtesterWS,
+        this.backtesterDataWS,
+      ])
 
       void bootstrapLiveDataOnStartup()
 

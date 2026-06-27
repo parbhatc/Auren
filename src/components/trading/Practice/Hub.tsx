@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { RefreshCw, Sparkles, Zap, Plus } from 'lucide-react'
+import { RefreshCw, Sparkles, Zap, Plus, History } from 'lucide-react'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import {
   createPracticeAccount,
@@ -46,6 +46,7 @@ import HubHeroSection from './hub/HubHeroSection'
 import AccountsList from './hub/AccountsList'
 import HubConfirmDialogs from './hub/HubConfirmDialogs'
 import HubModeSwitch from './hub/HubModeSwitch'
+import HubReplaySection from './hub/HubReplaySection'
 import LiveTradingSection from '../Live/hub/LiveTradingSection'
 import { getLiveTradePropFirmId, saveLiveTradePropFirmId } from '../../../utils/liveTrade'
 import AccountDetailModal from './hub/AccountDetailModal'
@@ -60,8 +61,9 @@ function parseTab(value: string | null): HubTab {
   return 'accounts'
 }
 
-function parseHomeMode(tab: string | null, mode: string | null): HubHomeMode {
+function parseHomeMode(_tab: string | null, mode: string | null): HubHomeMode {
   if (mode === 'live') return 'live'
+  if (mode === 'replay' || mode === 'backtest') return 'replay'
   return 'practice'
 }
 
@@ -116,7 +118,7 @@ export default function Hub() {
     if (mode === 'practice') {
       setSearchParams({})
     } else {
-      setSearchParams({ mode: 'live' })
+      setSearchParams({ mode })
     }
   }
 
@@ -458,6 +460,21 @@ export default function Hub() {
               />
             )}
 
+            {activeTab === 'accounts' && homeMode === 'replay' && (
+              <HubHeroSection
+                isDark={isDark}
+                icon={History}
+                badge={t('replay.hub.badge', {}, 'Bar-by-bar history')}
+                headline={t('replay.hub.headline', {}, 'Replay before you trade live')}
+                subtitle={t(
+                  'replay.hub.subtitle',
+                  {},
+                  'Step through historical futures bars from CSV data. Simulate entries, journal your rules, and review stats — your practice and live accounts stay untouched.'
+                )}
+                accent="sky"
+              />
+            )}
+
             {activeTab === 'accounts' && (
               <div className="mb-6">
                 <HubModeSwitch mode={homeMode} onModeChange={setHomeMode} isDark={isDark} />
@@ -532,6 +549,10 @@ export default function Hub() {
                 onRefreshSession={() => void refreshBrokerSession(livePropFirmId)}
                 onConnectMarket={() => setHomeMode('practice')}
               />
+            )}
+
+            {activeTab === 'accounts' && homeMode === 'replay' && (
+              <HubReplaySection isDark={isDark} />
             )}
 
             {activeTab === 'settings' && <HubSettingsPanel isDark={isDark} />}

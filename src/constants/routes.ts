@@ -19,6 +19,12 @@ export const ROUTES = {
   PRACTICE_TRADE: '/practice/trade',
   /** Live prop-firm trading terminal */
   TRADE: '/trade',
+  /** Historical CSV backtester hub */
+  BACKTESTER: '/backtester',
+  /** Backtester chart replay terminal */
+  BACKTESTER_CHART: '/backtester/chart',
+  BACKTESTER_STATS: '/backtester/stats',
+  BACKTESTER_DATA_MANAGEMENT: '/backtester/data-management',
   /** @deprecated use ROUTES.TRADE */
   LIVE_TRADE: '/live/trade',
 } as const

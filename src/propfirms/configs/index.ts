@@ -19,7 +19,7 @@ export const PROP_FIRM_DEFINITIONS: PropFirmDefinition[] = PRACTICE_PROP_FIRM_CO
     modes: {
       practice: { enabled: true, marketData },
       live: { enabled: false },
-      backtest: { enabled: false },
+      backtest: { enabled: true },
     },
   })
 )

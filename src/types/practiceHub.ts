@@ -2,7 +2,7 @@ import type { PracticeAccountMode, PracticeAccountRules } from '../constants/pra
 import type { PracticeAccountSize } from '../services/practice/practicePlans'
 
 export type HubTab = 'accounts' | 'settings' | 'admin'
-export type HubHomeMode = 'practice' | 'live'
+export type HubHomeMode = 'practice' | 'live' | 'replay'
 export type HubSettingsSection = 'account' | 'market' | 'shortcuts' | 'utils'
 export type HubAdminSection = 'site' | 'roles' | 'users'
 

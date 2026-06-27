@@ -21,7 +21,12 @@ export type {
   OrderSubmitOptions as PracticeOrderSubmitOptions,
 } from './types'
 
-function readInitialTab(accountId: string, mobileSheet: boolean): TradePanelTab {
+function readInitialTab(
+  accountId: string,
+  mobileSheet: boolean,
+  hideTicketTab?: boolean,
+): TradePanelTab {
+  if (hideTicketTab) return 'dom'
   if (mobileSheet) return 'ticket'
   const saved = getTradePanelTab(accountId)
   if (saved === 'dom' || saved === 'ticket') return saved
@@ -53,12 +58,14 @@ function TradePanelTabBar({
   onDetach,
   hideDetach,
   hideQuickTab,
+  hideTicketTab,
 }: {
   tab: TradePanelTab
   onTab: (t: TradePanelTab) => void
   onDetach?: () => void
   hideDetach?: boolean
   hideQuickTab?: boolean
+  hideTicketTab?: boolean
 }) {
   const tabs = (
     [
@@ -66,7 +73,9 @@ function TradePanelTabBar({
       { id: 'dom', label: 'DOM' },
       { id: 'ticket', label: 'Ticket' },
     ] as const
-  ).filter((t) => !(hideQuickTab && t.id === 'quick')) as { id: TradePanelTab; label: string }[]
+  )
+    .filter((t) => !(hideQuickTab && t.id === 'quick'))
+    .filter((t) => !(hideTicketTab && t.id === 'ticket')) as { id: TradePanelTab; label: string }[]
 
   const colClass =
     tabs.length === 2 ? 'grid-cols-2' : tabs.length === 1 ? 'grid-cols-1' : 'grid-cols-3'
@@ -110,6 +119,7 @@ export default function TradePanel(props: TradePanelProps) {
   const {
     accountId,
     hideDetach,
+    hideTicketTab,
     onDetach,
     fullWidth = false,
     markPrice,
@@ -121,7 +131,9 @@ export default function TradePanel(props: TradePanelProps) {
   } = props
 
   const mobileSheet = fullWidth && hideDetach
-  const [tab, setTab] = useState<TradePanelTab>(() => readInitialTab(accountId, mobileSheet))
+  const [tab, setTab] = useState<TradePanelTab>(() =>
+    readInitialTab(accountId, mobileSheet, hideTicketTab),
+  )
   const rootSymbol = chartSymbol.includes(':') ? chartSymbol.split(':')[1]! : chartSymbol
   const [ltpTick, setLtpTick] = useState(0)
   const [bookTick, setBookTick] = useState(0)
@@ -160,9 +172,17 @@ export default function TradePanel(props: TradePanelProps) {
   useEffect(() => {
     if (mobileSheet && tab === 'quick') {
       const saved = getTradePanelTab(accountId)
+      if (hideTicketTab) {
+        setTab('dom')
+        return
+      }
       setTab(saved === 'dom' ? 'dom' : 'ticket')
     }
-  }, [mobileSheet, tab, accountId])
+  }, [mobileSheet, tab, accountId, hideTicketTab])
+
+  useEffect(() => {
+    if (hideTicketTab && tab === 'ticket') setTab('dom')
+  }, [hideTicketTab, tab])
 
   useEffect(() => {
     if (tab !== 'quick') persistTab(tab)
@@ -184,24 +204,24 @@ export default function TradePanel(props: TradePanelProps) {
   useEffect(() => {
     const sub = subscribeMarketBookRef.current
     if (!sub) return
+    const scheduleBookTick = () => {
+      if (bookTickRafRef.current != null) return
+      bookTickRafRef.current = requestAnimationFrame(() => {
+        bookTickRafRef.current = null
+        setBookTick((n) => n + 1)
+      })
+    }
+    const scheduleLtpTick = () => {
+      if (ltpTickRafRef.current != null) return
+      ltpTickRafRef.current = requestAnimationFrame(() => {
+        ltpTickRafRef.current = null
+        setLtpTick((n) => n + 1)
+      })
+    }
     return sub((_streamId, kind) => {
-      const bump =
-        kind === 'ltp'
-          ? () => {
-              if (ltpTickRafRef.current != null) return
-              ltpTickRafRef.current = requestAnimationFrame(() => {
-                ltpTickRafRef.current = null
-                setLtpTick((n) => n + 1)
-              })
-            }
-          : () => {
-              if (bookTickRafRef.current != null) return
-              bookTickRafRef.current = requestAnimationFrame(() => {
-                bookTickRafRef.current = null
-                setBookTick((n) => n + 1)
-              })
-            }
-      bump()
+      // LTP lives inside the book snapshot — always refresh book; ltpTick for LTP-only UI.
+      scheduleBookTick()
+      if (kind === 'ltp') scheduleLtpTick()
     })
   }, [chartSymbol, accountId])
   useEffect(() => {
@@ -216,7 +236,11 @@ export default function TradePanel(props: TradePanelProps) {
   }, [ensureMarketBook, chartSymbol])
 
   useEffect(() => {
-    if (tab === 'dom' || tab === 'ticket') ensureMarketBook?.()
+    if (tab === 'dom' || tab === 'ticket') {
+      ensureMarketBook?.()
+      setBookTick((n) => n + 1)
+      setLtpTick((n) => n + 1)
+    }
   }, [tab, ensureMarketBook])
 
   const book = useMemo(() => {
@@ -228,6 +252,10 @@ export default function TradePanel(props: TradePanelProps) {
   const maxQty = account ? getMaxContractsForSymbol(account.size, product) : 10
   const marketPrice = book?.last ?? markPrice ?? null
   const tradeOffline = !isTradePanelTradingEnabled(props)
+  const effectivePanelUi = useMemo(
+    () => ({ ...panelUi, ...props.panelUiOverrides }),
+    [panelUi, props.panelUiOverrides],
+  )
 
   return (
     <div
@@ -239,6 +267,7 @@ export default function TradePanel(props: TradePanelProps) {
         onDetach={onDetach}
         hideDetach={hideDetach}
         hideQuickTab={mobileSheet}
+        hideTicketTab={hideTicketTab}
       />
       <div className="bg-[#0f172a] flex flex-1 min-h-0 flex-col px-2 pt-2 overflow-hidden rounded-b-2xl border border-t-0 border-[#475569]">
         {tradeOffline && (
@@ -269,7 +298,7 @@ export default function TradePanel(props: TradePanelProps) {
             maxQty={maxQty}
             chartSymbol={chartSymbol}
             fallbackLast={marketPrice}
-            panelUi={panelUi}
+            panelUi={effectivePanelUi}
             compact={mobileSheet}
           />
         )}

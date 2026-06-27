@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { LogOut, Menu } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import Logo from '../../common/Logo'
@@ -43,6 +43,9 @@ export function TradeHeader({
   onRefreshLiveAccounts,
   liveRefreshing,
   hubPath = ROUTES.PRACTICE,
+  headerLabel,
+  headerLeading,
+  headerConnectionAccessory,
 }: {
   isDark: boolean
   navigate: (path: string) => void
@@ -79,6 +82,12 @@ export function TradeHeader({
   liveRefreshing?: boolean
   /** Logo click destination — live hub uses `/?mode=live` */
   hubPath?: string
+  /** Compact title when account selector is hidden (e.g. replay session name) */
+  headerLabel?: string
+  /** Custom header control (e.g. replay session dropdown) */
+  headerLeading?: ReactNode
+  /** Connection status control beside theme toggle */
+  headerConnectionAccessory?: ReactNode
 }) {
   const accountId = accountIdProp ?? practiceAccountId
   const [connectionLimitOpen, setConnectionLimitOpen] = useState(false)
@@ -149,6 +158,21 @@ export function TradeHeader({
           />
         </div>
 
+        {headerLeading ? (
+          <div className="shrink-0 self-center min-w-0">{headerLeading}</div>
+        ) : !showAccountSelector && headerLabel ? (
+          <div
+            className={`shrink-0 self-center min-w-0 max-w-[9rem] sm:max-w-[14rem] truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${
+              isDark
+                ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
+                : 'border-violet-200 bg-violet-50 text-violet-800'
+            }`}
+            title={headerLabel}
+          >
+            {headerLabel}
+          </div>
+        ) : null}
+
         {showAccountSelector && !liveMode && (
           <div className="shrink-0 self-center min-w-0">
             <AccountSelector
@@ -198,6 +222,7 @@ export function TradeHeader({
           {(mdsClient || onReconnectMds) && (
             <MdsNetworkStatusButton mds={mdsClient} onReconnect={onReconnectMds} />
           )}
+          {headerConnectionAccessory}
           <button
             type="button"
             onClick={() => {

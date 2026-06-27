@@ -26,6 +26,9 @@ import PracticeTradePadPage from './pages/trading/practice/PadPage'
 import PracticeStatsPage from './pages/trading/practice/StatsPage'
 import PracticeNewsPage from './pages/trading/practice/NewsPage'
 import LiveTradePage from './pages/trading/live/TradePage'
+import BacktesterChartView from './components/backtester/BacktesterChartView'
+import BacktesterStats from './components/backtester/Stats'
+import BacktesterDataManagement from './components/backtester/DataManagement'
 import NotFound from './components/common/NotFound'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import GuestRoute from './components/common/GuestRoute'
@@ -148,7 +151,7 @@ function App() {
         />
         <Route path="/practice" element={<Navigate to={ROUTES.HOME} replace />} />
         <Route path="/trade/:firmId/:accountId/*" element={<LegacyRedirect />} />
-        <Route path="/backtest/*" element={<LegacyRedirect />} />
+        <Route path="/backtest/*" element={<Navigate to="/?mode=replay" replace />} />
         <Route
           path={ROUTES.TRADE}
           element={
@@ -263,8 +266,40 @@ function App() {
           }
         />
 
+        <Route
+          path={ROUTES.BACKTESTER}
+          element={<Navigate to="/?mode=replay" replace />}
+        />
+        <Route
+          path={ROUTES.BACKTESTER_CHART}
+          element={
+            <ProtectedRoute>
+              <BacktesterChartView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${ROUTES.BACKTESTER_STATS}`}
+          element={
+            <ProtectedRoute>
+              <BacktesterStats />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/backtester/testing-strategies"
+          element={<Navigate to="/?mode=replay" replace />}
+        />
+        <Route
+          path={ROUTES.BACKTESTER_DATA_MANAGEMENT}
+          element={
+            <ProtectedRoute>
+              <BacktesterDataManagement />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Legacy NexusSyncPro paths → home */}
-        <Route path="/backtester/*" element={<LegacyRedirect />} />
         <Route path="/journal/*" element={<LegacyRedirect />} />
         <Route path="/economic-news" element={<LegacyRedirect />} />
         <Route path="/dashboard" element={<LegacyRedirect />} />

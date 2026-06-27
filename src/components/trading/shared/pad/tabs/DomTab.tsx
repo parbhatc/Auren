@@ -54,6 +54,9 @@ export function DomTab({
 }) {
   const qty = Number(props.quantity) || 1
   const tradeDisabled = !isTradePanelTradingEnabled(props)
+  const hideDomBidAsk = panelUi.hideDomBidAsk === true
+  const hideDomLadder = panelUi.hideDomLadder === true
+  const hideDomLtpLock = panelUi.hideDomLtpLock === true
   const chartSymbolKeyRef = useRef(chartSymbol)
   const lastResolvedLtpRef = useRef<number | null>(null)
 
@@ -145,7 +148,7 @@ export function DomTab({
   }, [])
 
   useLayoutEffect(() => {
-    if (!ltpCenterLocked) return
+    if (hideDomLadder || hideDomLtpLock || !ltpCenterLocked) return
 
     const ltp = ltpPrice ?? resolveDomLtpPrice(book, tickSize, effectiveFallbackLast)
     const mustCenter = pendingCenterRef.current
@@ -154,9 +157,10 @@ export function DomTab({
     if (mustCenter) pendingCenterRef.current = false
     if (ltp != null) lastFollowedLtpRef.current = ltp
     centerLtpInView()
-  }, [ltpCenterLocked, rows, ltpTick, centerLtpInView, ltpPrice, book, tickSize, effectiveFallbackLast, chartSymbol])
+  }, [hideDomLadder, hideDomLtpLock, ltpCenterLocked, rows, ltpTick, centerLtpInView, ltpPrice, book, tickSize, effectiveFallbackLast, chartSymbol])
 
   useEffect(() => {
+    if (hideDomLadder) return
     const el = ladderRef.current
     if (!el) return
     const onScroll = () => {
@@ -165,7 +169,7 @@ export function DomTab({
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [ltpCenterLocked])
+  }, [hideDomLadder, ltpCenterLocked])
 
   const placeDomOrder = useCallback(
     (side: OrderSide, price: number) => {
@@ -197,7 +201,7 @@ export function DomTab({
     return props.getChartPositionUpl?.() ?? null
   }, [props.getChartPositionUpl, pnlTick])
 
-  if (!rows.length && ltpPrice == null) {
+  if (ltpPrice == null && (!hideDomLadder ? !rows.length : true)) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-[#7d8590]">
         Waiting for market data…
@@ -214,7 +218,9 @@ export function DomTab({
     positionUpl != null ? formatStatMoney(positionUpl, { decimals: 2 }) : null
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className={`flex flex-col overflow-hidden ${hideDomLadder ? '' : 'min-h-0 flex-1'}`}
+    >
       <div className="flex shrink-0 flex-col gap-2 border-b border-[#475569]/40 py-2">
         <div
           className={`flex items-start justify-between gap-2 rounded-lg border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-[#0f172a] to-[#0f172a] ${
@@ -233,17 +239,21 @@ export function DomTab({
               {ltpLabel}
             </p>
             <p className="mt-1 text-[10px] font-medium text-[#94a3b8]">Last traded price</p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
-              <span className={tradeSideMeta('buy').textClass}>
-                Bid <span className="font-semibold">{bidLabel}</span>
-              </span>
-              <span className="text-[#475569]">·</span>
-              <span className={tradeSideMeta('sell').textClass}>
-                Ask <span className="font-semibold">{askLabel}</span>
-              </span>
-            </div>
+            {!hideDomBidAsk && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
+                <span className={tradeSideMeta('buy').textClass}>
+                  Bid <span className="font-semibold">{bidLabel}</span>
+                </span>
+                <span className="text-[#475569]">·</span>
+                <span className={tradeSideMeta('sell').textClass}>
+                  Ask <span className="font-semibold">{askLabel}</span>
+                </span>
+              </div>
+            )}
           </div>
-          <DomLtpLockButton locked={ltpCenterLocked} onToggle={toggleLtpCenterLock} />
+          {!hideDomLtpLock && (
+            <DomLtpLockButton locked={ltpCenterLocked} onToggle={toggleLtpCenterLock} />
+          )}
         </div>
         {positionUplFmt != null && (
           <div className="flex justify-end">
@@ -254,6 +264,8 @@ export function DomTab({
         )}
       </div>
 
+      {!hideDomLadder && (
+        <>
       <div
         className={`grid shrink-0 border-y border-[#475569]/50 text-[10px] text-dom-header ${
           domPosition ? 'min-w-[280px] grid-cols-8' : 'min-w-[260px] grid-cols-7'
@@ -316,8 +328,14 @@ export function DomTab({
           )
         })}
       </div>
+        </>
+      )}
 
-      <div className="mt-auto shrink-0 space-y-2 border-t border-[#475569] pb-2 pt-2">
+      <div
+        className={`shrink-0 space-y-2 border-t border-[#475569] pb-2 pt-2 ${
+          hideDomLadder ? 'mt-0' : 'mt-auto'
+        }`}
+      >
         <fieldset
           disabled={tradeDisabled}
           className="m-0 min-w-0 space-y-2 border-0 p-0 disabled:opacity-90"

@@ -32,12 +32,10 @@ class CSVLoader {
             return cacheEntry.bars;
         }
         
-        // Load from file
-        const csvDir = path.join(this.csvDir, symbol);
-        const yearDir = path.join(csvDir, year.toString());
-        const filePath = path.join(yearDir, `${monthName}.csv`);
+        // Load from file — supports symbol/year/month.csv and symbol/year/1m/month.csv layouts
+        const filePath = this.resolveMonthFilePath(symbol, year, monthName);
         
-        if (!fs.existsSync(filePath)) {
+        if (!filePath || !fs.existsSync(filePath)) {
             // Cache empty array to avoid repeated file checks
             this.monthCache[symbol][year][monthName] = {
                 bars: [],
@@ -113,6 +111,21 @@ class CSVLoader {
             "July", "August", "September", "October", "November", "December"
         ];
         return months[monthIndex];
+    }
+
+    /** Prefer 1m CSV subfolder when present (ES/NQ), else year/month layout (MES/GC). */
+    resolveMonthFilePath(symbol, year, monthName) {
+        const symbolDir = path.join(this.csvDir, symbol);
+        const yearDir = path.join(symbolDir, year.toString());
+        const candidates = [
+            path.join(yearDir, '1m', `${monthName}.csv`),
+            path.join(yearDir, '30s', `${monthName}.csv`),
+            path.join(yearDir, `${monthName}.csv`),
+        ];
+        for (const candidate of candidates) {
+            if (fs.existsSync(candidate)) return candidate;
+        }
+        return candidates[candidates.length - 1];
     }
     
     // Load candles for a specific time range
@@ -392,6 +405,52 @@ class CSVLoader {
         return null; // No data found
     }
     
+    findPreviousDayWithDataForAnySymbol(symbols, date, withTime = false) {
+        const dateObj = new Date(date);
+        const maxDaysBack = 365;
+        let currentDate = new Date(dateObj);
+        currentDate.setDate(currentDate.getDate() - 1);
+
+        const originalHour = dateObj.getHours();
+        const originalMinute = dateObj.getMinutes();
+
+        for (let i = 0; i < maxDaysBack; i++) {
+            let hasData = false;
+
+            if (withTime) {
+                const targetTime = new Date(currentDate);
+                targetTime.setHours(originalHour);
+                targetTime.setMinutes(originalMinute);
+                targetTime.setSeconds(0);
+                targetTime.setMilliseconds(0);
+                for (const symbol of symbols) {
+                    if (this.hasExactCandle(symbol, targetTime.getTime())) {
+                        hasData = true;
+                        break;
+                    }
+                }
+            } else {
+                hasData = this.hasDateDataForAnySymbol(symbols, currentDate);
+            }
+
+            if (hasData) {
+                if (withTime) {
+                    const year = currentDate.getFullYear();
+                    const month = currentDate.getMonth();
+                    const day = currentDate.getDate();
+                    return new Date(year, month, day, originalHour, originalMinute, 0, 0);
+                }
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const day = currentDate.getDate();
+                return new Date(year, month, day, 0, 0, 0, 0);
+            }
+            currentDate.setDate(currentDate.getDate() - 1);
+        }
+
+        return null;
+    }
+    
     // Find the next day (after the given date) that has data
     // Returns a Date object for the day, or null if no data found
     // If withTime is true, checks for exact candle with same hour and minutes
@@ -440,6 +499,52 @@ class CSVLoader {
         }
         
         return null; // No data found
+    }
+
+    findNextDayWithDataForAnySymbol(symbols, date, withTime = false) {
+        const dateObj = new Date(date);
+        const maxDaysForward = 365;
+        let currentDate = new Date(dateObj);
+        currentDate.setDate(currentDate.getDate() + 1);
+
+        const originalHour = dateObj.getHours();
+        const originalMinute = dateObj.getMinutes();
+
+        for (let i = 0; i < maxDaysForward; i++) {
+            let hasData = false;
+
+            if (withTime) {
+                const targetTime = new Date(currentDate);
+                targetTime.setHours(originalHour);
+                targetTime.setMinutes(originalMinute);
+                targetTime.setSeconds(0);
+                targetTime.setMilliseconds(0);
+                for (const symbol of symbols) {
+                    if (this.hasExactCandle(symbol, targetTime.getTime())) {
+                        hasData = true;
+                        break;
+                    }
+                }
+            } else {
+                hasData = this.hasDateDataForAnySymbol(symbols, currentDate);
+            }
+
+            if (hasData) {
+                if (withTime) {
+                    const year = currentDate.getFullYear();
+                    const month = currentDate.getMonth();
+                    const day = currentDate.getDate();
+                    return new Date(year, month, day, originalHour, originalMinute, 0, 0);
+                }
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const day = currentDate.getDate();
+                return new Date(year, month, day, 0, 0, 0, 0);
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        return null;
     }
     
     // Find the closest candle to a given time for a symbol

@@ -166,6 +166,37 @@ export function settingsInsetClass(isDark: boolean): string {
     : 'rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5'
 }
 
+export function listCardClass(isDark: boolean): string {
+  return `rounded-xl border flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden transition-shadow ${
+    isDark
+      ? 'bg-slate-800/50 border-slate-700/80 hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-950/20'
+      : 'bg-white border-slate-200 hover:border-violet-200 hover:shadow-md hover:shadow-violet-100/50'
+  }`
+}
+
+export function emptyStateClass(isDark: boolean): string {
+  return `rounded-2xl border border-dashed py-16 px-6 text-center ${
+    isDark ? 'border-slate-700/80 bg-slate-900/30' : 'border-slate-300 bg-slate-50/80'
+  }`
+}
+
+export function tabRailClass(isDark: boolean): string {
+  return `inline-flex w-full sm:w-auto p-1 rounded-xl gap-0.5 ${
+    isDark ? 'bg-slate-900/90 ring-1 ring-slate-800' : 'bg-slate-100/90 ring-1 ring-slate-200/80'
+  }`
+}
+
+export function tabRailActiveClass(isDark: boolean, tone: 'violet' | 'amber' = 'violet'): string {
+  if (tone === 'amber') {
+    return isDark
+      ? 'bg-amber-600 text-white shadow-md shadow-amber-900/40'
+      : 'bg-amber-600 text-white shadow-sm'
+  }
+  return isDark
+    ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
+    : 'bg-white text-violet-700 shadow-sm'
+}
+
 export function alertBannerClass(isDark: boolean, tone: 'amber' | 'red' | 'emerald'): string {
   const map = {
     amber: isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-100' : 'border-amber-300 bg-amber-50 text-amber-900',

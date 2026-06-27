@@ -2,6 +2,9 @@
  * Chart types for Auren (BetterweightChart + practice datafeeds).
  */
 
+import type { CSSProperties } from 'react'
+import type { BacktestSession } from './backtester'
+
 export type ResolutionString = string
 
 export type Bar = {
@@ -15,6 +18,13 @@ export type Bar = {
 }
 
 export type SubscribeBarsCallback = (bar: Bar) => void
+
+export type Subscription = {
+  symbol: string
+  resolution: ResolutionString
+  onRealtimeCallback: SubscribeBarsCallback
+  lastBar: Bar | null
+}
 
 export type LibrarySymbolInfo = {
   name: string
@@ -125,3 +135,34 @@ export type AurenChartProps = {
 
 /** @deprecated Use AurenChartProps */
 export type TradingViewChartProps = AurenChartProps
+
+export interface BacktesterChartProps {
+  symbol?: string
+  timeframe?: string
+  isDark?: boolean
+  style?: CSSProperties
+  className?: string
+  containerId?: string
+  datafeed?: import('../backtester/components/chart/BacktesterChartDataFeed').BacktesterChartDataFeed
+  session?: BacktestSession | null
+  tradeHandler?: import('../backtester/services/BacktesterTradeHandler').BacktesterTradeHandler | null
+  clientId?: string
+  userId?: string
+  onReady?: (widget: unknown) => void
+  onWidgetReady?: (widget: unknown) => void
+  onChartReady?: () => void | Promise<void>
+  onSymbolChange?: (symbol: string) => void
+  onIntervalChange?: (interval: string) => void
+  onReplayHostAction?: (action: string, payload: Record<string, unknown>) => void
+  tradeToolbarProps?: Pick<
+    import('./tradePanel').TradePanelProps,
+    | 'chartSymbol'
+    | 'chartProductRoot'
+    | 'chartSymbolHint'
+    | 'tradeProductRoot'
+    | 'searchSymbols'
+    | 'onChartSymbolChange'
+    | 'autoChangeTradeContract'
+    | 'onAutoChangeTradeContract'
+  >
+}

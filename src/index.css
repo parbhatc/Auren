@@ -215,6 +215,18 @@ body {
   color: rgba(0, 0, 0, 0.5) !important;
 }
 
+/* Backtester session date picker in BWC toolbar */
+.trading-chart-host .tv-toolbar__date-nav {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: min(100%, 320px);
+}
+
+.trading-chart-host .tv-toolbar__trade-symbol {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
 /* Practice trade mobile: chart flush to edges (safe-area padding on top toolbar). */
 @media (max-width: 1023px) {
   .trading-chart-host .tv-app {
@@ -226,6 +238,11 @@ body {
   .trading-chart-host .tv-toolbar {
     padding-left: max(0px, var(--safe-left));
     padding-right: max(0px, var(--safe-right));
+  }
+
+  .trading-chart-host .tv-toolbar__date-nav {
+    flex: 1 1 auto;
+    max-width: min(100%, 280px);
   }
 
   /* Order / settings sheet open: hide chart chrome above the dimmed overlay */

@@ -43,6 +43,16 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/backtester-ws': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/backtester/data-management-ws': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+        ws: true,
+      },
       '/tradesea-instruments': {
         target: 'https://api-instruments-delayed.tradesea.ai',
         changeOrigin: true,

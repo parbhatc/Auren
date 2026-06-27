@@ -27,7 +27,10 @@ export function ScalpFloat({
 }) {
   const tradeDisabled = !isTradePanelTradingEnabled(props)
   const [bookTick, setBookTick] = useState(0)
-  const [panelUi, setPanelUi] = useState(() => getTradePanelSettings())
+  const [panelUi, setPanelUi] = useState(() => ({
+    ...getTradePanelSettings(),
+    ...props.panelUiOverrides,
+  }))
   useEffect(() => {
     const onUiChange = () => setPanelUi(getTradePanelSettings())
     window.addEventListener('practiceTradePanelSettingsChanged', onUiChange)

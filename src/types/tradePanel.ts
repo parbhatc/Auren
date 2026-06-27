@@ -19,6 +19,12 @@ export type TradePanelSettings = {
   hideReverse: boolean
   hideCancelAll: boolean
   hideFlattenAll: boolean
+  /** Hide bid/ask row under LTP in DOM tab. */
+  hideDomBidAsk?: boolean
+  /** Hide depth ladder (header + scroll rows) in DOM tab. */
+  hideDomLadder?: boolean
+  /** Hide LTP center-lock control in DOM tab. */
+  hideDomLtpLock?: boolean
 }
 
 /** @deprecated use TradePanelSettings */
@@ -88,6 +94,10 @@ export type TradePanelProps = {
   fullWidth?: boolean
   /** When false, buy/sell and order controls are disabled (MDS offline). */
   marketDataLive?: boolean
+  /** Hide the Ticket tab (e.g. backtester DOM-only pad). */
+  hideTicketTab?: boolean
+  /** Override trade panel UI toggles (e.g. hide join bid/ask on backtester). */
+  panelUiOverrides?: Partial<TradePanelSettings>
 }
 
 /** @deprecated use TradePanelProps */

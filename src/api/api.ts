@@ -20,8 +20,20 @@ const API_BASE_URL = getApiBaseUrl()
  */
 export const getWebSocketUrl = (path: string = ''): string => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
+
+  if (import.meta.env.VITE_WS_URL) {
+    const base = String(import.meta.env.VITE_WS_URL).replace(/\/$/, '')
+    return `${base}${normalizedPath}`
+  }
+
   const { hostname, port, protocol } = window.location
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
+
+  // Vite dev: connect WS directly to the API server (more reliable than the Vite WS proxy)
+  if (import.meta.env.DEV && (port === '3000' || port === '5173')) {
+    const backendPort = import.meta.env.VITE_API_PORT || '3001'
+    return `${wsProtocol}//${hostname}:${backendPort}${normalizedPath}`
+  }
 
   const portSuffix =
     port && port !== '80' && port !== '443' ? `:${port}` : ''

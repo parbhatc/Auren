@@ -61,17 +61,20 @@ export function createBwcDatafeed(source: TradeseaDatafeed) {
   } | null = null
 
   return {
-    supportsQuotes: true,
+    supportsQuotes: typeof source.subscribeQuotes === 'function',
 
     onReady() {
       if (cachedConfig) return Promise.resolve(cachedConfig)
       return promisify<Record<string, unknown>>((cb) => source.onReady(cb)).then((cfg) => {
         const supported = (cfg.supported_resolutions as string[] | undefined) ?? ['1', '5', '15', '60', '1D']
+        const supportsQuotes =
+          cfg.supports_quotes === true ||
+          (cfg.supports_quotes !== false && typeof source.subscribeQuotes === 'function')
         cachedConfig = {
           resolutions: buildResolutions(source, supported),
           supported_resolutions: supported,
           default_resolution: supported.includes('1') ? '1' : supported[0],
-          supports_quotes: Boolean(cfg.supports_quotes ?? source.supportsQuotes),
+          supports_quotes: supportsQuotes,
         }
         return cachedConfig
       })
@@ -224,6 +227,8 @@ export type BwcWidget = {
   onShortcut?: (shortcut: (string | number)[], cb: () => void) => void
   onLiveBar?: (cb: (bar: { close?: number; open?: number }) => void) => () => void
   isChartPanning?: () => boolean
+  replay?: import('./bwcReplayApi').BwcReplayApi
+  toolbar?: import('./bwcToolbarApi').BwcToolbarApi
   getSymbolInfo?: () => Record<string, unknown> | null | undefined
   getBars?: () => Array<{ close?: number; open?: number }>
   positionOverlay?: {
