@@ -182,6 +182,7 @@ Health check endpoint.
 ## Notes
 
 - **Default admin** (first run, empty database): username `admin`, password `admin`. Change after first login.
+- **Backtester data**: symbol config and tokens live in `data/backtester/config.json`; CSV files in `data/backtester/csv/`. TradingView download errors like `already_in_session` are handled gracefully and do not crash the server.
 - **Email Verification**: New users must verify their email before logging in
 - **Password Reset**: Uses 6-digit codes sent via email
 - JWT tokens expire after 7 days (configurable in `data/config.json`)

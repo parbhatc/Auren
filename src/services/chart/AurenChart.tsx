@@ -20,6 +20,7 @@ import { schedulePageScrollReset } from '../../utils/resetPageScroll'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
 import { candleDebug } from '../tradesea/candleDebug'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
+import { CHART_ORDER_LINE_THEME } from '../../constants/chartOrderLineTheme'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
@@ -228,6 +229,7 @@ export default function AurenChart(props: AurenChartProps) {
           chrome: true,
           replay: false,
           datafeed,
+          orderLineTheme: CHART_ORDER_LINE_THEME,
           onSymbolChange: notifySymbolChange,
         })) as BwcWidget
 

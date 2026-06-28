@@ -238,7 +238,11 @@ export type BwcWidget = {
     modifyPosition?: (opts: { entry: number; qty: number }) => Promise<unknown> | unknown
     refreshLayout?: () => number
     getPosition: () => { entry: number; qty: number; stopLoss: number | null; takeProfit: number | null } | null
+    setTheme?: (theme: Record<string, string>) => Record<string, string>
+    getTheme?: () => Record<string, string>
   }
+  setOrderLineTheme?: (theme: Record<string, string>) => Record<string, string>
+  getOrderLineTheme?: () => Record<string, string>
   [key: string]: unknown
 }
 

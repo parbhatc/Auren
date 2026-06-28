@@ -189,7 +189,13 @@ export interface BacktesterChartClientCallbacks {
   onChartReady?: () => void
   // Backtester-specific callbacks
   onReplayResponse?: (data: { type: string; time: string }) => void
-  onDateNavigationResponse?: (data: { type: string; date: string; success: boolean; error: string }) => void
+  onDateNavigationResponse?: (data: {
+    type: string
+    date: string
+    startDate?: string
+    success: boolean
+    error?: string
+  }) => void
   // Add more specific handlers as needed
   // onTradeUpdate?: (data: any) => void
   // onPriceUpdate?: (data: any) => void

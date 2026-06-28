@@ -1,21 +1,27 @@
 import { IDatafeedChartApi, LibrarySymbolInfo, ResolutionString, SubscribeBarsCallback, Bar, Subscription } from '../../../types/chart'
 import { backtesterAPI } from '../../../api/backtester.api'
 import type { MarketBookUpdateKind, TradeseaMarketBook } from '../../../services/tradesea/tradeseaMarketBook'
+import { tradeseaResolutionToSeconds } from '../../../services/tradesea/tradeseaResolutions'
+import type { BacktestSession } from '../../../types/backtester'
 import { BacktesterChartClient } from '../../services/BacktesterChartClient'
 
 export class BacktesterChartDataFeed implements IDatafeedChartApi {
+  private readonly baseResolutions: ResolutionString[] = ['1', '2', '3', '5', '15', '30', '60', '240', '1D']
   private supportedResolutions: ResolutionString[]
-  private symbolsCache: Record<string, { tickSize: number; tickValue: number }> | null = null
+  private symbolResolutions: Map<string, ResolutionString[]> = new Map()
+  private symbolsCache: Record<string, { tickSize: number; tickValue: number; supportedChartResolutions?: string[] }> | null = null
   private wsClient: BacktesterChartClient | null = null
   private subscriptions: Map<string, Subscription> = new Map()
   private chartSubscriptions: Map<string, string> = new Map()
   // Track last bar per symbol/resolution from getBars responses
   private lastBarsCache: Map<string, Bar> = new Map()
+  /** Latest 1m replay cursor (advances on next candle); falls back to session start. */
+  private playbackAnchorSec: number | null = null
   private bookListeners = new Set<(streamId: string, kind: MarketBookUpdateKind) => void>()
   private tradeHandler: any = null // Reference to BacktesterTradeHandler
 
   constructor(wsClient?: BacktesterChartClient | null) {
-    this.supportedResolutions = ['1', '2', '3', '5', '15', '30', '60', '240', '1D'] as ResolutionString[]
+    this.supportedResolutions = [...this.baseResolutions]
     this.wsClient = wsClient || null
   }
 
@@ -31,6 +37,112 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    */
   private getCacheKey(symbol: string, resolution: ResolutionString): string {
     return `${symbol}:${resolution}`
+  }
+
+  private getActiveSession(): BacktestSession | null {
+    return this.wsClient?.getSession() ?? this.tradeHandler?.getSession?.() ?? null
+  }
+
+  /** Session replay anchor as Unix seconds (startDate + startTime, local). */
+  private getSessionAnchorSec(): number | null {
+    const session = this.getActiveSession()
+    if (!session?.startDate || !session?.startTime) return null
+    const [year, month, day] = session.startDate.split('-').map(Number)
+    const [hours, minutes] = session.startTime.split(':').map(Number)
+    if (![year, month, day, hours, minutes].every((n) => Number.isFinite(n))) return null
+    return Math.floor(new Date(year, month - 1, day, hours, minutes, 0, 0).getTime() / 1000)
+  }
+
+  private notePlaybackBar(timeSec: number, resolution: ResolutionString): void {
+    const r = String(resolution).trim().toUpperCase()
+    if ((r !== '1' && r !== '30S') || !Number.isFinite(timeSec)) return
+    const t = Math.floor(timeSec)
+    if (this.playbackAnchorSec == null || t > this.playbackAnchorSec) {
+      this.playbackAnchorSec = t
+    }
+  }
+
+  /** Current replay position (1m cursor), not just session startTime. */
+  private getPlaybackAnchorSec(): number | null {
+    if (this.playbackAnchorSec != null) return this.playbackAnchorSec
+
+    let latest: number | null = null
+    for (const [key, bar] of this.lastBarsCache) {
+      if ((!key.endsWith(':1') && !key.endsWith(':30S')) || bar?.time == null) continue
+      const t = this.normalizeBarTime(bar.time)
+      if (latest == null || t > latest) latest = t
+    }
+    for (const sub of this.subscriptions.values()) {
+      const r = String(sub.resolution).trim().toUpperCase()
+      if ((r !== '1' && r !== '30S') || sub.lastBar?.time == null) continue
+      const t = this.normalizeBarTime(sub.lastBar.time)
+      if (latest == null || t > latest) latest = t
+    }
+    if (latest != null) return latest
+
+    return this.getSessionAnchorSec()
+  }
+
+  /** Match server BarAggregator bucket alignment (local session timezone). */
+  private alignTimeToResolutionSec(timeSec: number, resolution: ResolutionString): number {
+    const r = String(resolution).trim().toUpperCase()
+    const secMatch = r.match(/^(\d+)S$/)
+    if (secMatch) {
+      const barSec = Math.max(1, parseInt(secMatch[1], 10))
+      return Math.floor(timeSec / barSec) * barSec
+    }
+
+    const d = new Date(timeSec * 1000)
+
+    if (r === 'D' || r === '1D') {
+      d.setHours(0, 0, 0, 0)
+      return Math.floor(d.getTime() / 1000)
+    }
+
+    const mins = parseInt(r, 10)
+    if (Number.isFinite(mins) && mins > 0) {
+      const alignedMinutes = Math.floor(d.getMinutes() / mins) * mins
+      d.setMinutes(alignedMinutes, 0, 0)
+      return Math.floor(d.getTime() / 1000)
+    }
+
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(r))
+    return Math.floor(timeSec / barSec) * barSec
+  }
+
+  /** Cap history window to replay anchor — BWC host-controlled replay uses Date.now() otherwise. */
+  private clampPeriodToSessionAnchor(
+    periodParams: { from?: number; to?: number; countBack?: number; firstDataRequest?: boolean },
+    resolution: ResolutionString,
+  ) {
+    const anchorSec = this.getPlaybackAnchorSec()
+    if (anchorSec == null) return periodParams
+
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(String(resolution)))
+    const cappedTo = this.alignTimeToResolutionSec(anchorSec, resolution)
+    const count = Math.max(1, Number(periodParams.countBack) || 1)
+    let from = periodParams.from
+    let to = periodParams.to
+
+    // Request 1m data through the live replay cursor; chart right edge uses HTF bucket time.
+    if (to == null || !Number.isFinite(Number(to)) || Number(to) > anchorSec) {
+      to = anchorSec
+      if (periodParams.firstDataRequest) {
+        from = cappedTo - (count - 1) * barSec
+      }
+    }
+    if (from != null && Number.isFinite(Number(from)) && Number(from) > Number(to)) {
+      from = Number(to) - (count - 1) * barSec
+    }
+
+    return { ...periodParams, from, to, countBack: count }
+  }
+
+  private filterBarsToSessionAnchor(bars: Bar[], resolution: ResolutionString): Bar[] {
+    const anchorSec = this.getPlaybackAnchorSec()
+    if (anchorSec == null) return bars
+    const cappedTo = this.alignTimeToResolutionSec(anchorSec, resolution)
+    return bars.filter((bar) => bar.time <= cappedTo)
   }
 
   private normalizeSymbol(symbol: string): string {
@@ -107,11 +219,73 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
 
   private pendingWsMessages: Array<Record<string, unknown>> = []
 
+  /** BWC/LWC expect Unix seconds; server CSV bars use milliseconds. */
+  private normalizeBarTime(time: number): number {
+    if (!Number.isFinite(Number(time))) return Math.floor(Date.now() / 1000)
+    const n = Number(time)
+    return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n)
+  }
+
+  /** Drop invalid OHLC, coerce numbers, dedupe by time (keep last). */
+  private sanitizeBars(bars: Bar[]): Bar[] {
+    const byTime = new Map<number, Bar>()
+    for (const raw of bars) {
+      const open = Number(raw.open)
+      const high = Number(raw.high)
+      const low = Number(raw.low)
+      const close = Number(raw.close)
+      if (![open, high, low, close].every((v) => Number.isFinite(v))) continue
+      const time = this.normalizeBarTime(Number(raw.time))
+      const volumeRaw = raw.volume != null ? Number(raw.volume) : 0
+      byTime.set(time, {
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume: Number.isFinite(volumeRaw) ? volumeRaw : 0,
+      })
+    }
+    return Array.from(byTime.values()).sort((a, b) => a.time - b.time)
+  }
+
+  private normalizeBar(bar: Bar): Bar | null {
+    const open = Number(bar.open)
+    const high = Number(bar.high)
+    const low = Number(bar.low)
+    const close = Number(bar.close)
+    if (![open, high, low, close].every((v) => Number.isFinite(v))) return null
+    const volumeRaw = bar.volume != null ? Number(bar.volume) : 0
+    return {
+      time: this.normalizeBarTime(bar.time),
+      open,
+      high,
+      low,
+      close,
+      volume: Number.isFinite(volumeRaw) ? volumeRaw : 0,
+    }
+  }
+
   setWebSocketClient(wsClient: BacktesterChartClient | null): void {
     this.wsClient = wsClient
-    if (wsClient?.isConnected?.()) {
+    if (wsClient?.isConnected?.() && wsClient.isChartReady?.()) {
       this.flushPendingMessages()
     }
+  }
+
+  /** Clear cached bars and pending getBars state after reconnect or session change. */
+  resetSessionState(): void {
+    for (const [, controller] of this.pendingGetBarsAbort) {
+      controller.abort()
+    }
+    this.pendingGetBarsAbort.clear()
+    for (const [, request] of this.pendingGetBarsRequests) {
+      request.onErrorCallback('Session reset')
+    }
+    this.pendingGetBarsRequests.clear()
+    this.pendingWsMessages = []
+    this.lastBarsCache.clear()
+    this.playbackAnchorSec = null
   }
 
   /** Send after WS is open and server session handshake completed. */
@@ -147,14 +321,35 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     }, 0)
   }
 
+  private resolutionsForSymbol(symbol: string): ResolutionString[] {
+    return this.symbolResolutions.get(symbol.toUpperCase()) ?? this.baseResolutions
+  }
+
+  private refreshSupportedResolutionUnion(): void {
+    const union = new Set<ResolutionString>(this.baseResolutions)
+    for (const list of this.symbolResolutions.values()) {
+      for (const r of list) union.add(r)
+    }
+    this.supportedResolutions = Array.from(union)
+  }
+
   async loadSymbols(): Promise<Record<string, { tickSize: number; tickValue: number }>> {
     if (this.symbolsCache) {
       return this.symbolsCache
     }
 
     try {
-      const response = await backtesterAPI.searchSymbols()
-      this.symbolsCache = response.symbols || {}
+      const response = await backtesterAPI.getSymbolData()
+      const symbols = response.symbols || {}
+      this.symbolsCache = symbols
+      this.symbolResolutions.clear()
+      for (const [sym, info] of Object.entries(symbols)) {
+        const list = (info as { supportedChartResolutions?: string[] }).supportedChartResolutions
+        if (list?.length) {
+          this.symbolResolutions.set(sym.toUpperCase(), list as ResolutionString[])
+        }
+      }
+      this.refreshSupportedResolutionUnion()
       return this.symbolsCache
     } catch (error) {
       console.error('[BacktesterChartDataFeed] Failed to load symbols:', error)
@@ -220,7 +415,11 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
         minmov: (info.tickSize || 1) * 100,
         pricescale: 100,
         has_intraday: true,
-        supported_resolutions: this.supportedResolutions,
+        supported_resolutions: this.resolutionsForSymbol(symbolName),
+        has_seconds: this.resolutionsForSymbol(symbolName).some((r) => String(r).toUpperCase().endsWith('S')),
+        seconds_multipliers: this.resolutionsForSymbol(symbolName)
+          .filter((r) => String(r).toUpperCase().endsWith('S'))
+          .map((r) => String(r).toUpperCase().replace(/S$/, '')),
         volume_precision: 2,
         data_status: 'streaming'
       }
@@ -236,18 +435,12 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     onErrorCallback: (reason: string) => void 
   }> = new Map()
 
+  private pendingGetBarsAbort: Map<string, AbortController> = new Map()
+
   getBars(symbolInfo: LibrarySymbolInfo, resolution: ResolutionString, periodParams: any, onHistoryCallback: (bars: any[], meta: { noData: boolean }) => void, onErrorCallback: (reason: string) => void): void {
     if (!this.wsClient) {
       onErrorCallback('WebSocket client not available')
       return
-    }
-
-    // Reset indicators when first data request (new symbol/timeframe)
-    if (periodParams.firstDataRequest) {
-      const indicatorManager = (window as any).indicatorManager
-      if (indicatorManager && typeof indicatorManager.reset === 'function') {
-        indicatorManager.reset()
-      }
     }
 
     const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -264,26 +457,80 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       onErrorCallback
     })
 
-    this.sendWhenReady({
-      type: 'getBars',
+    const clamped = this.clampPeriodToSessionAnchor(periodParams, resolution)
+
+    void this.fetchBarsHttp({
+      requestId,
       symbol: symbolInfo.name,
-      resolution: resolution,
-      from: periodParams.from,
-      to: periodParams.to,
-      countBack: periodParams.countBack,
-      firstDataRequest: periodParams.firstDataRequest,
-      requestId: requestId
+      resolution,
+      from: clamped.from,
+      to: clamped.to,
+      countBack: clamped.countBack,
+      firstDataRequest: clamped.firstDataRequest,
     })
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (this.pendingGetBarsRequests.has(requestId)) {
         this.pendingGetBarsRequests.delete(requestId)
+        this.pendingGetBarsAbort.get(requestId)?.abort()
+        this.pendingGetBarsAbort.delete(requestId)
         onErrorCallback('Request timeout')
       }
     }, 30000)
   }
 
-  handleGetBarsResponse(response: { requestId: string; bars?: any[]; noData?: boolean; error?: string }): void {
+  private async fetchBarsHttp(params: {
+    requestId: string
+    symbol: string
+    resolution: ResolutionString
+    from?: number
+    to?: number
+    countBack?: number
+    firstDataRequest?: boolean
+  }): Promise<void> {
+    const pending = this.pendingGetBarsRequests.get(params.requestId)
+    if (!pending) return
+
+    const controller = new AbortController()
+    this.pendingGetBarsAbort.set(params.requestId, controller)
+
+    try {
+      const response = await backtesterAPI.getHistory(
+        {
+          symbol: params.symbol,
+          resolution: params.resolution,
+          from: params.from,
+          to: params.to,
+          countBack: params.countBack,
+          firstDataRequest: params.firstDataRequest,
+          requestId: params.requestId,
+        },
+        { signal: controller.signal },
+      )
+
+      if (!this.pendingGetBarsRequests.has(params.requestId)) return
+
+      this.handleGetBarsResponse({
+        requestId: params.requestId,
+        bars: response.bars,
+        noData: response.noData,
+        meta: response.meta,
+        error: response.success === false ? response.message : undefined,
+      })
+    } catch (error) {
+      if (controller.signal.aborted) return
+      const stillPending = this.pendingGetBarsRequests.get(params.requestId)
+      if (!stillPending) return
+      this.pendingGetBarsRequests.delete(params.requestId)
+      this.pendingGetBarsAbort.delete(params.requestId)
+      const message = error instanceof Error ? error.message : 'getBars failed'
+      stillPending.onErrorCallback(message)
+    } finally {
+      this.pendingGetBarsAbort.delete(params.requestId)
+    }
+  }
+
+  handleGetBarsResponse(response: { requestId: string; bars?: any[]; noData?: boolean; error?: string; meta?: { noData?: boolean } }): void {
     const request = this.pendingGetBarsRequests.get(response.requestId)
     if (!request) {
       console.error(`[BacktesterChartDataFeed] No request found for requestId: ${response.requestId}`)
@@ -291,6 +538,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     }
 
     this.pendingGetBarsRequests.delete(response.requestId)
+    this.pendingGetBarsAbort.delete(response.requestId)
 
     if (response.error) {
       request.onErrorCallback(response.error)
@@ -302,21 +550,32 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       return
     }
 
+    const bars = this.filterBarsToSessionAnchor(
+      this.sanitizeBars(response.bars as Bar[]),
+      request.resolution,
+    )
+    if (!bars.length) {
+      request.onHistoryCallback([], { noData: true })
+      return
+    }
+
     // Store the last bar from getBars response for this symbol/resolution
     // This will be used when subscribeBars is called
-    if (response.bars.length > 0) {
-      const lastBar = response.bars[response.bars.length - 1]
+    if (bars.length > 0) {
+      const lastBar = bars[bars.length - 1]
       const cacheKey = this.getCacheKey(request.symbol, request.resolution)
       
       // Check if cache already exists - only update if new bar is more recent
       const cachedLastBar = this.lastBarsCache.get(cacheKey)
       if (!cachedLastBar || lastBar.time >= cachedLastBar.time) {
         this.lastBarsCache.set(cacheKey, lastBar)
+        this.notePlaybackBar(lastBar.time, request.resolution)
         this.notifyMarketBook(request.symbol, 'ltp')
       }
     }
 
-    request.onHistoryCallback(response.bars, {noData: false})
+    const noData = Boolean(response.noData || response.meta?.noData)
+    request.onHistoryCallback(bars, { noData })
   }
 
   subscribeBars(symbolInfo: LibrarySymbolInfo, resolution: ResolutionString, _onRealtimeCallback: SubscribeBarsCallback, subscriberUID: string, _onResetCacheNeededCallback?: () => void): void {
@@ -370,18 +629,23 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       return
     }
 
+    const candle = this.normalizeBar(data.candle)
+    if (!candle) return
+
+    this.notePlaybackBar(candle.time, subscription.resolution)
+
     // Update last bar
-    subscription.lastBar = data.candle
+    subscription.lastBar = candle
     this.notifyMarketBook(subscription.symbol, 'ltp')
 
     // Call the realtime callback
     if (subscription.onRealtimeCallback) {
-      subscription.onRealtimeCallback(data.candle)
+      subscription.onRealtimeCallback(candle)
     }
 
     // Call onRealTimeBar on trade cache after realtime data is pushed
     if (this.tradeHandler) {
-      this.tradeHandler.onRealTimeBar(subscription.symbol, subscription.resolution, data.candle)
+      this.tradeHandler.onRealTimeBar(subscription.symbol, subscription.resolution, candle)
     }
   }
 

@@ -11,6 +11,7 @@ import { getWebSocketUrl } from '../../api/api'
 export class BacktesterChartClient extends WebSocketClientBase {
   private session: BacktestSession | null
   private chartReady: boolean = false
+  private sessionReady: boolean = false
   private chart: any = null // Reference to BacktesterChart component instance
 
   constructor(
@@ -66,11 +67,13 @@ export class BacktesterChartClient extends WebSocketClientBase {
    */
   async connect(): Promise<void> {
     this.chartReady = false
+    this.sessionReady = false
     await super.connect()
   }
 
   disconnect(): void {
     this.chartReady = false
+    this.sessionReady = false
     super.disconnect()
   }
 
@@ -100,12 +103,6 @@ export class BacktesterChartClient extends WebSocketClientBase {
 
   protected handleCustomMessage(data: any): boolean {
     switch (data.type) {
-      case 'getBarsResponse':
-        if (this.datafeed && typeof this.datafeed.handleGetBarsResponse === 'function') {
-          this.datafeed.handleGetBarsResponse(data)
-          return true
-        }
-        return false
       case 'realtimeBar':
         if (this.datafeed && typeof this.datafeed.handleRealtimeBar === 'function') {
           this.datafeed.handleRealtimeBar(data)
@@ -130,6 +127,18 @@ export class BacktesterChartClient extends WebSocketClientBase {
           }
         }
         return false
+      case 'sessionDataAck':
+        this.sessionReady = true
+        if (this.datafeed && typeof this.datafeed.flushPendingMessages === 'function') {
+          this.datafeed.flushPendingMessages()
+        }
+        {
+          const callbacks = this.callbacks as BacktesterChartClientCallbacks
+          if (callbacks?.onChartReady) {
+            callbacks.onChartReady()
+          }
+        }
+        return true
       default:
         return false
     }
@@ -145,17 +154,8 @@ export class BacktesterChartClient extends WebSocketClientBase {
     // Call the parent implementation first
     super.handleConnectedMessage(data)
     
-    // Mark chart as ready and notify callback
     this.chartReady = true
-    const callbacks = this.callbacks as BacktesterChartClientCallbacks
-    if (callbacks.onChartReady) {
-      callbacks.onChartReady()
-    }
-    void this.sendSessionData().then(() => {
-      if (this.datafeed && typeof this.datafeed.flushPendingMessages === 'function') {
-        this.datafeed.flushPendingMessages()
-      }
-    })
+    void this.sendSessionData()
   }
 
   async sendSessionData(): Promise<void> {
@@ -179,10 +179,14 @@ export class BacktesterChartClient extends WebSocketClientBase {
   }
 
   /**
-   * Check if chart is ready to be displayed
+   * True when WS is connected and server session/bar cache is initialized.
    */
   isChartReady(): boolean {
-    return this.chartReady
+    return this.chartReady && this.sessionReady
+  }
+
+  isSessionReady(): boolean {
+    return this.sessionReady
   }
 
   /**

@@ -141,10 +141,10 @@ export class BacktesterDataClient extends WebSocketClientBase {
    * Send tab change message
    * @param tab - The tab to change to
    */
-  sendTabChange(tab: 'symbol-info' | 'topstep' | 'tradingview'): void {
+  sendTabChange(tab: 'symbol-info' | 'csv-data'): void {
     this.send({
       type: 'tab_change',
-      tab: tab
+      tab: tab === 'csv-data' ? 'symbol-info' : tab,
     })
   }
 
@@ -191,14 +191,18 @@ export class BacktesterDataClient extends WebSocketClientBase {
 
   /**
    * Send download message
-   * @param symbol - The symbol to download
-   * @param source - The source ('topstep' or 'tradingview')
+   * @param storageSymbol - Folder symbol (e.g. NQ)
+   * @param source - tradesea or tradingview
+   * @param ticker - API ticker (e.g. CME_MINI:NQ1!)
    */
-  sendDownload(symbol: string, source: 'topstep' | 'tradingview'): void {
+  sendDownload(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
+    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
     this.send({
       type: 'download',
-      symbol: symbol,
-      source: source
+      symbol: ticker || storageSymbol,
+      storageSymbol,
+      source: serverSource,
+      resolution,
     })
   }
 
@@ -207,24 +211,25 @@ export class BacktesterDataClient extends WebSocketClientBase {
    * @param symbol - The symbol to update
    * @param source - The source ('topstep' or 'tradingview')
    */
-  sendUpdate(symbol: string, source: 'topstep' | 'tradingview'): void {
+  sendUpdate(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
+    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
     this.send({
       type: 'update',
-      symbol: symbol,
-      source: source
+      symbol: ticker || storageSymbol,
+      storageSymbol,
+      source: serverSource,
+      resolution,
     })
   }
 
-  /**
-   * Send overwrite message
-   * @param symbol - The symbol to overwrite
-   * @param source - The source ('topstep' or 'tradingview')
-   */
-  sendOverwrite(symbol: string, source: 'topstep' | 'tradingview'): void {
+  sendOverwrite(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
+    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
     this.send({
       type: 'overwrite',
-      symbol: symbol,
-      source: source
+      symbol: ticker || storageSymbol,
+      storageSymbol,
+      source: serverSource,
+      resolution,
     })
   }
 

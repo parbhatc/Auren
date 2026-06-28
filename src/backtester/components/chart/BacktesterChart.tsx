@@ -9,6 +9,34 @@ import { setupChartKeyboardShortcuts } from '../../../components/common/chartKey
 import SessionDateNavigation from '../../../components/backtester/BacktesterChartView/SessionDateNavigation'
 import { PadTradeSymbolPicker } from '../../../components/trading/shared/pad/TradeContractPicker'
 import type { BacktesterChartDataFeed } from './BacktesterChartDataFeed'
+import { CHART_ORDER_LINE_THEME } from '../../../constants/chartOrderLineTheme'
+
+/** Wait until the chart mount has non-zero layout (avoids LWC "Value is null" on 0×0 containers). */
+function waitForMountLayout(mount: HTMLElement, timeoutMs = 4000): Promise<void> {
+  const hasSize = () => mount.clientWidth > 0 && mount.clientHeight > 0
+  if (hasSize()) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      ro?.disconnect()
+      clearTimeout(timer)
+      resolve()
+    }
+
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            if (hasSize()) finish()
+          })
+        : null
+    ro?.observe(mount)
+
+    const timer = window.setTimeout(finish, timeoutMs)
+  })
+}
 
 function chartShellHtml(chartId: string): string {
   return `
@@ -111,14 +139,23 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
     }
   }
 
-  resetAllChartData = async (): Promise<void> => {
+  /** Reload history from the server anchor and reset viewport (practice-trade style). */
+  reloadSessionDate = async (): Promise<void> => {
+    const datafeed = this.props.datafeed as { resetSessionState?: () => void } | undefined
+    datafeed?.resetSessionState?.()
+
     const widget = this.widgetRef
     if (!widget?.reset) return
     try {
-      await widget.reset({ data: true })
+      await widget.reset({ data: true, viewport: true, price: true, time: true })
+      widget.replay?.enter?.()
     } catch (err) {
-      console.warn('[BacktesterChart] reset failed:', err)
+      console.warn('[BacktesterChart] session date reload failed:', err)
     }
+  }
+
+  resetAllChartData = async (): Promise<void> => {
+    await this.reloadSessionDate()
   }
 
   private cancelToolbarSlotMount(): void {
@@ -338,6 +375,9 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
     if (!mount) return
     this.chartMountEl = mount
 
+    await waitForMountLayout(mount)
+    if (generation !== this.bootGeneration) return
+
     const { symbol = DEFAULT_BACKTESTER_SYMBOL, timeframe = '1', isDark = true, datafeed } = this.props
     const theme = isDark === false ? 'light' : 'dark'
 
@@ -365,12 +405,18 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         chrome: true,
         replay: true,
         skipAppLoader: true,
+        // Load more history up front; backtester CSV data is local so larger batches are cheap.
+        countBack: 2000,
+        historyChunk: 500,
         datafeed: bwcFeed,
         replayHideSelectModeMenu: true,
         replayHostControlled: true,
+        replayAutoEnter: true,
+        replayPersistent: true,
         replayHideJumpEnd: true,
         replayHideToggle: true,
         replayHideExit: true,
+        orderLineTheme: CHART_ORDER_LINE_THEME,
         onReplayHostAction: (action: string, payload: Record<string, unknown>) => {
           onReplayHostAction?.(action, payload)
         },
@@ -385,9 +431,9 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
       }
 
       this.widgetRef = widget
+      widget.replay?.enter?.()
       await this.handleChartReady()
       this.scheduleToolbarSlotMount(widget, generation)
-      widget.replay?.enter?.()
       setupChartKeyboardShortcuts(widget)
       clearChartContextActions()
       registerTradeContextActions({})

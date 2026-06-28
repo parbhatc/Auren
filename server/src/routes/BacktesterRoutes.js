@@ -48,6 +48,13 @@ class BacktesterRoutes {
       BacktesterController.getServerTime.bind(BacktesterController)
     )
 
+    // Historical bars — GET ?symbol=NQ&resolution=4h&from=&to=&countback=
+    this.router.get(
+      '/history',
+      AuthMiddleware.authenticate(),
+      BacktesterController.getHistory.bind(BacktesterController)
+    )
+
     // Search symbols for TradingView chart (authenticated users)
     this.router.get(
       '/search',
@@ -192,6 +199,12 @@ class BacktesterRoutes {
       AuthMiddleware.authenticate(),
       PermissionMiddleware.requireAdmin(),
       BacktesterController.getCSVFilesByType.bind(BacktesterController)
+    )
+    this.router.get(
+      '/config/csv-inventory',
+      AuthMiddleware.authenticate(),
+      PermissionMiddleware.requireAdmin(),
+      BacktesterController.getCsvInventory.bind(BacktesterController)
     )
     this.router.post(
       '/config/symbols',

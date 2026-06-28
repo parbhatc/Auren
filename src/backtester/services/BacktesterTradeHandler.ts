@@ -160,6 +160,29 @@ export class BacktesterTradeHandler {
     return calcTradeseaTickPnL(ctx.entry, mark, ctx.signedContracts, ctx.tickSize, ctx.tickValue)
   }
 
+  private resolveSessionStartDate(data: { startDate?: string; date?: string }): string | null {
+    if (data.startDate && /^\d{4}-\d{2}-\d{2}$/.test(data.startDate)) {
+      return data.startDate
+    }
+    if (!data.date) return null
+    const parsedDate = new Date(data.date)
+    if (isNaN(parsedDate.getTime())) return null
+    const year = parsedDate.getFullYear()
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
+    const day = String(parsedDate.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  private async reloadChartAfterSessionAnchor(): Promise<void> {
+    this.datafeed?.resetSessionState()
+    const chart = this.client?.getChart() as { reloadSessionDate?: () => Promise<void>; resetAllChartData?: () => Promise<void> } | null
+    if (chart?.reloadSessionDate) {
+      await chart.reloadSessionDate()
+      return
+    }
+    await chart?.resetAllChartData?.()
+  }
+
   /**
    * Update the WebSocket client
    */
@@ -168,55 +191,50 @@ export class BacktesterTradeHandler {
 
     // Set up callbacks when client is updated
     client?.setCallbacks({
-      onReplayResponse: (data: { type: string; time: string }) => {
-        this.client?.getChart()?.resetAllChartData()
+      onReplayResponse: async (data: { type: string; time: string }) => {
+        await this.reloadChartAfterSessionAnchor()
         console.log('[Backtester Trade Handler] Replayed to: ' + data.time)
       },
-      onDateNavigationResponse: async (data: { type: string; date: string; success: boolean; error: string }) => {
-        if(data.success){
-          this.client?.getChart()?.resetAllChartData()
-          
-          // Parse the date string and update session
-          if (this.session && data.date) {
-            try {
-              // Parse the date string (format: "1/2/2025, 9:30:00 AM" from toLocaleString())
-              const parsedDate = new Date(data.date)
-              if (!isNaN(parsedDate.getTime())) {
-                // Extract date in YYYY-MM-DD format
-                const year = parsedDate.getFullYear()
-                const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
-                const day = String(parsedDate.getDate()).padStart(2, '0')
-                const newStartDate = `${year}-${month}-${day}`
-                
-                // Update session with new date
-                const updatedSession: BacktestSession = {
-                  ...this.session,
-                  startDate: newStartDate
-                }
- 
-                // Update local session state immediately so any concurrent updates
-                // (e.g. symbol change events) don't re-save the old startDate.
-                this.session = updatedSession
- 
-                // Notify parent component to update session state (for date input value update)
-                this.onSessionUpdate?.(updatedSession)
- 
-                // Save to database
-                await backtesterAPI.updateSession(updatedSession)
- 
-                // Reload session stats to update R P&L and balance (after DB is updated)
-                this.onStatsRefresh?.()
-                
-                console.log('[Backtester Trade Handler] Date navigation response: Updated session date to', newStartDate)
-              }
-            } catch (error) {
-              console.error('[Backtester Trade Handler] Failed to update session date:', error)
-            }
-          }
-        } else {
+      onDateNavigationResponse: async (data: {
+        type: string
+        date: string
+        startDate?: string
+        success: boolean
+        error?: string
+      }) => {
+        if (!data.success) {
           console.log('[Backtester Trade Handler] Date navigation failed: ', data)
+          return
         }
-      }
+
+        if (!this.session) return
+
+        try {
+          const newStartDate = this.resolveSessionStartDate(data)
+          if (!newStartDate) {
+            console.warn('[Backtester Trade Handler] Date navigation missing startDate')
+            return
+          }
+
+          const updatedSession: BacktestSession = {
+            ...this.session,
+            startDate: newStartDate,
+          }
+
+          this.session = updatedSession
+          this.client?.updateSession(updatedSession)
+          this.onSessionUpdate?.(updatedSession)
+
+          await this.reloadChartAfterSessionAnchor()
+
+          await backtesterAPI.updateSession(updatedSession)
+          this.onStatsRefresh?.()
+
+          console.log('[Backtester Trade Handler] Date navigation: session anchored to', newStartDate)
+        } catch (error) {
+          console.error('[Backtester Trade Handler] Failed to apply date navigation:', error)
+        }
+      },
     })
   }
 

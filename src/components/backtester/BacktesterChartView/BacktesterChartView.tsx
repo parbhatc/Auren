@@ -173,6 +173,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     const { session } = this.props
     if (!session) return
 
+    this.datafeed.resetSessionState()
     this.setState({ wsState: 'connecting', wsConnected: false })
 
     this.wsClient = new BacktesterChartClient(
@@ -189,11 +190,6 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             this.wsClient.setDatafeed(this.datafeed)
             if (this.chartRef.current) {
               this.wsClient.setChart(this.chartRef.current)
-            }
-            if (this.wsClient.isChartReady?.()) {
-              void this.wsClient.sendSessionData().then(() => {
-                this.datafeed.flushPendingMessages()
-              })
             }
           }
           this.setState({ wsConnected: true, wsState: 'connected' })

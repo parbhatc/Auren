@@ -1,11 +1,15 @@
 import fs from 'fs';
-import path from 'path';
+import {
+    DEFAULT_CSV_RESOLUTION,
+    monthNameFromIndex,
+    resolveMonthFilePath as resolveBacktesterMonthPath,
+} from './backtesterCsvPaths.js';
 
 class CSVLoader {
     
     constructor(csvDir) {
         this.csvDir = csvDir;
-        // Cache structure: {symbol: {year: {month: {bars: [], lastAccess: timestamp}}}}
+        // Cache: {symbol: {csvResolution: {year: {month: {bars, lastAccess}}}}}
         this.monthCache = {};
         this.cacheTTL = 60 * 60 * 1000; // 1 hour in milliseconds
         
@@ -14,17 +18,19 @@ class CSVLoader {
     }
     
     // Get month data (loads from file if not cached)
-    getMonthData(symbol, year, month) {
-        // Initialize cache structure
+    getMonthData(symbol, year, month, csvResolution = DEFAULT_CSV_RESOLUTION) {
         if (!this.monthCache[symbol]) {
             this.monthCache[symbol] = {};
         }
-        if (!this.monthCache[symbol][year]) {
-            this.monthCache[symbol][year] = {};
+        if (!this.monthCache[symbol][csvResolution]) {
+            this.monthCache[symbol][csvResolution] = {};
+        }
+        if (!this.monthCache[symbol][csvResolution][year]) {
+            this.monthCache[symbol][csvResolution][year] = {};
         }
         
         const monthName = this.getMonthName(month);
-        const cacheEntry = this.monthCache[symbol][year][monthName];
+        const cacheEntry = this.monthCache[symbol][csvResolution][year][monthName];
         
         // Check if cached and still valid
         if (cacheEntry && (Date.now() - cacheEntry.lastAccess) < this.cacheTTL) {
@@ -32,12 +38,10 @@ class CSVLoader {
             return cacheEntry.bars;
         }
         
-        // Load from file — supports symbol/year/month.csv and symbol/year/1m/month.csv layouts
-        const filePath = this.resolveMonthFilePath(symbol, year, monthName);
+        const filePath = this.resolveMonthFilePath(symbol, year, monthName, csvResolution);
         
         if (!filePath || !fs.existsSync(filePath)) {
-            // Cache empty array to avoid repeated file checks
-            this.monthCache[symbol][year][monthName] = {
+            this.monthCache[symbol][csvResolution][year][monthName] = {
                 bars: [],
                 lastAccess: Date.now()
             };
@@ -65,7 +69,7 @@ class CSVLoader {
         bars.sort((a, b) => a.time - b.time);
         
         // Cache the result
-        this.monthCache[symbol][year][monthName] = {
+        this.monthCache[symbol][csvResolution][year][monthName] = {
             bars: bars,
             lastAccess: Date.now()
         };
@@ -79,22 +83,26 @@ class CSVLoader {
         let cleaned = 0;
         
         for (const symbol in this.monthCache) {
-            for (const year in this.monthCache[symbol]) {
-                for (const month in this.monthCache[symbol][year]) {
-                    const entry = this.monthCache[symbol][year][month];
-                    if ((now - entry.lastAccess) >= this.cacheTTL) {
-                        delete this.monthCache[symbol][year][month];
-                        cleaned++;
+            for (const csvResolution in this.monthCache[symbol]) {
+                for (const year in this.monthCache[symbol][csvResolution]) {
+                    for (const month in this.monthCache[symbol][csvResolution][year]) {
+                        const entry = this.monthCache[symbol][csvResolution][year][month];
+                        if ((now - entry.lastAccess) >= this.cacheTTL) {
+                            delete this.monthCache[symbol][csvResolution][year][month];
+                            cleaned++;
+                        }
+                    }
+                    
+                    if (Object.keys(this.monthCache[symbol][csvResolution][year]).length === 0) {
+                        delete this.monthCache[symbol][csvResolution][year];
                     }
                 }
                 
-                // Remove empty year
-                if (Object.keys(this.monthCache[symbol][year]).length === 0) {
-                    delete this.monthCache[symbol][year];
+                if (Object.keys(this.monthCache[symbol][csvResolution]).length === 0) {
+                    delete this.monthCache[symbol][csvResolution];
                 }
             }
             
-            // Remove empty symbol
             if (Object.keys(this.monthCache[symbol]).length === 0) {
                 delete this.monthCache[symbol];
             }
@@ -106,30 +114,17 @@ class CSVLoader {
     }
     
     getMonthName(monthIndex) {
-        const months = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ];
-        return months[monthIndex];
+        return monthNameFromIndex(monthIndex);
     }
 
-    /** Prefer 1m CSV subfolder when present (ES/NQ), else year/month layout (MES/GC). */
-    resolveMonthFilePath(symbol, year, monthName) {
-        const symbolDir = path.join(this.csvDir, symbol);
-        const yearDir = path.join(symbolDir, year.toString());
-        const candidates = [
-            path.join(yearDir, '1m', `${monthName}.csv`),
-            path.join(yearDir, '30s', `${monthName}.csv`),
-            path.join(yearDir, `${monthName}.csv`),
-        ];
-        for (const candidate of candidates) {
-            if (fs.existsSync(candidate)) return candidate;
-        }
-        return candidates[candidates.length - 1];
+    /** Prefer symbol/1m/year/month.csv; falls back to legacy symbol/year/month.csv */
+    resolveMonthFilePath(symbol, year, monthName, resolution = DEFAULT_CSV_RESOLUTION) {
+        return resolveBacktesterMonthPath(this.csvDir, symbol, year, monthName, resolution);
     }
     
     // Load candles for a specific time range
-    loadBars(symbol, fromMs, toMs) {
+    loadBars(symbol, fromMs, toMs, opts = {}) {
+        const csvResolution = opts.csvResolution ?? DEFAULT_CSV_RESOLUTION;
         const fromDate = new Date(fromMs);
         const toDate = new Date(toMs);
         
@@ -142,7 +137,7 @@ class CSVLoader {
             const endMonth = (year === toYear) ? toDate.getMonth() : 11;
             
             for (let month = startMonth; month <= endMonth; month++) {
-                const monthBars = this.getMonthData(symbol, year, month);
+                const monthBars = this.getMonthData(symbol, year, month, csvResolution);
                 
                 // Filter by time range
                 for (const bar of monthBars) {
@@ -160,7 +155,8 @@ class CSVLoader {
     }
     
     // Load N bars before a specific time
-    loadCountback(symbol, beforeMs, count, includeBoundary = false) {
+    loadCountback(symbol, beforeMs, count, includeBoundary = false, opts = {}) {
+        const csvResolution = opts.csvResolution ?? DEFAULT_CSV_RESOLUTION;
         const beforeDate = new Date(beforeMs);
         let currentYear = beforeDate.getFullYear();
         let currentMonth = beforeDate.getMonth();
@@ -169,7 +165,7 @@ class CSVLoader {
         
         // Go backwards through months until we have enough bars
         while (bars.length < count) {
-            const monthBars = this.getMonthData(symbol, currentYear, currentMonth);
+            const monthBars = this.getMonthData(symbol, currentYear, currentMonth, csvResolution);
             
             // Filter bars before the time (include/exclude boundary based on parameter)
             for (const bar of monthBars) {
@@ -201,7 +197,8 @@ class CSVLoader {
     }
     
     // Load N bars after a specific time
-    loadForward(symbol, afterMs, count) {
+    loadForward(symbol, afterMs, count, opts = {}) {
+        const csvResolution = opts.csvResolution ?? DEFAULT_CSV_RESOLUTION;
         const afterDate = new Date(afterMs);
         let currentYear = afterDate.getFullYear();
         let currentMonth = afterDate.getMonth();
@@ -210,7 +207,7 @@ class CSVLoader {
         
         // Go forward through months until we have enough bars
         while (bars.length < count) {
-            const monthBars = this.getMonthData(symbol, currentYear, currentMonth);
+            const monthBars = this.getMonthData(symbol, currentYear, currentMonth, csvResolution);
     
             // Filter bars after the time
             for (const bar of monthBars) {
@@ -247,7 +244,8 @@ class CSVLoader {
     }
     
     // Load N trading days before a specific time
-    loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary = false) {
+    loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary = false, opts = {}) {
+        const csvResolution = opts.csvResolution ?? DEFAULT_CSV_RESOLUTION;
         const beforeDate = new Date(beforeMs);
         let currentYear = beforeDate.getFullYear();
         let currentMonth = beforeDate.getMonth();
@@ -262,7 +260,7 @@ class CSVLoader {
         
         // Load months going backwards until we have enough trading days
         while (loadedMonths < maxMonthsToLoad) {
-            const monthBars = this.getMonthData(symbol, currentYear, currentMonth);
+            const monthBars = this.getMonthData(symbol, currentYear, currentMonth, csvResolution);
             
             for (const bar of monthBars) {
                 if (includeBoundary ? bar.time <= beforeMs : bar.time < beforeMs) {

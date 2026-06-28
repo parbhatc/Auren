@@ -11,6 +11,7 @@ import BacktesterWebSocket from './websocket/BacktesterWebSocket.js'
 import BacktesterDataWebSocket from './websocket/BacktesterDataWebSocket.js'
 import webSocketManager from './websocket/WebSocketManager.js'
 import CSVLoader from './utils/CSVLoader.js'
+import { initBacktesterBarsService } from './services/BacktesterBarsService.js'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
 import http from 'http'
@@ -33,6 +34,7 @@ class Server {
       console.log(`[Server] Backtester CSV directory: ${csvDir}`)
     }
     this.csvLoader = new CSVLoader(csvDir)
+    initBacktesterBarsService(this.csvLoader)
     dotenv.config()
     this.port = process.env.PORT || 3001
     this.app = new App().getApp()

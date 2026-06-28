@@ -1,4 +1,5 @@
 import type { OrderSide } from '../types/order'
+import { CHART_ORDER_LINE_THEME } from './chartOrderLineTheme'
 
 export type TradeSide = OrderSide
 
@@ -14,17 +15,17 @@ export type TradeButtonVariant =
 export const TRADING_SIDE_CHART = {
   buy: {
     fill: '#089981',
-    textOnFill: '#ffffff',
-    textOnDarkFill: '#ffffff',
+    textOnFill: CHART_ORDER_LINE_THEME.defaultTextColor,
+    textOnDarkFill: CHART_ORDER_LINE_THEME.defaultTextColor,
   },
   sell: {
     fill: '#f23645',
-    textOnFill: '#ffffff',
-    textOnDarkFill: '#ffffff',
+    textOnFill: CHART_ORDER_LINE_THEME.defaultTextColor,
+    textOnDarkFill: CHART_ORDER_LINE_THEME.defaultTextColor,
   },
   neutral: {
     fill: '#787b86',
-    textOnFill: '#ffffff',
+    textOnFill: CHART_ORDER_LINE_THEME.defaultTextColor,
   },
 } as const
 

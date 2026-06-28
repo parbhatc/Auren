@@ -1,6 +1,8 @@
 import WebSocketBase from './WebSocketBase.js'
-import BarCache from '../utils/BarCache.js'
 import aggregateBars from '../utils/BarAggregator.js'
+import { csvFolderForChartResolution } from '../utils/backtesterCsvPaths.js'
+import { parseBacktesterResolution, isSubMinuteResolution } from '../utils/backtesterResolution.js'
+import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 
 class BacktesterWebSocket extends WebSocketBase {
 
@@ -19,7 +21,10 @@ class BacktesterWebSocket extends WebSocketBase {
     this.csvLoader = this.server.csvLoader;
     this.subscriptions = new Map()
     this.symbols = new Map()
-    this.session = null;
+    this.session = null
+    this.barCache = null
+    this.runtimeUserId = null
+    this.runtimeSessionId = null
   }
 
   getClientSubscriptions(clientId) {
@@ -50,9 +55,6 @@ class BacktesterWebSocket extends WebSocketBase {
         break
       case 'unsubscribeBars':
         this.onUnsubscribeBars(ws, data, clientInfo, serverInfo)
-        break
-      case 'getBars':
-        this.onGetBars(ws, data, clientInfo, serverInfo)
         break
       case 'replay':
         this.onReplay(ws, data, clientInfo, serverInfo)
@@ -107,6 +109,24 @@ class BacktesterWebSocket extends WebSocketBase {
     return true;
   }
 
+  formatLocalDate(date) {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  clearSymbolBarCache() {
+    if (this.runtimeUserId && this.runtimeSessionId) {
+      getBacktesterBarsService().clearSymbolBarCache(this.runtimeUserId, this.runtimeSessionId)
+      return
+    }
+    if (!this.barCache?.cache) return
+    for (const symbol of Object.keys(this.barCache.cache)) {
+      this.barCache.clear(symbol)
+    }
+  }
+
   getNavigationSymbols() {
     const fromConfig = Array.from(this.symbols.keys())
     if (fromConfig.length > 0) {
@@ -127,14 +147,19 @@ class BacktesterWebSocket extends WebSocketBase {
     }
     
     if (session && session.startDate && session.startTime) {
-      const [year, month, day] = session.startDate.split('-').map(Number)
-      const [hours, minutes] = session.startTime.split(':').map(Number)
-      
-      const startDate = new Date(year, month - 1, day, hours, minutes, 0, 0)
-      
-      this.session = session;
-      this.barCache = new BarCache(this, startDate)
+      const userId = clientInfo?.userId || clientInfo?.id || 'unknown'
+      const runtime = getBacktesterBarsService().initRuntime(userId, session, symbols)
+      this.runtimeUserId = userId
+      this.runtimeSessionId = session.id
+      this.session = runtime.session
+      this.barCache = runtime.barCache
+
+      const startDate = getBacktesterBarsService().sessionAnchorDate(session)
       console.log(`[backtester WS] Session data received:`, session.id, `Start: ${startDate.toLocaleString()}`)
+      this.send(ws, {
+        type: 'sessionDataAck',
+        sessionId: session.id,
+      })
     } else {
       console.warn(`[backtester WS] Session data missing startDate or startTime:`, session)
     }
@@ -175,68 +200,19 @@ class BacktesterWebSocket extends WebSocketBase {
     }
   }
 
-  onGetBars(ws, data, clientInfo, serverInfo) {
-    let bars;
-    let { symbol, resolution, from, to, firstDataRequest, countBack, requestId } = data
-
-    if (!this.barCache) {
-      console.warn('[backtester WS] getBars before sessionData — defer until session is ready')
-      this.send(ws, {
-        type: 'getBarsResponse',
-        requestId,
-        bars: [],
-        noData: true,
-        error: 'Session not initialized',
-      })
-      return
-    }
-    
-    console.log(`[backtester WS] getBars request: ${symbol}@${resolution} from ${from} to ${to} Count Back: ${countBack} (requestId: ${requestId})`)
-    
-    let hasData = this.barCache.hasData(symbol);
-
-    if(hasData && firstDataRequest){
-      hasData = false;
-      this.barCache.clear(symbol);
-    }
-    let resolutionMinutes = this.getResolutionInMinutes(resolution);
-    let one_min_countback = resolution === "1" ? countBack : (countBack * resolutionMinutes);
-
-    if (!hasData) {
-      let lastTime = this.barCache.last.getTime();
-      let exactExists = this.csvLoader.hasExactCandle(symbol, lastTime);
-      
-      if (!exactExists) {
-        let originalTime = lastTime;
-        let closestBar = this.csvLoader.findClosestCandle(symbol, lastTime);
-          if (closestBar) {
-              this.barCache.last = new Date(closestBar.time);
-              lastTime = closestBar.time;
-              let timeDiff = Math.abs(closestBar.time - originalTime);
-              let minutesDiff = Math.floor(timeDiff / (1000 * 60));
-              console.log(`Exact candle not found, using closest: ${this.barCache.last.toLocaleString()} (${minutesDiff} minutes away)`);
-          }
-      }
-      
-      // First load - from start time (include boundary to get 9:30am)
-      bars = this.barCache.loadCountback(symbol, lastTime, one_min_countback, true);
-  } else {
-      // Load older bars before current oldest (exclude boundary to avoid loading same bar)
-      bars = this.barCache.loadCountback(symbol, this.barCache.getOldest(symbol), one_min_countback, false);
+  toEpochMs(value) {
+    return getBacktesterBarsService().toEpochMs(value)
   }
 
-    this.send(ws, {
-      type: 'getBarsResponse',
-      requestId,
-      bars: bars,
-      noData: bars.length === 0
-    })
+  sanitizeBarsForWire(bars) {
+    return getBacktesterBarsService().sanitizeBarsForWire(bars)
   }
 
   onReplay(ws, data, clientInfo, serverInfo){
     const { time } = data
     console.log("onReplay: ", data);
     console.log("Time: " + new Date(time * 1000).toLocaleString());
+    this.clearSymbolBarCache()
     this.barCache.last = new Date(time * 1000);
     this.send(ws, {
       type: 'replayResponse',
@@ -314,17 +290,30 @@ class BacktesterWebSocket extends WebSocketBase {
             }
         }
         
-        // Update last to the final date (exact or closest)
+        // Drop stale symbol bars so the next getBars load is contiguous from the new anchor.
+        this.clearSymbolBarCache()
+        const startDate = this.formatLocalDate(finalDate)
+        if (this.runtimeUserId && this.runtimeSessionId) {
+          getBacktesterBarsService().updateSessionAnchor(
+            this.runtimeUserId,
+            this.runtimeSessionId,
+            finalDate,
+            startDate,
+          )
+        }
         this.barCache.last = finalDate;
+        if (this.session) {
+          this.session.startDate = startDate
+        }
         console.log(`Date changed to: ${finalDate.toLocaleString()}${isExactMatch ? '' : ' (closest match)'}`);
         this.send(ws, {
             type: "date_navigation_response",
             success: true,
             date: finalDate.toLocaleString(),
+            startDate,
             isExactMatch: isExactMatch,
             originalDate: isExactMatch ? null : targetDate.toLocaleString()
         });
-        this.session.startDate = finalDate.toISOString().split('T')[0];
         return true;
     }
 
@@ -337,12 +326,17 @@ class BacktesterWebSocket extends WebSocketBase {
           return true;
       }
       
-      // Use playbackTimeframe if provided, otherwise fall back to resolution
       const timeframeToUse = playbackTimeframe || resolution
-      let fetchBars = this.getResolutionInMinutes(timeframeToUse);
-      let isComplete = this.isCompleteCandle(last, resolution);
+      const chartRes = parseBacktesterResolution(timeframeToUse)
+      const csvResolution = csvFolderForChartResolution(chartRes)
+      const nativeSubMinute = isSubMinuteResolution(chartRes)
+      const loadOpts = { csvResolution }
+
+      let fetchBars = nativeSubMinute ? 1 : this.getResolutionInMinutes(timeframeToUse);
+      let isComplete = nativeSubMinute ? true : this.isCompleteCandle(last, timeframeToUse);
       console.log({
           resolutionMinutes: fetchBars,
+          csvResolution,
           playbackTimeframe: playbackTimeframe || 'not provided',
           chartResolution: resolution,
           last: last.toLocaleString(), 
@@ -350,8 +344,6 @@ class BacktesterWebSocket extends WebSocketBase {
           timeframeToUse
       })
 
-      // Group subscriptions by symbol
-      // this.subscriptions is a Map of Maps: clientId -> Map<subscriberUID, subscription>
       const symbols = new Map()
 
       for (const clientSubscriptions of this.subscriptions.values()) {
@@ -363,25 +355,44 @@ class BacktesterWebSocket extends WebSocketBase {
         }
       }
       
-      if (!isComplete) {
+      if (!isComplete && !nativeSubMinute) {
         fetchBars += this.getBarsNeededToComplete(last, timeframeToUse)
       }
 
-      // Iterate through symbols Map
       for (const [symbol, subscriptions] of symbols.entries()) {
-        const bars = this.barCache.loadForward(symbol, last.getTime(), fetchBars)
+        const bars = nativeSubMinute
+          ? this.csvLoader.loadForward(symbol, last.getTime(), fetchBars, loadOpts)
+          : this.barCache.loadForward(symbol, last.getTime(), fetchBars, loadOpts)
+
+        if (bars.length > 0) {
+          this.barCache.last = new Date(bars[bars.length - 1].time)
+        }
+
         console.log("checking symbol: " + symbol + " " + new Date(last.getTime()).toLocaleString() + last.getTime())
 
         for (const bar of bars) {
           console.log("bar: " + new Date(bar.time).toLocaleString())
         }
         
-        // Iterate through subscriptions Map for this symbol
         for (const [uid, sub] of subscriptions.entries()) {
           console.log("checking uid: ", uid)
+
+          const subRes = parseBacktesterResolution(sub.resolution)
+          const subNativeSubMin = isSubMinuteResolution(subRes)
+
+          if (subNativeSubMin) {
+            for (const bar of bars) {
+              this.send(ws, {
+                type: "realtimeBar",
+                subscriberUID: uid,
+                candle: bar
+              })
+            }
+            continue
+          }
           
           let barsToAggregate = bars
-          if (sub.resolution !== "1") {
+          if (subRes !== "1") {
             const resolutionMinutes = this.getResolutionInMinutes(sub.resolution)
             const allCachedBars = this.barCache.getAllBars(symbol)
             
@@ -426,6 +437,10 @@ class BacktesterWebSocket extends WebSocketBase {
 
   isCompleteCandle(date, resolution) {
     const dateObj = new Date(date);
+    const res = parseBacktesterResolution(resolution)
+    if (isSubMinuteResolution(res)) {
+      return true
+    }
     const resolutionMinutes = this.getResolutionInMinutes(resolution);
     
     // Handle numeric minute resolutions (1, 2, 5, 15, etc.)

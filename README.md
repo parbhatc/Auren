@@ -53,9 +53,18 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 - Dark / light theme
 - Auth: register, login, email verification, password reset
 - Admin: users, roles, server config (self-hosted)
+- **Backtester data management** (admin): symbol config, CSV inventory, TradingView / Tradesea download
 - English UI copy via `en.json`
 
 There is **no third-party prop-firm order routing** beyond Tradesea accounts you connect yourself. Practice accounts remain fully simulated on Auren.
+
+### Historical backtester
+
+- **CSV replay** on local historical bars (NQ, ES, GC, etc.) — no live market data required during replay
+- **BetterWeightChart replay mode** — step forward, play/pause, speed control, jump to bar, future candles dimmed
+- **Session date navigation** — calendar pick, previous/next trading day with data
+- **Simulated DOM trading** on replayed bars with eval rules (balance, drawdown, consistency)
+- **Admin CSV pipeline** — download/update historical data from Tradesea or TradingView ([data management](#backtester-csv-data-admin))
 
 ## Screenshots
 
@@ -110,11 +119,68 @@ Session calendar and headlines while you practice.
 | `/live/trade` | Live Tradesea trading terminal |
 | `/trade/:id/stats` | Session statistics and eval progress |
 | `/trade/:id/news` | Economic news calendar |
+| `/backtester` | Historical backtester — session list |
+| `/backtester/chart` | Replay chart + simulated trading |
+| `/backtester/stats` | Backtester session statistics |
+| `/backtester/data-management` | Admin: symbol config, CSV download/update |
 | `/settings` | Profile and account settings |
 | `/settings/props` | Market data / prop firm connection |
 | `/settings/keyboard-shortcuts` | Terminal hotkeys |
 | `/settings/utils` | Timezone and utilities |
 | `/login`, `/register` | Authentication |
+
+## Backtester replay system
+
+The historical backtester replays **local CSV candles** through [BetterWeightChart](https://github.com/parbhatc/BetterweightChart) replay mode. The chart UI and Auren server stay in sync so you only see bars up to the current replay time — future data is hidden and the DOM fills against replayed prices.
+
+### Architecture
+
+```text
+BetterWeightChart (replay toolbar)
+        │  onReplayHostAction: play | pause | stepForward | selectBar | stepInterval
+        ▼
+BacktesterTradeHandler  ──WebSocket──▶  BacktesterWebSocket (/backtester-ws)
+        │                                      │
+        │                                      ├─ barCache.last = replay cursor
+        │                                      ├─ CSVLoader + BacktesterBarsService
+        ▼                                      └─ push bars to chart subscriptions
+BacktesterChartDataFeed ◀── GET /backtester/history
+```
+
+### Chart replay (client)
+
+`BacktesterChart` boots BWC with **host-controlled replay**:
+
+| Option | Purpose |
+|--------|---------|
+| `replay: true` | Enable replay toolbar and engine |
+| `replayHostControlled: true` | Auren drives play/pause/step (not inline BWC buttons) |
+| `replayAutoEnter` / `replayPersistent` | Enter replay on load and keep session across refresh |
+| `onReplayHostAction` | Bridge BWC events → `BacktesterTradeHandler` |
+
+**User actions**
+
+- **Step forward** — advance one playback candle (`nextCandle` on the server)
+- **Play / pause** — timed playback at selected speed
+- **Select bar** — click a candle to jump the replay cursor (`replay` message with unix time)
+- **Step interval** — playback timeframe (e.g. 5m steps on a 1m chart); server aggregates from CSV
+
+### Server replay (`/backtester-ws`)
+
+After `sessionData` initializes the runtime, the server tracks `barCache.last` as the **replay cursor**. Messages:
+
+| Message | Effect |
+|---------|--------|
+| `replay` `{ time }` | Jump to unix timestamp; clears per-symbol bar cache |
+| `date_navigation` `{ direction, currentDate }` | Calendar / previous day / next day with CSV data |
+| `nextCandle` `{ symbol, resolution, playbackTimeframe }` | Advance cursor; load and push the next bar(s) to subscribers |
+| `subscribeBars` / `unsubscribeBars` | Chart subscriptions per symbol@resolution |
+
+Historical bars are served from disk via `BacktesterBarsService` and `GET /backtester/history?symbol=&resolution=&from=&to=`. Minute+ chart resolutions aggregate from the `1m` CSV folder; native sub-minute (e.g. `30S`) reads `30s/` directly.
+
+### TradingView replay (data admin only)
+
+CSV **download/update** uses a separate TradingView WebSocket **replay session** (`server/src/services/tradingview/Replay.js`) to paginate historical candles into CSV files. That pipeline is admin-only (see [CSV data management](#backtester-csv-data-admin) below) and is not the same as the chart replay cursor above.
 
 ## Prerequisites
 
@@ -224,6 +290,44 @@ Change this password after first login. You can also register a new account if s
 2. Open **Settings → Market data** and connect Tradesea for charts (orders remain simulated).
 3. On **Auren**, create a **25K Eval** (or other size).
 4. Open **Trade** on that account.
+
+**Historical backtester:** open `/backtester`, create a session, then trade on `/backtester/chart`. Ensure CSV data exists for your symbols ([data management](#backtester-csv-data-admin)) before replaying.
+
+## Backtester CSV data (admin)
+
+Admin route: **`/backtester/data-management`**
+
+Use this page to manage historical bar data for the backtester:
+
+| Tab | Purpose |
+|-----|---------|
+| **Symbol Info** | Add/edit symbols in `server/data/backtester/config.json` (tick size, fees, Tradesea & TradingView tickers) |
+| **CSV Data** | Search configured symbols, view on-disk inventory, download / update / overwrite CSV candles |
+
+**Data sources**
+
+- **Tradesea** — 1-minute bars via Topstep-compatible API (token in config)
+- **TradingView** — bars via TradingView chart replay; optional auth token saved to `server/data/backtester/config.json` (`tokens.tradingview`). Leave empty or clear the field to use unauthorized access. Tokens shorter than 8 characters are ignored.
+
+**Timeframes**
+
+The download modal lists TradingView intervals (ticks, seconds, minutes, hours, days, ranges). On disk:
+
+- Minute+ intervals (1m, 5m, 1h, 1D, …) are stored under `{symbol}/1m/` and aggregated at read time
+- Sub-minute (e.g. `30S`) → `{symbol}/30s/`
+- Ticks / ranges → `{symbol}/1t/`, `{symbol}/1r/`, etc. when downloaded natively
+
+**CSV layout**
+
+```text
+server/data/backtester/csv/{SYMBOL}/{resolution}/{year}/{Month}.csv
+```
+
+Example: `server/data/backtester/csv/NQ/1m/2026/June.csv`
+
+**WebSocket**
+
+Data operations use `/backtester/data-management-ws` (see [docs/RESTART_GUIDE.md](docs/RESTART_GUIDE.md) for nginx proxy config).
 
 ## Production build
 

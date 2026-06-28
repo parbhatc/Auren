@@ -8,27 +8,29 @@ class BarCache {
   }
   
   
-  loadCountback(symbol, beforeMs, count, includeBoundary = false) {
-    const bars = this.csvLoader.loadCountback(symbol, beforeMs, count, includeBoundary);
+  loadCountback(symbol, beforeMs, count, includeBoundary = false, opts = {}) {
+    const bars = this.csvLoader.loadCountback(symbol, beforeMs, count, includeBoundary, opts);
     this.addBars(symbol, bars);
     return bars;
   }
   
-  loadForward(symbol, afterMs, count) {
-    const bars = this.csvLoader.loadForward(symbol, afterMs, count);
+  loadForward(symbol, afterMs, count, opts = {}) {
+    const bars = this.csvLoader.loadForward(symbol, afterMs, count, opts);
     this.addBars(symbol, bars);
-    this.last = new Date(bars[bars.length - 1].time);
+    if (bars.length > 0) {
+      this.last = new Date(bars[bars.length - 1].time);
+    }
     return bars;
   }
 
-  loadRange(symbol, fromMs, toMs) {
-    const bars = this.csvLoader.loadBars(symbol, fromMs, toMs);
+  loadRange(symbol, fromMs, toMs, opts = {}) {
+    const bars = this.csvLoader.loadBars(symbol, fromMs, toMs, opts);
     this.addBars(symbol, bars);
     return bars;
   }
 
-  loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary = false) {
-    const bars = this.csvLoader.loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary);
+  loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary = false, opts = {}) {
+    const bars = this.csvLoader.loadDayCountback(symbol, beforeMs, tradingDays, includeBoundary, opts);
     this.addBars(symbol, bars);
     return bars;
   }

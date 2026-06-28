@@ -662,10 +662,11 @@ class TradingViewWebSocket {
    * @private
    */
   sendAuthToken() {
-    // Use 'unauthorized_user_token' if token is null or undefined
-    const authToken = (this.token === null || this.token === undefined) 
-      ? 'unauthorized_user_token' 
-      : this.token
+    const raw = this.token
+    const authToken =
+      raw == null || String(raw).trim().length < 8
+        ? 'unauthorized_user_token'
+        : String(raw).trim()
     
     const message = {
       m: 'set_auth_token',

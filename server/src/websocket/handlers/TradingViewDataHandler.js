@@ -4,27 +4,55 @@
  */
 import fs from 'fs'
 import path from 'path'
+import {
+  csvFolderForChartResolution,
+  ensureMonthFileDir,
+  findLatestBarTimestamp,
+  monthFilePath,
+  monthNameFromIndex,
+} from '../../utils/backtesterCsvPaths.js'
+
+/** Replay errors that are safe to ignore while historical pagination continues. */
+const IGNORABLE_REPLAY_ERRORS = new Set(['intraday_not_permitted', 'already_in_session'])
 
 class TradingViewDataHandler {
   constructor(websocketInstance) {
     this.ws = websocketInstance
   }
 
+  getTradingViewToken() {
+    try {
+      if (!fs.existsSync(this.ws.configPath)) return null
+      const config = JSON.parse(fs.readFileSync(this.ws.configPath, 'utf8'))
+      const raw = config.tokens?.tradingview
+      if (raw == null) return null
+      const token = String(raw).trim()
+      // Placeholder / invalid tokens break the WS session — fall back to unauthorized access.
+      if (!token || token.length < 8) return null
+      return token
+    } catch {
+      return null
+    }
+  }
+
+  isIgnorableReplayError(errorCode) {
+    return IGNORABLE_REPLAY_ERRORS.has(errorCode)
+  }
+
   /**
    * Get month name from month index
    */
   getMonthName(monthIndex) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ]
-    return months[monthIndex]
+    return monthNameFromIndex(monthIndex)
   }
 
   /**
    * Download TradingView data and save to CSV files
    */
-  async download(symbol, action = 'download') {
+  async download(apiSymbol, action = 'download', storageSymbol = null, chartResolution = '1') {
+    const folderSymbol = storageSymbol || apiSymbol
+    const symbol = apiSymbol
+    const tvInterval = String(chartResolution || '1')
     try {
       const TradingViewWebSocketModule = await import('../../services/tradingview/TradingViewWebSocket.js')
       const TradingViewWebSocket = TradingViewWebSocketModule.default
@@ -35,12 +63,27 @@ class TradingViewDataHandler {
         let overallLastBarTime = null
         let lastNoCandles = false
         let oldStart = null
+        let lastReplayStart = null
         let isCompleted = false
         let hasError = false
+        const flags = { hasError: false, isCompleted: false }
+
+        const fail = (message) => {
+          if (flags.hasError || flags.isCompleted) return
+          flags.hasError = true
+          hasError = true
+          wsService?.disconnect()
+          this.ws.broadcast({
+            type: this.getResponseType(action),
+            success: false,
+            error: message,
+          })
+          reject(new Error(message))
+        }
 
         this.ws.sendProgress(null, action, symbol, 'tradingview', 0, `Starting ${action}... Connecting to TradingView`)
 
-        const wsService = new TradingViewWebSocket()
+        const wsService = new TradingViewWebSocket({ token: this.getTradingViewToken() })
         
         wsService.connect({
           onSessionInit: () => {
@@ -48,17 +91,11 @@ class TradingViewDataHandler {
             let replay = series.replay()
             
             replay.onReplayError = (error) => {
-              if (error.errorCode === "intraday_not_permitted") {
+              if (this.isIgnorableReplayError(error.errorCode)) {
+                console.warn(`[TradingViewDataHandler] Ignoring replay error: ${error.errorCode}`)
                 return
               }
-              hasError = true
-              wsService.disconnect()
-              this.ws.broadcast({
-                type: this.getResponseType(action),
-                success: false,
-                error: `Replay error: ${error.errorCode} - ${error.errorDetails || ''}`
-              })
-              reject(new Error(`Replay error: ${error.errorCode}`))
+              fail(`Replay error: ${error.errorCode} - ${error.errorDetails || ''}`)
             }
 
             series.onSymbolResolved = () => {
@@ -85,7 +122,7 @@ class TradingViewDataHandler {
                     return
                   }
 
-                  this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime)
+                  this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime, folderSymbol, tvInterval)
                     .then(() => resolve())
                     .catch(err => reject(err))
                   return
@@ -128,17 +165,21 @@ class TradingViewDataHandler {
                 `Fetched ${allBars.length} bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
               if (oldStart === first.v[0]) {
+                flags.isCompleted = true
                 isCompleted = true
                 wsService.disconnect()
                 
-                this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime)
+                this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime, folderSymbol, tvInterval)
                   .then(() => resolve())
                   .catch(err => reject(err))
                 return
               }
 
               oldStart = first.v[0]
-              replay.start(first.v[0])
+              if (lastReplayStart !== first.v[0]) {
+                lastReplayStart = first.v[0]
+                replay.start(first.v[0])
+              }
             }
 
             series.onSeriesCompleted = () => {
@@ -146,47 +187,27 @@ class TradingViewDataHandler {
             }
 
             series.onSymbolError = (error) => {
-              hasError = true
-              wsService.disconnect()
-              this.ws.broadcast({
-                type: this.getResponseType(action),
-                success: false,
-                error: `Symbol error: ${error.error_message || 'Unknown error'}`
-              })
-              reject(new Error(`Symbol error: ${error.error_message || 'Unknown error'}`))
+              fail(`Symbol error: ${error.error_message || 'Unknown error'}`)
             }
 
             series.onSeriesError = (error) => {
-              hasError = true
-              wsService.disconnect()
-              this.ws.broadcast({
-                type: this.getResponseType(action),
-                success: false,
-                error: `Series error: ${error.error_code || 'Unknown error'}`
-              })
-              reject(new Error(`Series error: ${error.error_code || 'Unknown error'}`))
+              fail(`Series error: ${error.error_code || 'Unknown error'}`)
             }
 
-            series.resolve(symbol, "1", 25000)
+            series.resolve(symbol, tvInterval, 25000)
           },
           onConnected: () => {
             // Connected
           },
           onDisconnected: () => {
             if (!isCompleted && !hasError && allBars.length > 0) {
-              this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime)
+              this.processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime, folderSymbol, tvInterval)
                 .then(() => resolve())
                 .catch(err => reject(err))
             }
           },
           onError: (error) => {
-            hasError = true
-            this.ws.broadcast({
-              type: this.getResponseType(action),
-              success: false,
-              error: `Connection error: ${error.message || 'Unknown error'}`
-            })
-            reject(error)
+            fail(`Connection error: ${error.message || 'Unknown error'}`)
           }
         })
       })
@@ -202,62 +223,39 @@ class TradingViewDataHandler {
   }
 
   /**
-   * Update TradingView data - finds latest month and fetches from beginning of that month to now
+   * Update TradingView data — fetches candles after the last bar on disk (quick update).
    */
-  async update(symbol) {
+  async update(apiSymbol, storageSymbol = null, chartResolution = '1') {
+    const folderSymbol = storageSymbol || apiSymbol
+    const symbol = apiSymbol
+    const tvInterval = String(chartResolution || '1')
+    const csvResolution = csvFolderForChartResolution(tvInterval)
+    const progressSymbol = folderSymbol
+
     try {
-      // Normalize symbol for folder name
-      const normalizedSymbol = symbol.replace(/:/g, '__')
-      const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
-      
-      const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-      
-      this.ws.sendProgress(null, 'update', symbol, 'tradingview', 0, 'Finding latest data...')
+      const normalizedSymbol = folderSymbol.replace(/:/g, '__')
 
-      const now = new Date()
-      const nowTimestamp = Math.floor(now.getTime() / 1000)
+      this.ws.sendProgress(null, 'update', progressSymbol, 'tradingview', 0, 'Finding latest data...')
 
-      // Find latest month and year from all existing files
-      let latestYear = null
-      let latestMonth = null
-      let latestMonthIndex = null
+      const lastBar = findLatestBarTimestamp(this.ws.csvDir, normalizedSymbol, csvResolution)
+      const afterTimeMs = lastBar?.timestampMs ?? null
 
-      if (fs.existsSync(symbolDir)) {
-        const yearDirs = fs.readdirSync(symbolDir, { withFileTypes: true })
-          .filter(item => item.isDirectory() && /^\d{4}$/.test(item.name))
-          .map(item => parseInt(item.name))
-          .sort((a, b) => b - a)
-
-        for (const year of yearDirs) {
-          const yearDir = path.join(symbolDir, year.toString())
-          const files = fs.readdirSync(yearDir, { withFileTypes: true })
-            .filter(item => item.isFile() && item.name.endsWith('.csv'))
-            .map(item => item.name.replace('.csv', ''))
-
-          for (const monthName of files) {
-            const monthIndex = MONTH_NAMES.indexOf(monthName)
-            if (monthIndex !== -1) {
-              if (!latestYear || year > latestYear || (year === latestYear && monthIndex > latestMonthIndex)) {
-                latestYear = year
-                latestMonth = monthName
-                latestMonthIndex = monthIndex
-              }
-            }
-          }
-        }
-      }
-
-      // Determine update range
-      let fromTime = 0
-      if (latestYear && latestMonthIndex !== null) {
-        fromTime = Math.floor(new Date(latestYear, latestMonthIndex, 1, 0, 0, 0, 0).getTime() / 1000)
-        this.ws.sendProgress(null, 'update', symbol, 'tradingview', 0, `Updating from ${latestMonth} ${latestYear} to now...`)
+      if (afterTimeMs != null) {
+        const lastDate = new Date(afterTimeMs)
+        this.ws.sendProgress(
+          null,
+          'update',
+          progressSymbol,
+          'tradingview',
+          0,
+          `Updating after ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()}...`
+        )
       } else {
-        fromTime = 0
-        this.ws.sendProgress(null, 'update', symbol, 'tradingview', 0, 'No existing data found, starting full download...')
+        this.ws.sendProgress(null, 'update', progressSymbol, 'tradingview', 0, 'No existing data found, starting full download...')
+        return this.download(apiSymbol, 'update', folderSymbol, tvInterval)
       }
 
-      this.ws.sendProgress(null, 'update', symbol, 'tradingview', 0, 'Fetching new data...')
+      this.ws.sendProgress(null, 'update', progressSymbol, 'tradingview', 0, 'Fetching new data...')
 
       const TradingViewWebSocketModule = await import('../../services/tradingview/TradingViewWebSocket.js')
       const TradingViewWebSocket = TradingViewWebSocketModule.default
@@ -266,188 +264,50 @@ class TradingViewDataHandler {
         const allNewBars = []
         let overallFirstBarTime = null
         let overallLastBarTime = null
-        let lastNoCandles = false
-        let oldStart = null
         let isCompleted = false
         let hasError = false
+        let sawTimescale = false
+        let sawSeriesCompleted = false
 
-        const fromTimeMs = fromTime > 0 ? fromTime * 1000 : null
+        const finishUpdate = () => {
+          if (allNewBars.length === 0) {
+            this.ws.broadcast({
+              type: 'update_response',
+              success: true,
+              message: 'No new data to update. All data is already up to date.'
+            })
+            resolve()
+            return
+          }
 
-        const wsService = new TradingViewWebSocket()
-        
+          this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime, folderSymbol, tvInterval)
+            .then(() => resolve())
+            .catch((err) => reject(err))
+        }
+
+        const addCandle = (candle) => {
+          const timestamp = candle.v[0] * 1000
+          if (afterTimeMs && timestamp <= afterTimeMs) return false
+
+          const open = candle.v[1]
+          const high = candle.v[2]
+          const low = candle.v[3]
+          const close = candle.v[4]
+          const volume = candle.v[5] || 0
+          if (timestamp <= 0) return false
+
+          if (!overallFirstBarTime || timestamp < overallFirstBarTime) overallFirstBarTime = timestamp
+          if (!overallLastBarTime || timestamp > overallLastBarTime) overallLastBarTime = timestamp
+
+          allNewBars.push({ time: timestamp, open, high, low, close, volume })
+          return true
+        }
+
+        const wsService = new TradingViewWebSocket({ token: this.getTradingViewToken() })
+
         wsService.connect({
           onSessionInit: () => {
-            let series = wsService.createSeries('extended')
-            let replay = series.replay()
-            
-            replay.onReplayError = (error) => {
-              if (error.errorCode === "intraday_not_permitted") {
-                return
-              }
-              hasError = true
-              wsService.disconnect()
-              this.ws.broadcast({
-                type: 'update_response',
-                success: false,
-                error: `Replay error: ${error.errorCode} - ${error.errorDetails || ''}`
-              })
-              reject(new Error(`Replay error: ${error.errorCode}`))
-            }
-
-            series.onSymbolResolved = () => {
-              // Symbol resolved successfully
-            }
-
-            series.onTimescaleUpdate = (data) => {
-              if (isCompleted || hasError) return
-
-              const candles = data.series_data?.s || []
-
-              if (candles.length < 1) {
-                if (lastNoCandles) {
-                  isCompleted = true
-                  wsService.disconnect()
-                  
-                  if (allNewBars.length === 0) {
-                    // No new bars found - data is already up to date
-                    this.ws.broadcast({
-                      type: 'update_response',
-                      success: true,
-                      message: 'No new data to update. All data is already up to date.'
-                    })
-                    resolve()
-                    return
-                  }
-
-                  this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime)
-                    .then(() => resolve())
-                    .catch(err => reject(err))
-                  return
-                }
-                lastNoCandles = true
-                return
-              }
-
-              lastNoCandles = false
-              let first = candles[0]
-              let last = candles[candles.length - 1]
-
-              // Track how many bars were added in this batch
-              const barsBeforeBatch = allNewBars.length
-
-              // Convert TradingView candles to our format and filter by update range
-              for (const candle of candles) {
-                const timestamp = candle.v[0] * 1000 // Convert seconds to milliseconds
-                
-                // Only add bars that are within the update range (from beginning of latest month to now)
-                if (fromTimeMs && timestamp < fromTimeMs) {
-                  continue // Skip bars older than the beginning of the latest month
-                }
-                
-                const open = candle.v[1]
-                const high = candle.v[2]
-                const low = candle.v[3]
-                const close = candle.v[4]
-                const volume = candle.v[5] || 0
-
-                if (timestamp > 0) {
-                  if (!overallFirstBarTime || timestamp < overallFirstBarTime) {
-                    overallFirstBarTime = timestamp
-                  }
-                  if (!overallLastBarTime || timestamp > overallLastBarTime) {
-                    overallLastBarTime = timestamp
-                  }
-
-                  allNewBars.push({
-                    time: timestamp,
-                    open, high, low, close, volume
-                  })
-                }
-              }
-
-              // If no bars were added in this batch and we've passed the fromTime limit, we're done
-              const barsAddedInBatch = allNewBars.length - barsBeforeBatch
-              if (barsAddedInBatch === 0 && fromTimeMs && last.v[0] * 1000 < fromTimeMs) {
-                isCompleted = true
-                wsService.disconnect()
-                
-                if (allNewBars.length === 0) {
-                  // No new bars found - data is already up to date
-                  this.ws.broadcast({
-                    type: 'update_response',
-                    success: true,
-                    message: 'No new data to update. All data is already up to date.'
-                  })
-                  resolve()
-                  return
-                }
-                
-                this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime)
-                  .then(() => resolve())
-                  .catch(err => reject(err))
-                return
-              }
-
-              const firstDate = overallFirstBarTime ? new Date(overallFirstBarTime) : new Date(first.v[0] * 1000)
-              const lastDate = overallLastBarTime ? new Date(overallLastBarTime) : new Date(last.v[0] * 1000)
-              this.ws.sendProgress(null, 'update', symbol, 'tradingview', 0, 
-                `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
-
-              // Check if we've reached the fromTime limit
-              if (fromTimeMs && last.v[0] * 1000 < fromTimeMs) {
-                // We've fetched past the beginning of the latest month
-                // Check if any remaining candles are still within range
-                const remainingInRange = candles.filter(c => c.v[0] * 1000 >= fromTimeMs)
-                if (remainingInRange.length === 0) {
-                  isCompleted = true
-                  wsService.disconnect()
-                  
-                  if (allNewBars.length === 0) {
-                    // No new bars found - data is already up to date
-                    this.ws.broadcast({
-                      type: 'update_response',
-                      success: true,
-                      message: 'No new data to update. All data is already up to date.'
-                    })
-                    resolve()
-                    return
-                  }
-                  
-                  this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime)
-                    .then(() => resolve())
-                    .catch(err => reject(err))
-                  return
-                }
-              }
-
-              if (oldStart === first.v[0]) {
-                isCompleted = true
-                wsService.disconnect()
-                
-                if (allNewBars.length === 0) {
-                  // No new bars found - data is already up to date
-                  this.ws.broadcast({
-                    type: 'update_response',
-                    success: true,
-                    message: 'No new data to update. All data is already up to date.'
-                  })
-                  resolve()
-                  return
-                }
-                
-                this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime)
-                  .then(() => resolve())
-                  .catch(err => reject(err))
-                return
-              }
-
-              oldStart = first.v[0]
-              replay.start(first.v[0])
-            }
-
-            series.onSeriesCompleted = () => {
-              // Series completed
-            }
+            const series = wsService.createSeries('extended')
 
             series.onSymbolError = (error) => {
               hasError = true
@@ -471,36 +331,52 @@ class TradingViewDataHandler {
               reject(new Error(`Series error: ${error.error_code || 'Unknown error'}`))
             }
 
-            // Resolve series - this will trigger onTimescaleUpdate
-            // For update, we want to start from beginning of latest month
-            const startTimeSeconds = fromTimeMs ? Math.floor(fromTimeMs / 1000) : nowTimestamp
-            series.resolve(symbol, "1", 25000)
-            
-            // Start replay from beginning of latest month if we have existing data
-            // This will fetch data starting from that time
-            if (fromTimeMs) {
-              replay.start(startTimeSeconds)
+            series.onTimescaleUpdate = (data) => {
+              if (isCompleted || hasError) return
+
+              const candles = data.series_data?.s || []
+              if (candles.length > 0) sawTimescale = true
+              for (const candle of candles) addCandle(candle)
+
+              if (allNewBars.length > 0) {
+                const firstDate = new Date(overallFirstBarTime)
+                const lastDate = new Date(overallLastBarTime)
+                this.ws.sendProgress(
+                  null,
+                  'update',
+                  progressSymbol,
+                  'tradingview',
+                  0,
+                  `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`
+                )
+              }
             }
-          },
-          onConnected: () => {
-            // Connected
+
+            series.onSeriesCompleted = () => {
+              if (!isCompleted && !hasError) {
+                sawSeriesCompleted = true
+                isCompleted = true
+                wsService.disconnect()
+                finishUpdate()
+              }
+            }
+
+            series.resolve(symbol, tvInterval, 25000)
           },
           onDisconnected: () => {
             if (!isCompleted && !hasError) {
-              if (allNewBars.length === 0) {
-                // No new bars found - data is already up to date
+              if (!sawTimescale && !sawSeriesCompleted) {
+                hasError = true
                 this.ws.broadcast({
                   type: 'update_response',
-                  success: true,
-                  message: 'No new data to update. All data is already up to date.'
+                  success: false,
+                  error: 'TradingView disconnected before any candle data was received. Check your TradingView token in Symbol Info / CSV settings.'
                 })
-                resolve()
+                reject(new Error('TradingView disconnected before candle data'))
                 return
               }
-              
-              this.processAndSaveBars(allNewBars, symbol, 'update', overallFirstBarTime, overallLastBarTime)
-                .then(() => resolve())
-                .catch(err => reject(err))
+              isCompleted = true
+              finishUpdate()
             }
           },
           onError: (error) => {
@@ -528,13 +404,24 @@ class TradingViewDataHandler {
   /**
    * Process and save TradingView bars to CSV files
    */
-  async processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime) {
+  async processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime, storageSymbol = null, chartResolution = '1') {
     if (allBars.length === 0) {
       throw new Error('No bars to save')
     }
 
+    const csvResolution = csvFolderForChartResolution(chartResolution)
+
     allBars.sort((a, b) => a.time - b.time)
-    this.ws.sendProgress(null, action, symbol, 'tradingview', 0, 'Writing CSV files...')
+
+    const folderSymbol = storageSymbol || symbol
+    const progressSymbol = folderSymbol
+    const normalizedSymbol = folderSymbol.replace(/:/g, '__')
+    const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
+    if (!fs.existsSync(symbolDir)) {
+      fs.mkdirSync(symbolDir, { recursive: true })
+    }
+
+    this.ws.sendProgress(null, action, progressSymbol, 'tradingview', 0, 'Writing CSV files...')
 
     const barsByMonth = {}
     for (const bar of allBars) {
@@ -542,19 +429,12 @@ class TradingViewDataHandler {
       const year = date.getFullYear()
       const month = date.getMonth()
       const monthName = this.getMonthName(month)
-      
+
       const key = `${year}-${month}`
       if (!barsByMonth[key]) {
         barsByMonth[key] = { year, month, monthName, bars: [] }
       }
       barsByMonth[key].bars.push(bar)
-    }
-
-    // Normalize symbol for folder name: convert colons to double underscores (Windows doesn't allow colons in folder names)
-    const normalizedSymbol = symbol.replace(/:/g, '__')
-    const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
-    if (!fs.existsSync(symbolDir)) {
-      fs.mkdirSync(symbolDir, { recursive: true })
     }
 
     let filesWritten = 0
@@ -565,12 +445,8 @@ class TradingViewDataHandler {
     for (const key of Object.keys(barsByMonth).sort()) {
       const { year, monthName, bars } = barsByMonth[key]
       
-      const yearDir = path.join(symbolDir, year.toString())
-      if (!fs.existsSync(yearDir)) {
-        fs.mkdirSync(yearDir, { recursive: true })
-      }
-
-      const filePath = path.join(yearDir, `${monthName}.csv`)
+      ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year, csvResolution)
+      const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
       
       let newCandlesInFile = 0
       
@@ -621,15 +497,15 @@ class TradingViewDataHandler {
       
       filesWritten++
       if (action === 'update') {
-        this.ws.sendProgress(null, action, symbol, 'tradingview', 0, `Updated ${filesWritten}/${totalFiles} files... (${totalNewCandles} new candles)`)
+        this.ws.sendProgress(null, action, progressSymbol, 'tradingview', 0, `Updated ${filesWritten}/${totalFiles} files... (${totalNewCandles} new candles)`)
       } else {
-        this.ws.sendProgress(null, action, symbol, 'tradingview', 0, `Written ${filesWritten}/${totalFiles} files...`)
+        this.ws.sendProgress(null, action, progressSymbol, 'tradingview', 0, `Written ${filesWritten}/${totalFiles} files...`)
       }
     }
 
     const responseType = this.getResponseType(action)
     const actionLabel = action === 'reset' ? 'Reset' : action === 'overwrite' ? 'Overwrite' : action === 'update' ? 'Update' : 'Download'
-    this.ws.sendProgress(null, action, symbol, 'tradingview', 0, `${actionLabel} complete!`)
+    this.ws.sendProgress(null, action, progressSymbol, 'tradingview', 0, `${actionLabel} complete!`)
     
     // Create appropriate success message
     let successMessage = ''

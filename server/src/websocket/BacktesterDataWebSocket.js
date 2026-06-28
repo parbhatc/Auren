@@ -2,6 +2,7 @@ import WebSocketBase from './WebSocketBase.js'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { listAllCsvFiles } from '../utils/backtesterCsvPaths.js'
 import TopstepDataHandler from './handlers/TopstepDataHandler.js'
 import TradingViewDataHandler from './handlers/TradingViewDataHandler.js'
 
@@ -110,74 +111,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    */
   getAllCSVFiles() {
     try {
-      if (!fs.existsSync(this.csvDir)) {
-        return []
-      }
-
-      const files = []
-      
-      // Scan all directories in csvDir
-      const allDirs = fs.readdirSync(this.csvDir, { withFileTypes: true })
-        .filter(item => item.isDirectory())
-        .map(item => item.name)
-
-      for (const symbol of allDirs) {
-        const symbolDir = path.join(this.csvDir, symbol)
-        
-        if (!fs.existsSync(symbolDir)) {
-          continue
-        }
-
-        // Read year directories
-        const yearItems = fs.readdirSync(symbolDir, { withFileTypes: true })
-        const yearDirs = yearItems
-          .filter(item => item.isDirectory() && /^\d{4}$/.test(item.name))
-          .map(item => item.name)
-          .sort((a, b) => parseInt(b) - parseInt(a)) // Sort descending (newest first)
-
-        if (yearDirs.length === 0) {
-          continue
-        }
-
-        for (const yearStr of yearDirs) {
-          const year = parseInt(yearStr)
-          if (isNaN(year)) {
-            continue
-          }
-
-          const yearDir = path.join(symbolDir, yearStr)
-          
-          // Read CSV files in year directory
-          const fileItems = fs.readdirSync(yearDir, { withFileTypes: true })
-          const csvFiles = fileItems
-            .filter(item => item.isFile() && item.name.endsWith('.csv'))
-            .map(item => item.name.replace('.csv', ''))
-
-          // Sort months
-          const months = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ]
-          csvFiles.sort((a, b) => months.indexOf(b) - months.indexOf(a))
-
-          for (const month of csvFiles) {
-            const filePath = path.join(yearDir, `${month}.csv`)
-            const stats = fs.statSync(filePath)
-            
-            files.push({
-              symbol,
-              year,
-              month,
-              fileName: `${month}.csv`,
-              filePath,
-              size: stats.size,
-              modified: stats.mtime.toISOString()
-            })
-          }
-        }
-      }
-
-      return files
+      return listAllCsvFiles(this.csvDir)
     } catch (error) {
       console.error(`[backtester-data WS] Error getting all CSV files:`, error.message)
       return []
@@ -588,6 +522,22 @@ class BacktesterDataWebSocket extends WebSocketBase {
   }
 
   /**
+   * Run an async data handler without letting rejections crash the process.
+   */
+  runDataHandlerSafely(promise, { action, symbol, source, operationKey }) {
+    Promise.resolve(promise)
+      .catch((err) => {
+        console.error(`[backtester-data WS] ${action} failed for ${symbol} (${source}):`, err?.message || err)
+      })
+      .finally(() => {
+        if (operationKey) {
+          this.activeOperations.delete(operationKey)
+        }
+        this.clearProgress(action, symbol, source)
+      })
+  }
+
+  /**
    * Save token to config.json file
    * @param {string} source - The source ('topstep' or 'tradingview')
    * @param {string} token - The token to save
@@ -633,8 +583,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onDownload(ws, data, clientInfo, serverInfo) {
-    const { symbol, source } = data
-    console.log('[backtester-data WS] onDownload called - Symbol:', symbol, 'Source:', source)
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const storageSymbol = storageSymbolRaw || symbol
+    const resolution = resolutionRaw || '1'
+    console.log('[backtester-data WS] onDownload called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
     
     try {
       if (!symbol) {
@@ -664,8 +616,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
           return
         }
 
-        // Normalize symbol (remove leading slash for config lookup, but keep it for API calls)
-        const normalizedSymbol = symbol.startsWith('/') ? symbol.substring(1) : symbol
+        const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
         const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
 
         // Check if operation is already in progress
@@ -686,16 +637,13 @@ class BacktesterDataWebSocket extends WebSocketBase {
         // The handler will send download_response via broadcast when operation completes
 
         // Start download process using handler
-        this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'download')
-          .finally(() => {
-            // Clear active operation when done
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('download', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'download'),
+          { action: 'download', symbol: normalizedSymbol, source, operationKey }
+        )
       } else if (source === 'tradingview') {
-        // Normalize symbol for TradingView (use as-is, but ensure it's the full config format)
-        const normalizedSymbol = symbol
-        
+        const normalizedSymbol = storageSymbol
+
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('download', normalizedSymbol, source)
         if (this.activeOperations.has(operationKey)) {
@@ -714,12 +662,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
         // The handler will send download_response via broadcast when operation completes
 
         // Start download process using handler
-        this.tradingViewHandler.download(normalizedSymbol, 'download')
-          .finally(() => {
-            // Clear active operation when done
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('download', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.tradingViewHandler.download(symbol, 'download', normalizedSymbol, resolution),
+          { action: 'download', symbol: normalizedSymbol, source, operationKey }
+        )
       } else {
         this.send(ws, {
           type: 'download_response',
@@ -747,8 +693,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onUpdate(ws, data, clientInfo, serverInfo) {
-    const { symbol, source } = data
-    console.log('[backtester-data WS] onUpdate called - Symbol:', symbol, 'Source:', source)
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const storageSymbol = storageSymbolRaw || symbol
+    const resolution = resolutionRaw || '1'
+    console.log('[backtester-data WS] onUpdate called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
 
     // Don't send immediate response - let the handler send the final response with bar counts
     try {
@@ -779,8 +727,8 @@ class BacktesterDataWebSocket extends WebSocketBase {
           return
         }
 
-        // Normalize symbol
-        const normalizedSymbol = symbol.startsWith('/') ? symbol.substring(1) : symbol
+        // Normalize symbol — api ticker may include exchange prefix
+        const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
         const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
 
         // Check if operation is already in progress
@@ -801,14 +749,12 @@ class BacktesterDataWebSocket extends WebSocketBase {
         // The handler will send update_response via broadcast when operation completes
 
         // Update data using handler
-        await this.topstepHandler.update(apiSymbol, normalizedSymbol, token)
-          .finally(() => {
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('update', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.topstepHandler.update(apiSymbol, normalizedSymbol, token),
+          { action: 'update', symbol: normalizedSymbol, source, operationKey }
+        )
       } else if (source === 'tradingview') {
-        // Normalize symbol for TradingView
-        const normalizedSymbol = symbol
+        const normalizedSymbol = storageSymbol
         
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('update', normalizedSymbol, source)
@@ -828,11 +774,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
         // The handler will send update_response via broadcast when operation completes
 
         // Start update process using handler
-        this.tradingViewHandler.update(normalizedSymbol)
-          .finally(() => {
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('update', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.tradingViewHandler.update(symbol, normalizedSymbol, resolution),
+          { action: 'update', symbol: normalizedSymbol, source, operationKey }
+        )
       } else {
         this.send(ws, {
           type: 'update_response',
@@ -859,8 +804,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onOverwrite(ws, data, clientInfo, serverInfo) {
-    const { symbol, source } = data
-    console.log('[backtester-data WS] onOverwrite called - Symbol:', symbol, 'Source:', source)
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const storageSymbol = storageSymbolRaw || symbol
+    const resolution = resolutionRaw || '1'
+    console.log('[backtester-data WS] onOverwrite called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
     
     try {
       if (!symbol) {
@@ -891,7 +838,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         }
 
         // Normalize symbol
-        const normalizedSymbol = symbol.startsWith('/') ? symbol.substring(1) : symbol
+        const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
         const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
 
         // Check if operation is already in progress
@@ -916,14 +863,12 @@ class BacktesterDataWebSocket extends WebSocketBase {
         })
 
         // Overwrite data (same as download but doesn't delete folder)
-        await this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'overwrite')
-          .finally(() => {
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('overwrite', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'overwrite'),
+          { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
+        )
       } else if (source === 'tradingview') {
-        // Normalize symbol for TradingView
-        const normalizedSymbol = symbol
+        const normalizedSymbol = storageSymbol
         
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('overwrite', normalizedSymbol, source)
@@ -946,11 +891,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
         })
 
         // Start overwrite process (same as download, overwrites existing files)
-        this.tradingViewHandler.download(normalizedSymbol, 'overwrite')
-          .finally(() => {
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('overwrite', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.tradingViewHandler.download(symbol, 'overwrite', normalizedSymbol, resolution),
+          { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
+        )
       } else {
         this.send(ws, {
           type: 'overwrite_response',
@@ -1041,11 +985,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
         }
 
         // Then download using handler
-        await this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'reset')
-          .finally(() => {
-            this.activeOperations.delete(operationKey)
-            this.clearProgress('reset', normalizedSymbol, source)
-          })
+        this.runDataHandlerSafely(
+          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'reset'),
+          { action: 'reset', symbol: normalizedSymbol, source, operationKey }
+        )
       } else if (source === 'tradingview') {
         // Normalize symbol for TradingView
         const normalizedSymbol = symbol
@@ -1080,11 +1023,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
           }
 
           // Then download using handler
-          this.tradingViewHandler.download(normalizedSymbol, 'reset')
-            .finally(() => {
-              this.activeOperations.delete(operationKey)
-              this.clearProgress('reset', normalizedSymbol, source)
-            })
+          this.runDataHandlerSafely(
+            this.tradingViewHandler.download(normalizedSymbol, 'reset'),
+            { action: 'reset', symbol: normalizedSymbol, source, operationKey }
+          )
         } catch (error) {
           this.activeOperations.delete(operationKey)
           this.clearProgress('reset', normalizedSymbol, source)

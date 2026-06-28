@@ -5,6 +5,9 @@ import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
 import Translator from '../utils/Translator.js'
 import Database from '../config/Database.js'
+import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
+import { listAllCsvFiles, listSymbolCsvFiles, listSymbolCsvResolutions, listSymbolChartResolutions } from '../utils/backtesterCsvPaths.js'
+import { buildCsvInventory } from '../utils/backtesterCsvInventory.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -170,6 +173,7 @@ class BacktesterController {
   async getSymbolData(req, res) {
     try {
       const configPath = path.join(__dirname, '../../data/backtester/config.json')
+      const csvDir = path.join(__dirname, '../../data/backtester/csv')
       
       if (!fs.existsSync(configPath)) {
         return res.status(HTTP_STATUS.OK).json({
@@ -180,10 +184,21 @@ class BacktesterController {
 
       const configData = fs.readFileSync(configPath, 'utf8')
       const config = JSON.parse(configData)
+      const rawSymbols = config.symbols || {}
+      const symbols = {}
+
+      for (const [sym, info] of Object.entries(rawSymbols)) {
+        const csvResolutions = listSymbolCsvResolutions(csvDir, sym)
+        symbols[sym] = {
+          ...info,
+          csvResolutions,
+          supportedChartResolutions: listSymbolChartResolutions(csvDir, sym),
+        }
+      }
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
-        symbols: config.symbols || {},
+        symbols,
       })
     } catch (error) {
       return ErrorHandler.handleServerError(res, error)
@@ -233,6 +248,82 @@ class BacktesterController {
   }
 
   /**
+   * Load historical bars (auth token only).
+   * GET /backtester/history?symbol=NQ&resolution=1&from=&to=&countback=
+   */
+  async getHistory(req, res) {
+    try {
+      const userId = req.user?.id || req.user?.userId
+      if (!userId) {
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          message: 'Authentication required',
+        })
+      }
+
+      const {
+        symbol,
+        resolution,
+        from,
+        to,
+        countback,
+        countBack,
+        firstDataRequest,
+        requestId,
+      } = req.query ?? {}
+
+      if (!symbol || !resolution) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'symbol and resolution are required',
+        })
+      }
+
+      const parsedCountBack = Number(countback ?? countBack)
+      const parsedFrom = from != null && from !== '' ? Number(from) : undefined
+      const parsedTo = to != null && to !== '' ? Number(to) : undefined
+      const parsedFirstDataRequest =
+        firstDataRequest === 'true' ||
+        firstDataRequest === '1' ||
+        firstDataRequest === true
+
+      const result = getBacktesterBarsService().getHistoryBars({
+        symbol: String(symbol),
+        resolution: String(resolution),
+        from: Number.isFinite(parsedFrom) ? parsedFrom : undefined,
+        to: Number.isFinite(parsedTo) ? parsedTo : undefined,
+        countBack: Number.isFinite(parsedCountBack) ? parsedCountBack : undefined,
+        firstDataRequest: parsedFirstDataRequest,
+        requestId: requestId != null ? String(requestId) : undefined,
+      })
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        ...result,
+      })
+    } catch (error) {
+      return ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  /**
+   * CSV inventory with date ranges per symbol/resolution (admin).
+   */
+  async getCsvInventory(req, res) {
+    try {
+      const csvDir = path.join(__dirname, '../../data/backtester/csv')
+      const inventory = buildCsvInventory(csvDir)
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        inventory,
+        count: inventory.length,
+      })
+    } catch (error) {
+      return ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  /**
    * Search symbols for TradingView chart
    * Returns symbols from config.json that match the search query
    */
@@ -240,6 +331,7 @@ class BacktesterController {
     try {
       const { query } = req.query
       const configPath = path.join(__dirname, '../../data/backtester/config.json')
+      const csvDir = path.join(__dirname, '../../data/backtester/csv')
       
       if (!fs.existsSync(configPath)) {
         return res.status(HTTP_STATUS.OK).json({
@@ -250,23 +342,32 @@ class BacktesterController {
 
       const configData = fs.readFileSync(configPath, 'utf8')
       const config = JSON.parse(configData)
-      const symbols = config.symbols || {}
+      const rawSymbols = config.symbols || {}
+
+      const enrich = (sym, info) => ({
+        ...info,
+        csvResolutions: listSymbolCsvResolutions(csvDir, sym),
+        supportedChartResolutions: listSymbolChartResolutions(csvDir, sym),
+      })
 
       // If no query, return all symbols
       if (!query || query.trim() === '') {
+        const symbols = {}
+        for (const [sym, info] of Object.entries(rawSymbols)) {
+          symbols[sym] = enrich(sym, info)
+        }
         return res.status(HTTP_STATUS.OK).json({
           success: true,
           symbols,
         })
       }
 
-      // Filter symbols by query (case-insensitive)
       const searchTerm = query.toUpperCase()
       const filteredSymbols = {}
       
-      for (const [symbol, data] of Object.entries(symbols)) {
+      for (const [symbol, data] of Object.entries(rawSymbols)) {
         if (symbol.toUpperCase().includes(searchTerm)) {
-          filteredSymbols[symbol] = data
+          filteredSymbols[symbol] = enrich(symbol, data)
         }
       }
 
@@ -1614,7 +1715,7 @@ class BacktesterController {
    */
   async saveSymbolConfig(req, res) {
     try {
-      const { symbol, tickSize, tickValue, exchangeFee, regulatoryFee, commissionFee, totalFees, description, type, ticker_type } = req.body
+      const { symbol, tickSize, tickValue, exchangeFee, regulatoryFee, commissionFee, totalFees, description, type, ticker_type, tickers } = req.body
 
       if (!symbol) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -1644,14 +1745,27 @@ class BacktesterController {
       }
 
       // Add or update symbol
+      const existing = config.symbols[symbol] || {}
       const symbolConfig = {
-        description: description || symbol,
-        type: type || 'topstep',
+        description: description || existing.description || symbol,
+        ...(type && { type }),
         ...(ticker_type && { ticker_type }),
+        ...(existing.tickers && { tickers: { ...existing.tickers } }),
       }
 
-      // Only include tick size/value and fees for futures
-      if (ticker_type === 'futures') {
+      if (tickers && typeof tickers === 'object') {
+        symbolConfig.tickers = {
+          ...(symbolConfig.tickers || {}),
+          ...(typeof tickers.tradesea === 'string' ? { tradesea: tickers.tradesea.trim() } : {}),
+          ...(typeof tickers.tradingview === 'string' ? { tradingview: tickers.tradingview.trim() } : {}),
+        }
+        if (symbolConfig.tickers.tradesea === '') delete symbolConfig.tickers.tradesea
+        if (symbolConfig.tickers.tradingview === '') delete symbolConfig.tickers.tradingview
+        if (!Object.keys(symbolConfig.tickers).length) delete symbolConfig.tickers
+      }
+
+      // Only include tick size/value and fees when provided (futures defaults)
+      if (tickSize != null && tickValue != null) {
         // Use provided totalFees or calculate from individual fees
         const finalTotalFees = totalFees !== undefined && totalFees !== null
           ? parseFloat(totalFees)
@@ -1724,116 +1838,22 @@ class BacktesterController {
       let csvFiles = []
 
       if (type === 'unknown') {
-        // Get all CSV files and filter out those in config.json
-        const allDirs = fs.existsSync(csvDir) 
-          ? fs.readdirSync(csvDir, { withFileTypes: true })
-              .filter(item => item.isDirectory())
-              .map(item => item.name)
-          : []
-
         const configSymbols = new Set(Object.keys(symbols))
-
-        for (const symbol of allDirs) {
-          // Check if symbol is in config (normalize for comparison)
-          const normalizedSymbol = symbol.startsWith('/') ? symbol.slice(1) : symbol
-          const inConfig = configSymbols.has(normalizedSymbol) || 
-                          configSymbols.has(`/${normalizedSymbol}`) || 
-                          configSymbols.has(symbol)
-          
-          if (inConfig) {
-            continue // Skip symbols in config
-          }
-
-          const symbolDir = path.join(csvDir, symbol)
-          
-          if (!fs.existsSync(symbolDir)) {
-            continue
-          }
-
-          // Read year directories
-          const yearDirs = fs.readdirSync(symbolDir, { withFileTypes: true })
-            .filter(item => item.isDirectory() && /^\d{4}$/.test(item.name))
-            .map(item => item.name)
-            .sort((a, b) => parseInt(b) - parseInt(a)) // Sort descending (newest first)
-
-          for (const year of yearDirs) {
-            const yearDir = path.join(symbolDir, year)
-            const monthFiles = fs.readdirSync(yearDir, { withFileTypes: true })
-              .filter(item => item.isFile() && item.name.endsWith('.csv'))
-              .map(item => {
-                const filePath = path.join(yearDir, item.name)
-                const stats = fs.statSync(filePath)
-                return {
-                  symbol,
-                  year: parseInt(year),
-                  month: item.name.replace('.csv', ''),
-                  fileName: item.name,
-                  filePath: filePath,
-                  size: stats.size,
-                  modified: stats.mtime.toISOString(),
-                }
-              })
-              .sort((a, b) => {
-                // Sort by month name
-                const months = [
-                  'January', 'February', 'March', 'April', 'May', 'June',
-                  'July', 'August', 'September', 'October', 'November', 'December'
-                ]
-                return months.indexOf(b.month) - months.indexOf(a.month)
-              })
-
-            csvFiles.push(...monthFiles)
-          }
-        }
+        csvFiles = listAllCsvFiles(csvDir).filter((file) => {
+          const normalizedSymbol = file.symbol.startsWith('/') ? file.symbol.slice(1) : file.symbol
+          const inConfig = configSymbols.has(normalizedSymbol)
+            || configSymbols.has(`/${normalizedSymbol}`)
+            || configSymbols.has(file.symbol)
+          return !inConfig
+        })
       } else {
-        // Filter symbols by type
-        const symbolsByType = Object.keys(symbols).filter(symbol => {
+        const symbolsByType = Object.keys(symbols).filter((symbol) => {
           const symbolData = symbols[symbol]
           return (symbolData.type || 'topstep') === type
         })
 
-        // Get CSV files for each symbol
         for (const symbol of symbolsByType) {
-          const symbolDir = path.join(csvDir, symbol)
-          
-          if (!fs.existsSync(symbolDir)) {
-            continue
-          }
-
-          // Read year directories
-          const yearDirs = fs.readdirSync(symbolDir, { withFileTypes: true })
-            .filter(item => item.isDirectory() && /^\d{4}$/.test(item.name))
-            .map(item => item.name)
-            .sort((a, b) => parseInt(b) - parseInt(a)) // Sort descending (newest first)
-
-          for (const year of yearDirs) {
-            const yearDir = path.join(symbolDir, year)
-            const monthFiles = fs.readdirSync(yearDir, { withFileTypes: true })
-              .filter(item => item.isFile() && item.name.endsWith('.csv'))
-              .map(item => {
-                const filePath = path.join(yearDir, item.name)
-                const stats = fs.statSync(filePath)
-                return {
-                  symbol,
-                  year: parseInt(year),
-                  month: item.name.replace('.csv', ''),
-                  fileName: item.name,
-                  filePath: filePath,
-                  size: stats.size,
-                  modified: stats.mtime.toISOString(),
-                }
-              })
-              .sort((a, b) => {
-                // Sort by month name
-                const months = [
-                  'January', 'February', 'March', 'April', 'May', 'June',
-                  'July', 'August', 'September', 'October', 'November', 'December'
-                ]
-                return months.indexOf(b.month) - months.indexOf(a.month)
-              })
-
-            csvFiles.push(...monthFiles)
-          }
+          csvFiles.push(...listSymbolCsvFiles(csvDir, symbol))
         }
       }
 

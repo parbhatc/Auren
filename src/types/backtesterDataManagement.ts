@@ -1,4 +1,16 @@
 import { getThemeColors } from '../constants/theme'
+import type { HubTab } from './practiceHub'
+import type { CsvDataWsSource } from '../components/backtester/DataManagement/csvDataPrefs'
+
+export interface CsvInventoryEntry {
+  symbol: string
+  resolution: string
+  resolutionLabel: string
+  fromMs: number
+  toMs: number
+  fromLabel: string
+  toLabel: string
+}
 
 export interface SymbolData {
   tickSize: number
@@ -8,7 +20,10 @@ export interface SymbolData {
   commissionFee: number
   totalFees: number
   description: string
-  type?: 'topstep' | 'tradingview'
+  tickers?: {
+    tradesea?: string
+    tradingview?: string
+  }
 }
 
 export interface FileData {
@@ -43,58 +58,29 @@ export interface BacktesterDataManagementRendererProps {
   onSave: (symbol: string, data: SymbolData) => void
   onDelete: (symbol: string) => void
   onAdd: () => void
-  onUpdateEditingData: (field: keyof SymbolData, value: string | number) => void
+  onUpdateEditingData: (
+    field: keyof SymbolData | 'symbol' | 'tradeseaTicker' | 'tradingviewTicker',
+    value: string | number
+  ) => void
   saving: boolean
   deleteConfirm: DeleteConfirm
   onDeleteConfirm: () => void
   onDeleteCancel: () => void
-  activeTab: 'symbol-info' | 'topstep' | 'tradingview'
-  onTabChange: (tab: 'symbol-info' | 'topstep' | 'tradingview') => void
-  topstepFiles: FileData[]
-  tradingviewFiles: FileData[]
-  unknownFiles?: FileData[]
-  loadingFiles: boolean
-  expandedSymbols: Set<string>
-  expandedYears: Set<string>
-  onToggleSymbol: (symbol: string) => void
-  onToggleYear: (yearKey: string) => void
-  topstepSearch: string
-  tradingviewSearch: string
-  topstepSearchResults: string[]
-  tradingviewSearchResults: string[]
-  topstepSearchError?: string
-  tradingviewSearchError?: string
-  topstepSearchLoading?: boolean
-  tradingviewSearchLoading?: boolean
-  onTopstepSearchChange: (value: string) => void
-  onTradingviewSearchChange: (value: string) => void
-  topstepCurrentToken: string
+  onHubTabChange: (tab: HubTab) => void
+  onLogout: () => void
+  activeTab: 'symbol-info' | 'csv-data'
+  onTabChange: (tab: 'symbol-info' | 'csv-data') => void
+  csvInventory: CsvInventoryEntry[]
+  loadingCsvInventory: boolean
+  onCsvUpdate: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
+  onCsvOverwrite: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
+  onCsvDownload: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
+  onCsvTradingViewTokenChange?: (token: string) => void
+  onCsvTradingViewTokenBlur?: (token: string) => void
   tradingviewCurrentToken: string
-  topstepSavedToken?: string
-  tradingviewSavedToken?: string
-  onTopstepCurrentTokenChange: (token: string) => void
-  onTradingviewCurrentTokenChange: (token: string) => void
-  onTopstepTokenObtained?: (token: string) => void
-  onTradingviewTokenObtained?: (token: string) => void
-  onTopstepSaveToken?: (token: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; message?: string; error?: string }>
-  onTradingviewSaveToken?: (token: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; message?: string; error?: string }>
-  onTopstepUserLogin?: (username: string, password: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; token?: string; error?: string }>
-  onTradingviewUserLogin?: (username: string, password: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; token?: string; error?: string }>
-  selectedSymbol: { 
-    symbol: string
-    type: 'topstep' | 'tradingview'
-    topstepData?: TopstepSearchResult
-    tradingViewData?: TradingViewSearchResult
-  } | null
-  onSymbolClick: (symbol: string, type: 'topstep' | 'tradingview') => void
-  onSymbolDialogClose: () => void
-  onSymbolUpdate: (symbol: string) => Promise<void>
-  onSymbolOverwrite: (symbol: string) => Promise<void>
-  onSymbolReset: (symbol: string) => Promise<void>
-  onSymbolDownload: (symbol: string, type: 'topstep' | 'tradingview') => Promise<void>
   progressState?: Record<string, {
     symbol: string
-    source: 'topstep' | 'tradingview'
+    source: CsvDataWsSource
     action: 'download' | 'update' | 'overwrite' | 'reset'
     progress: number
     message: string

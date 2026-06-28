@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { Settings as SettingsIcon, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, AlertCircle, Database, ChevronRight } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import { t } from '../../../utils/translator'
 import { AdminSettingsProps } from '../../../types'
@@ -85,6 +85,35 @@ class Renderer extends Component<AdminSettingsProps> {
 
     const settingsFields = (
       <>
+        {embedded && (
+          <div className="px-5 sm:px-6 pt-5 sm:pt-6">
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.BACKTESTER_DATA_MANAGEMENT)}
+              className={`w-full flex items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors ${
+                isDark
+                  ? 'border-slate-700/80 bg-slate-800/40 hover:bg-slate-800/70'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`shrink-0 rounded-lg p-2 ${isDark ? 'bg-violet-600/20 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
+                  <Database className="w-5 h-5" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <p className={`font-semibold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {t('admin.backtesterData')}
+                  </p>
+                  <p className={`text-xs mt-0.5 truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {t('admin.backtesterDataDescription')}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className={`w-4 h-4 shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} aria-hidden />
+            </button>
+          </div>
+        )}
+
         <PasswordSettings
           embedded={embedded}
           config={config.password}

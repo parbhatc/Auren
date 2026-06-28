@@ -4,6 +4,13 @@
  */
 import fs from 'fs'
 import path from 'path'
+import {
+  DEFAULT_CSV_RESOLUTION,
+  ensureMonthFileDir,
+  findLatestMonth,
+  monthFilePath,
+  monthNameFromIndex,
+} from '../../utils/backtesterCsvPaths.js'
 
 class TopstepDataHandler {
   constructor(websocketInstance) {
@@ -14,11 +21,7 @@ class TopstepDataHandler {
    * Get month name from month index
    */
   getMonthName(monthIndex) {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ]
-    return months[monthIndex]
+    return monthNameFromIndex(monthIndex)
   }
 
   /**
@@ -136,12 +139,8 @@ class TopstepDataHandler {
       for (const key of Object.keys(barsByMonth).sort()) {
         const { year, monthName, bars } = barsByMonth[key]
         
-        const yearDir = path.join(symbolDir, year.toString())
-        if (!fs.existsSync(yearDir)) {
-          fs.mkdirSync(yearDir, { recursive: true })
-        }
-
-        const filePath = path.join(yearDir, `${monthName}.csv`)
+        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
+        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
         const csvLines = bars.map(bar => {
           const timestampSeconds = Math.floor(bar.time / 1000)
           return `${timestampSeconds},${bar.open},${bar.high},${bar.low},${bar.close},${bar.volume}`
@@ -184,42 +183,12 @@ class TopstepDataHandler {
       const resolution = '1'
       const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
       
-      const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-      
       this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'Finding latest data...')
 
       const now = new Date()
       const nowTimestamp = Math.floor(now.getTime() / 1000)
       
-      // Find latest month and year from all existing files
-      let latestYear = null
-      let latestMonth = null
-      let latestMonthIndex = null
-
-      if (fs.existsSync(symbolDir)) {
-        const yearDirs = fs.readdirSync(symbolDir, { withFileTypes: true })
-          .filter(item => item.isDirectory() && /^\d{4}$/.test(item.name))
-          .map(item => parseInt(item.name))
-          .sort((a, b) => b - a)
-
-        for (const year of yearDirs) {
-          const yearDir = path.join(symbolDir, year.toString())
-          const files = fs.readdirSync(yearDir, { withFileTypes: true })
-            .filter(item => item.isFile() && item.name.endsWith('.csv'))
-            .map(item => item.name.replace('.csv', ''))
-
-          for (const monthName of files) {
-            const monthIndex = MONTH_NAMES.indexOf(monthName)
-            if (monthIndex !== -1) {
-              if (!latestYear || year > latestYear || (year === latestYear && monthIndex > latestMonthIndex)) {
-                latestYear = year
-                latestMonth = monthName
-                latestMonthIndex = monthIndex
-              }
-            }
-          }
-        }
-      }
+      const { latestYear, latestMonth, latestMonthIndex } = findLatestMonth(this.ws.csvDir, normalizedSymbol)
 
       // Determine update range
       let fromTime = 0
@@ -375,12 +344,8 @@ class TopstepDataHandler {
       for (const key of Object.keys(barsByMonth).sort()) {
         const { year, monthName, bars } = barsByMonth[key]
         
-        const yearDir = path.join(symbolDir, year.toString())
-        if (!fs.existsSync(yearDir)) {
-          fs.mkdirSync(yearDir, { recursive: true })
-        }
-
-        const filePath = path.join(yearDir, `${monthName}.csv`)
+        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
+        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
 
         // Read existing file if it exists
         const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : ''

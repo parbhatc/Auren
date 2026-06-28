@@ -1,5 +1,6 @@
 import api, { getAuthHeaders } from './api'
 import { BacktestSession } from '../types/backtester'
+import { formatBacktesterResolutionForApi } from '../backtester/utils/backtesterResolution'
 
 /**
  * Backtester API service
@@ -84,6 +85,53 @@ export const backtesterAPI = {
   getServerTime: async (): Promise<{ success: boolean; timestamp: number; serverTime: string }> => {
     const response = await api.get('/backtester/time', {
       headers: getAuthHeaders(),
+    })
+    return response.data
+  },
+
+  /**
+   * Load historical bars (auth token only).
+   * GET /backtester/history?symbol=NQ&resolution=1&from=&to=&countback=
+   */
+  getHistory: async (
+    params: {
+      symbol: string
+      resolution: string
+      from?: number
+      to?: number
+      countBack?: number
+      firstDataRequest?: boolean
+      requestId?: string
+    },
+    options?: { signal?: AbortSignal },
+  ): Promise<{
+    success: boolean
+    requestId?: string
+    bars: Array<{
+      time: number
+      open: number
+      high: number
+      low: number
+      close: number
+      volume?: number
+    }>
+    noData: boolean
+    meta?: { noData?: boolean }
+    message?: string
+    code?: string
+  }> => {
+    const response = await api.get('/backtester/history', {
+      headers: getAuthHeaders(),
+      params: {
+        symbol: params.symbol,
+        resolution: formatBacktesterResolutionForApi(params.resolution),
+        from: params.from,
+        to: params.to,
+        countback: params.countBack,
+        ...(params.firstDataRequest ? { firstDataRequest: 'true' } : {}),
+        ...(params.requestId ? { requestId: params.requestId } : {}),
+      },
+      signal: options?.signal,
     })
     return response.data
   },
@@ -240,6 +288,10 @@ export const backtesterAPI = {
     description?: string;
     type?: 'topstep' | 'tradingview';
     ticker_type?: string;
+    tickers?: {
+      tradesea?: string;
+      tradingview?: string;
+    };
   }): Promise<{
     success: boolean;
     message: string;
@@ -311,6 +363,28 @@ export const backtesterAPI = {
   },
 
   
+
+  /**
+   * CSV inventory with date ranges per symbol/resolution (admin)
+   */
+  getCsvInventory: async (): Promise<{
+    success: boolean
+    inventory: Array<{
+      symbol: string
+      resolution: string
+      resolutionLabel: string
+      fromMs: number
+      toMs: number
+      fromLabel: string
+      toLabel: string
+    }>
+    count: number
+  }> => {
+    const response = await api.get('/backtester/config/csv-inventory', {
+      headers: getAuthHeaders(),
+    })
+    return response.data
+  },
 
   /**
    * Get tokens from config (admin only)
