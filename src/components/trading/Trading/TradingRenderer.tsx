@@ -24,6 +24,7 @@ import {
 import { schedulePageScrollReset } from '../../../utils/resetPageScroll'
 import { getTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange, saveTradePadSymbol } from '../../../utils/tradePadSymbol'
 import { PRACTICE_MOBILE_TRADE_PREFS_EVENT, setMobileFloatingPad } from '../../../utils/mobileTradePrefs'
+import { isPwaPinnedNav } from '../../../utils/pwa'
 import {
   getActivePropFirm,
   getMdsClient,
@@ -289,10 +290,13 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         : savedShowNav !== null
           ? savedShowNav === 'true'
           : true
+    const resolvedShowNav = isPwaPinnedNav() ? true : practiceNav
     if ((this.props.practiceMode && this.props.practiceAccountId) || this.props.liveMode) {
-      this.setState({ showNav: practiceNav })
+      this.setState({ showNav: resolvedShowNav })
     } else if (savedShowNav !== null) {
-      this.setState({ showNav: savedShowNav === 'true' })
+      this.setState({ showNav: isPwaPinnedNav() ? true : savedShowNav === 'true' })
+    } else if (isPwaPinnedNav()) {
+      this.setState({ showNav: true })
     }
 
     window.addEventListener('storage', this.handleStorageChange)
@@ -536,6 +540,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   private hideNav = (padSessionId: string | null) => {
+    if (isPwaPinnedNav()) return
     this.setState({ showNav: false })
     if (padSessionId) {
       savePracticeShowNav(padSessionId, false)
@@ -591,6 +596,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     const terminalShell = this.isTerminalShell()
     const padSessionId = this.getPadSessionId()
     const navWidth = terminalShell ? 'w-11' : 'w-16'
+    const showNav = isPwaPinnedNav() ? true : this.state.showNav
 
     const chartComponent = activeFirm?.getRenderChart?.(selectedSymbol, '1', isDark)
     const chartElement = (
@@ -658,7 +664,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             padProps={padProps}
             practiceMaxQty={practiceMaxQty}
             isDark={isDark}
-            showMobileNav={this.state.showNav}
+            showMobileNav={showNav}
             mobileOrderOpen={Boolean(this.state.practiceMobileOrderOpen)}
             mobileSettingsOpen={Boolean(this.state.practiceMobileSettingsOpen)}
             onCloseMobileOrder={() => this.setState({ practiceMobileOrderOpen: false })}
@@ -704,7 +710,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         }`}
       >
         <TradingRendererNav
-          showNav={this.state.showNav}
+          showNav={showNav}
           terminalShell={terminalShell}
           navWidth={navWidth}
           isDark={isDark}
@@ -747,7 +753,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
               practiceAccountStatus={practiceAccountStatus}
               onRefreshPracticeAccount={onRefreshPracticeAccount}
               practiceRefreshing={practiceRefreshing}
-              showNav={this.state.showNav}
+              showNav={showNav}
               onShowNav={() => this.showNavBar(padSessionId)}
               balance={accountInfo.balance}
               rpl={accountInfo.rpl}

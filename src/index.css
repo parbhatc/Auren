@@ -17,7 +17,14 @@
   height: 0;
 }
 
+html {
+  /* 100vh not 100% — iOS standalone + black-translucent offsets the view without growing the % containing block (chin gap). */
+  height: 100vh;
+  background-color: #020617;
+}
+
 body {
+  min-height: 100vh;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -27,23 +34,9 @@ body {
   background-color: #020617;
 }
 
-html {
-  height: 100%;
-  height: -webkit-fill-available;
-  background-color: #020617;
-}
-
-body {
-  min-height: 100%;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
-}
-
 #root {
   width: 100%;
   min-height: 100vh;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
 }
 
 /* iOS PWA safe-area helpers (requires viewport-fit=cover in index.html) */
@@ -93,8 +86,27 @@ body {
 }
 
 @media (max-width: 1023px) {
+  :root {
+    --auren-mobile-nav-bar-height: 2.5rem;
+  }
+
+  @media (display-mode: standalone) {
+    :root {
+      --auren-mobile-nav-bar-height: 3.25rem;
+    }
+  }
+
   .auren-mobile-nav-clearance {
-    padding-bottom: calc(2.25rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--auren-mobile-nav-bar-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Inline quick-trade dock — pad inside the card so background fills to the screen edge */
+  .auren-quick-trade-mobile-dock {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .auren-quick-trade-mobile-dock--above-nav {
+    padding-bottom: calc(var(--auren-mobile-nav-bar-height) + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -125,17 +137,14 @@ body {
   }
 }
 
-/* Practice stats — iOS Safari nested scroll + viewport fixes */
+/* Practice stats — scroll inside main; header stays pinned */
 .practice-stats-shell {
   min-height: 100vh;
-  min-height: 100dvh;
 }
 
-@media (min-width: 1024px) {
-  .practice-stats-scroll {
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-  }
+.practice-stats-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Custom animations */

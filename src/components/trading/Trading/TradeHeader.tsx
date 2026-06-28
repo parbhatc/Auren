@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { LogOut, Menu } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import Logo from '../../common/Logo'
+import { isPwaPinnedNav } from '../../../utils/pwa'
 import { AccountSelector } from './AccountSelector'
 import { LiveAccountSelector } from './LiveAccountSelector'
 import { LiveAccountStats } from '../shared/account/AccountStatsBar'
@@ -130,10 +131,10 @@ export function TradeHeader({
 
   return (
     <div
-      className={`relative shrink-0 z-[110] max-lg:pt-[env(safe-area-inset-top,0px)] ${shell}`}
+      className={`sticky top-0 shrink-0 z-[110] max-lg:pt-[env(safe-area-inset-top,0px)] backdrop-blur-sm ${shell}`}
     >
       <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
-        {!hideNavToggle && !showNav && (
+        {!hideNavToggle && !showNav && !isPwaPinnedNav() && (
           <button
             type="button"
             onClick={onShowNav}

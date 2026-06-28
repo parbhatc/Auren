@@ -1,5 +1,6 @@
 import TradingNav from '../../../common/TradingNav'
 import { ROUTES } from '../../../../constants/routes'
+import { isPwaPinnedNav } from '../../../../utils/pwa'
 
 type TradingRendererNavProps = {
   showNav: boolean
@@ -32,6 +33,9 @@ export function TradingRendererNav({
   onToggleMobileOrder,
   onToggleMobileSettings,
 }: TradingRendererNavProps) {
+  const pinMobileNav = isPwaPinnedNav()
+  const mobileNavVisible = showNav || pinMobileNav
+
   return (
     <>
       <div
@@ -54,16 +58,16 @@ export function TradingRendererNav({
 
       <div
         className={`lg:hidden auren-mobile-bottom-bar transition-all duration-300 ease-in-out transform z-50 ${
-          showNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+          mobileNavVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
         }`}
       >
-        {showNav && (
+        {mobileNavVisible && (
           <TradingNav
             compact={terminalShell}
             isDark={isDark}
             navigate={navigate}
             currentPath={window.location.pathname}
-            onToggleNav={onHideNav}
+            onToggleNav={pinMobileNav ? undefined : onHideNav}
             showDesktopNav={false}
             showMobileNav={true}
             onPracticeOrder={

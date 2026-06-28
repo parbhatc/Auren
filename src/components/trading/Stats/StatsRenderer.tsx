@@ -787,7 +787,7 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
       <div
         className={`${
           practiceMode
-            ? 'practice-stats-shell min-h-dvh flex flex-col lg:h-dvh lg:max-h-dvh lg:overflow-hidden'
+            ? 'practice-stats-shell h-dvh max-h-dvh min-h-0 flex flex-col overflow-hidden'
             : 'min-h-screen'
         } transition-all duration-700 ease-in-out flex ${
           practiceMode
@@ -843,7 +843,7 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
           </div>
         )}
 
-        <div className={`flex flex-col min-w-0 flex-1 ${practiceMode ? 'lg:min-h-0' : 'min-h-0'}`}>
+        <div className={`flex flex-col min-w-0 flex-1 min-h-0 overflow-hidden ${practiceMode ? '' : 'min-h-0'}`}>
           {practiceMode ? (
             <TradeHeader
               isDark={isDark}
@@ -898,14 +898,14 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
           <main
             className={
               practiceMode
-                ? 'flex flex-col px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:flex-1 lg:min-h-0 lg:overflow-hidden'
+                ? 'flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden practice-stats-scroll px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]'
                 : 'flex-1 overflow-auto py-3 sm:py-4 pb-20 lg:pb-4 px-4 sm:px-6 lg:px-8'
             }
           >
           <div
             className={
               practiceMode
-                ? `min-w-0 p-3 sm:p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden practice-stats-scroll ${practiceTradePanelClass(isDark)}`
+                ? `min-w-0 p-3 sm:p-4 ${practiceTradePanelClass(isDark)}`
                 : ''
             }
           >

@@ -62,6 +62,7 @@ export function TerminalTradeLayout({
               maxQty={practiceMaxQty}
               isDark={isDark}
               showMobileNav={showMobileNav}
+              onPrefsChange={onForceUpdate}
             />
           ),
           showMobileNav,

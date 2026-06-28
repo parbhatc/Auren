@@ -183,13 +183,18 @@ export const renderPracticeTradeLayout = (
   const panelFrame = options?.panelFrame !== false
   const showMobileNav = options?.showMobileNav !== false
   const hasScalpBar = mobileScalpBar != null
-  const mobileBottomPadClass = showMobileNav ? 'auren-mobile-nav-clearance' : ''
+  const chartNavClearance =
+    showMobileNav && !hasScalpBar ? 'auren-mobile-nav-clearance' : ''
+  const columnNavClearance =
+    showMobileNav && hasScalpBar ? 'auren-mobile-nav-clearance' : ''
   return (
     <div className="flex flex-col lg:flex-row flex-1 min-h-0 min-w-0 w-full h-full gap-0 lg:gap-4 pr-0 lg:pr-2">
       <div
-        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${mobileBottomPadClass}`}
+        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${columnNavClearance}`}
       >
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <div
+          className={`flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden ${chartNavClearance}`}
+        >
           {chartElement}
         </div>
         {hasScalpBar ? (

@@ -8,6 +8,11 @@ export function isPwaStandalone(): boolean {
   )
 }
 
+/** Bottom tab bar is always visible; hide/show nav controls are removed. */
+export function isPwaPinnedNav(): boolean {
+  return isPwaStandalone()
+}
+
 /** iOS Safari tab — not standalone; user still sees URL bar and bottom toolbar. */
 export function isIosSafariBrowser(): boolean {
   if (typeof navigator === 'undefined') return false

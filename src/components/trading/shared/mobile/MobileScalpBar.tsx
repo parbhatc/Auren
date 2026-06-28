@@ -13,20 +13,20 @@ import {
 import {
   getMobileTradePrefs,
   PRACTICE_MOBILE_TRADE_PREFS_EVENT,
-  setMobileFloatingPad,
-  setMobileQuickTradeMinimized,
+  saveMobileTradePrefs,
 } from '../../../../utils/mobileTradePrefs'
+import { isPwaPinnedNav } from '../../../../utils/pwa'
 
 function CompactQuickTrade({
   props,
   isDark,
   onExpand,
-  useSafeAreaOnCard = false,
+  mobileDockClass = 'auren-quick-trade-mobile-dock',
 }: {
   props: TradePanelProps
   isDark: boolean
   onExpand: () => void
-  useSafeAreaOnCard?: boolean
+  mobileDockClass?: string
 }) {
   const tradeDisabled = !isTradePanelTradingEnabled(props)
   const qty = Number(props.quantity) || 1
@@ -39,22 +39,26 @@ function CompactQuickTrade({
 
   return (
     <div
-      className={`relative rounded-2xl border px-2 py-1.5 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-1.5 ${
-        useSafeAreaOnCard ? 'max-lg:pb-[env(safe-area-inset-bottom,0px)]' : ''
-      } ${shell}`}
+      className={[
+        'relative rounded-2xl border px-2 py-1.5 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-1.5',
+        mobileDockClass,
+        shell,
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       <button
         type="button"
         onClick={onExpand}
-        className={`absolute right-1 top-1 z-10 rounded p-0.5 ${iconBtn}`}
+        className={`absolute right-0.5 top-0.5 z-10 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 touch-manipulation ${iconBtn}`}
         aria-label="Expand quick trade"
         title="Expand quick trade"
       >
-        <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+        <ChevronUp className="h-4 w-4" aria-hidden />
       </button>
 
-      <div className="flex items-center gap-1 pr-6">
-        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
+      <div className="flex items-center gap-1 pr-10">
+        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" dockCompact />
 
         <MobileQtyStepper props={props} isDark={isDark} disabled={tradeDisabled} />
 
@@ -91,14 +95,23 @@ export function MobileScalpBar({
   maxQty,
   isDark,
   showMobileNav = true,
+  onPrefsChange,
 }: {
   accountId: string
   props: TradePanelProps
   maxQty: number
   isDark: boolean
   showMobileNav?: boolean
+  /** Parent re-render when prefs change (e.g. inline bar ↔ floating pad). */
+  onPrefsChange?: () => void
 }) {
   const [prefs, setPrefs] = useState(() => getMobileTradePrefs(accountId))
+
+  const applyPrefs = (next: typeof prefs) => {
+    setPrefs(next)
+    saveMobileTradePrefs(accountId, next)
+    onPrefsChange?.()
+  }
 
   useEffect(() => {
     setPrefs(getMobileTradePrefs(accountId))
@@ -113,17 +126,17 @@ export function MobileScalpBar({
   if (prefs.floatingPad) return null
 
   const iconBtn = isDark
-    ? 'p-1.5 rounded-lg text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#1e293b]'
-    : 'p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+    ? 'flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#1e293b] active:bg-[#1e293b] touch-manipulation'
+    : 'flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-100 touch-manipulation'
 
   const headerActions = (
-    <>
+    <div className="flex shrink-0 items-center gap-0.5">
       <button
         type="button"
         title="Compact trade pad"
         aria-label="Show compact draggable trade pad"
         className={iconBtn}
-        onClick={() => setMobileFloatingPad(accountId, true)}
+        onClick={() => applyPrefs({ floatingPad: true, quickTradeMinimized: false })}
       >
         <FloatingTradePadIcon />
       </button>
@@ -133,28 +146,32 @@ export function MobileScalpBar({
         aria-label={prefs.quickTradeMinimized ? 'Expand quick trade' : 'Minimize quick trade'}
         className={iconBtn}
         onClick={() =>
-          setMobileQuickTradeMinimized(accountId, !prefs.quickTradeMinimized)
+          applyPrefs({ floatingPad: false, quickTradeMinimized: !prefs.quickTradeMinimized })
         }
       >
         {prefs.quickTradeMinimized ? (
-          <ChevronUp className="w-4 h-4" aria-hidden />
+          <ChevronUp className="h-4 w-4" aria-hidden />
         ) : (
-          <ChevronDown className="w-4 h-4" aria-hidden />
+          <ChevronDown className="h-4 w-4" aria-hidden />
         )}
       </button>
-    </>
+    </div>
   )
 
-  const useSafeAreaOnCard = !showMobileNav
+  const navDocked = showMobileNav || isPwaPinnedNav()
+  /** Parent column reserves nav height; card only needs safe-area when nav is hidden. */
+  const mobileDockClass = navDocked ? '' : 'auren-quick-trade-mobile-dock'
 
   if (prefs.quickTradeMinimized) {
     return (
-      <CompactQuickTrade
-        props={props}
-        isDark={isDark}
-        useSafeAreaOnCard={useSafeAreaOnCard}
-        onExpand={() => setMobileQuickTradeMinimized(accountId, false)}
-      />
+      <div className="max-lg:w-full max-lg:overflow-hidden">
+        <CompactQuickTrade
+          props={props}
+          isDark={isDark}
+          mobileDockClass={mobileDockClass}
+          onExpand={() => applyPrefs({ floatingPad: false, quickTradeMinimized: false })}
+        />
+      </div>
     )
   }
 
@@ -165,7 +182,7 @@ export function MobileScalpBar({
         maxQty={maxQty}
         isDark={isDark}
         headerActions={headerActions}
-        dockBottomSafeArea={useSafeAreaOnCard}
+        mobileDockClass={mobileDockClass}
       />
     </div>
   )

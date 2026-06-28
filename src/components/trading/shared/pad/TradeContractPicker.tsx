@@ -64,12 +64,14 @@ type TradeContractPickerProps = {
   autoChangeTradeContract?: boolean
   onAutoChangeTradeContract?: (enabled: boolean) => void
   placement?: 'above' | 'below'
+  dockCompact?: boolean
 }
 
 export function PadTradeSymbolPicker({
   props,
   disabled,
   placement,
+  dockCompact = false,
 }: {
   props: Pick<
     TradePanelProps,
@@ -84,6 +86,8 @@ export function PadTradeSymbolPicker({
   >
   disabled?: boolean
   placement?: 'above' | 'below'
+  /** Mobile quick-trade toolbar: show full symbol, hide chart diff suffix. */
+  dockCompact?: boolean
 }) {
   if (!props.chartSymbol) return null
 
@@ -106,6 +110,7 @@ export function PadTradeSymbolPicker({
       searchSymbols={props.searchSymbols}
       disabled={disabled}
       placement={placement}
+      dockCompact={dockCompact}
       autoChangeTradeContract={props.autoChangeTradeContract}
       onAutoChangeTradeContract={props.onAutoChangeTradeContract}
       onPickTrade={(sym) => props.onChartSymbolChange?.(sym)}
@@ -124,6 +129,7 @@ export function TradeContractPicker({
   autoChangeTradeContract = true,
   onAutoChangeTradeContract,
   placement = 'below',
+  dockCompact = false,
 }: TradeContractPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -500,21 +506,29 @@ export function TradeContractPicker({
   const chartDiffers = chartRoot !== tradeRoot
 
   return (
-    <div className="relative min-w-0" ref={rootRef}>
+    <div className={`relative min-w-0 ${dockCompact ? 'shrink-0' : ''}`} ref={rootRef}>
       <button
         ref={triggerRef}
         type="button"
         disabled={disabled}
         onClick={() => (open ? close() : openDropdown())}
-        className="flex max-w-full items-center gap-1 rounded-md border border-[#475569]/60 bg-[#0f172a]/80 px-1.5 py-0.5 text-left hover:border-violet-500/40 disabled:opacity-60"
+        className={`flex items-center gap-1 rounded-md border border-[#475569]/60 bg-[#0f172a]/80 px-1.5 py-0.5 text-left hover:border-violet-500/40 disabled:opacity-60 ${
+          dockCompact ? 'shrink-0' : 'max-w-full'
+        }`}
         aria-expanded={open}
         aria-haspopup="listbox"
         title="Change trade contract"
       >
-        <span className="truncate text-[11px] font-medium uppercase tracking-wide text-[#e6edf3]">
+        <span
+          className={
+            dockCompact
+              ? 'whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-[#e6edf3]'
+              : 'truncate text-[11px] font-medium uppercase tracking-wide text-[#e6edf3]'
+          }
+        >
           {tradeRoot}
         </span>
-        {chartDiffers ? (
+        {chartDiffers && !dockCompact ? (
           <span className="shrink-0 text-[9px] font-medium uppercase text-[#64748b]">· {chartRoot}</span>
         ) : null}
         <ChevronDown className="h-3 w-3 shrink-0 text-[#7d8590]" />

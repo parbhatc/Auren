@@ -20,7 +20,7 @@ import {
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
 import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
-import { MobileMarketLabel, MobileQtyInput, MOBILE_MARKET_BTN } from './mobileQuickTradeUi'
+import { MobileMarketLabel, MOBILE_MARKET_BTN } from './mobileQuickTradeUi'
 
 const MOBILE_FLUSH_SHELL =
   'max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:shadow-none'
@@ -34,14 +34,14 @@ export function QuickTradeCard({
   isDark,
   className = '',
   headerActions,
-  dockBottomSafeArea = true,
+  mobileDockClass = 'auren-quick-trade-mobile-dock',
 }: {
   props: TradePanelProps
   maxQty: number
   isDark: boolean
   className?: string
   headerActions?: ReactNode
-  dockBottomSafeArea?: boolean
+  mobileDockClass?: string
 }) {
   const [ui, setUi] = useState<TradePanelSettings>(() => getTradePanelSettings())
   const tradeDisabled = !isTradePanelTradingEnabled(props)
@@ -84,6 +84,7 @@ export function QuickTradeCard({
       qty={qty}
       isDark={isDark}
       disabled={tradeDisabled}
+      compact
     />
   ) : (
     <QtyStepper {...props} variant={isDark ? 'dark' : 'light'} disabled={tradeDisabled} compact />
@@ -179,11 +180,29 @@ export function QuickTradeCard({
       </div>
     ) : null
 
+  const mobileToolbarDivider = isDark ? 'border-[#334155]/80' : 'border-slate-200'
+
+  const mobileToolbarRow = (
+    <div className="flex min-w-0 items-center gap-1">
+      <div className="shrink-0">
+        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" dockCompact />
+      </div>
+      <div className="min-w-0 flex-1">{presetQtyStrip}</div>
+      {headerActions ? (
+        <div
+          className={`flex shrink-0 items-center gap-0.5 border-l pl-1 ml-0.5 ${mobileToolbarDivider}`}
+        >
+          {headerActions}
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <div
-      className={`overflow-hidden rounded-2xl border ${shell} ${MOBILE_FLUSH_SHELL} ${
-        dockBottomSafeArea ? 'max-lg:pb-[env(safe-area-inset-bottom,0px)]' : ''
-      } ${className}`}
+      className={['overflow-hidden rounded-2xl border', shell, MOBILE_FLUSH_SHELL, mobileDockClass, className]
+        .filter(Boolean)
+        .join(' ')}
       aria-label="Quick trade"
     >
       <div className="relative px-2 py-1.5 max-lg:px-2 max-lg:py-1.5">
@@ -200,14 +219,7 @@ export function QuickTradeCard({
         {!ui.hideBuySell && (
           <>
             <div className="flex flex-col gap-1.5 lg:hidden">
-              <div className="relative flex items-center gap-1.5 pr-12">
-                <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
-                <MobileQtyInput props={props} isDark={isDark} disabled={tradeDisabled} />
-                <div className="min-w-0 flex-1">{presetQtyStrip}</div>
-                <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
-                  {headerActions ?? null}
-                </div>
-              </div>
+              {mobileToolbarRow}
 
               <div className="grid grid-cols-2 gap-1.5">
                 <TradeSideButton
@@ -299,14 +311,7 @@ export function QuickTradeCard({
 
         {ui.hideBuySell && (presetQtyStrip || mobilePositionActions) ? (
           <div className="flex flex-col gap-1.5 lg:hidden">
-            <div className="relative flex items-center gap-1.5 pr-12">
-              <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" />
-              <MobileQtyInput props={props} isDark={isDark} disabled={tradeDisabled} />
-              <div className="min-w-0 flex-1">{presetQtyStrip}</div>
-              <div className="absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
-                {headerActions ?? null}
-              </div>
-            </div>
+            {mobileToolbarRow}
             {mobilePositionActions}
           </div>
         ) : null}
@@ -321,15 +326,18 @@ function PresetQtyStrip({
   qty,
   isDark,
   disabled,
+  compact = false,
 }: {
   props: TradePanelProps
   presets: number[]
   qty: number
   isDark: boolean
   disabled?: boolean
+  compact?: boolean
 }) {
-  const circle =
-    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition active:scale-95'
+  const circle = compact
+    ? 'flex h-6 w-full min-w-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition active:scale-95'
+    : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition active:scale-95'
   const stepBtn = isDark
     ? 'bg-white/10 text-[#94a3b8] hover:bg-white/15'
     : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
@@ -339,43 +347,66 @@ function PresetQtyStrip({
   const presetActive = isDark
     ? 'bg-[#e8eaed] font-bold text-[#14181f] shadow-sm'
     : 'bg-slate-900 font-bold text-white shadow-sm'
+  const iconClass = compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
+
+  const stepDown = (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => props.onQuantityChange(-1)}
+      className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+      aria-label="Decrease quantity"
+    >
+      <Minus className={iconClass} aria-hidden />
+    </button>
+  )
+
+  const stepUp = (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => props.onQuantityChange(1)}
+      className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
+      aria-label="Increase quantity"
+    >
+      <Plus className={iconClass} aria-hidden />
+    </button>
+  )
+
+  const presetButtons = presets.map((p) => (
+    <button
+      key={p}
+      type="button"
+      disabled={disabled}
+      onClick={() => props.onQuantityUpdate(p)}
+      className={`${circle} ${TRADE_OFFLINE_DISABLED_CLASS} ${qty === p ? presetActive : presetIdle}`}
+    >
+      {p}
+    </button>
+  ))
+
+  if (compact) {
+    return (
+      <div
+        className="grid min-w-0 flex-1 items-center gap-0.5"
+        style={{ gridTemplateColumns: `repeat(${presets.length + 2}, minmax(0, 1fr))` }}
+        aria-label="Quantity"
+      >
+        {stepDown}
+        {presetButtons}
+        {stepUp}
+      </div>
+    )
+  }
 
   return (
     <div
       className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-x-auto [-webkit-overflow-scrolling:touch]"
       aria-label="Quantity"
     >
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => props.onQuantityChange(-1)}
-        className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-        aria-label="Decrease quantity"
-      >
-        <Minus className="h-3.5 w-3.5" aria-hidden />
-      </button>
-
-      {presets.map((p) => (
-        <button
-          key={p}
-          type="button"
-          disabled={disabled}
-          onClick={() => props.onQuantityUpdate(p)}
-          className={`${circle} ${TRADE_OFFLINE_DISABLED_CLASS} ${qty === p ? presetActive : presetIdle}`}
-        >
-          {p}
-        </button>
-      ))}
-
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => props.onQuantityChange(1)}
-        className={`${circle} ${stepBtn} ${TRADE_OFFLINE_DISABLED_CLASS}`}
-        aria-label="Increase quantity"
-      >
-        <Plus className="h-3.5 w-3.5" aria-hidden />
-      </button>
+      {stepDown}
+      {presetButtons}
+      {stepUp}
     </div>
   )
 }
