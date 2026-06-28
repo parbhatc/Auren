@@ -32,8 +32,7 @@ export const getWebSocketUrl = (path: string = ''): string => {
   // Vite dev: plain HTTP uses direct WS to the API server; HTTPS uses same-origin WSS via Vite proxy
   if (import.meta.env.DEV && (port === '3000' || port === '5173')) {
     if (protocol === 'https:') {
-      const portSuffix = port && port !== '443' ? `:${port}` : ''
-      return `${wsProtocol}//${hostname}${portSuffix}${normalizedPath}`
+      return `${wsProtocol}//${hostname}:${port}${normalizedPath}`
     }
     const backendPort = import.meta.env.VITE_API_PORT || '3001'
     return `ws://${hostname}:${backendPort}${normalizedPath}`

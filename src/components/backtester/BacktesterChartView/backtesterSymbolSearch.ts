@@ -11,7 +11,10 @@ export async function searchBacktesterTradeSymbols(query: string): Promise<Trade
     .map((symbol) => ({
       symbol,
       full_name: symbol,
+      name: symbol,
       description: symbol,
+      exchange: 'CME',
+      type: 'futures',
       ticker: symbol,
       streamTicker: `CME:${symbol}`,
     }))
