@@ -21,12 +21,12 @@ function CompactQuickTrade({
   props,
   isDark,
   onExpand,
-  dockBottom = false,
+  useSafeAreaOnCard = false,
 }: {
   props: TradePanelProps
   isDark: boolean
   onExpand: () => void
-  dockBottom?: boolean
+  useSafeAreaOnCard?: boolean
 }) {
   const tradeDisabled = !isTradePanelTradingEnabled(props)
   const qty = Number(props.quantity) || 1
@@ -40,7 +40,7 @@ function CompactQuickTrade({
   return (
     <div
       className={`relative rounded-2xl border px-2 py-1.5 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:px-2 max-lg:py-1.5 ${
-        dockBottom ? 'max-lg:pb-[max(0.25rem,env(safe-area-inset-bottom))]' : ''
+        useSafeAreaOnCard ? 'max-lg:pb-[env(safe-area-inset-bottom,0px)]' : ''
       } ${shell}`}
     >
       <button
@@ -145,26 +145,27 @@ export function MobileScalpBar({
     </>
   )
 
-  const dockBottom = !showMobileNav
+  const useSafeAreaOnCard = !showMobileNav
 
   if (prefs.quickTradeMinimized) {
     return (
       <CompactQuickTrade
         props={props}
         isDark={isDark}
-        dockBottom={dockBottom}
+        useSafeAreaOnCard={useSafeAreaOnCard}
         onExpand={() => setMobileQuickTradeMinimized(accountId, false)}
       />
     )
   }
 
   return (
-    <div className="max-lg:overflow-hidden">
+    <div className="max-lg:w-full max-lg:overflow-hidden">
       <QuickTradeCard
         props={props}
         maxQty={maxQty}
         isDark={isDark}
         headerActions={headerActions}
+        dockBottomSafeArea={useSafeAreaOnCard}
       />
     </div>
   )

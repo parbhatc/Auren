@@ -768,7 +768,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     if (!session) {
       return (
         <div className={appPageBackground(isDark)}>
-          <header className={`sticky top-0 z-50 border-b ${isDark ? 'border-slate-800/80 bg-slate-950/80 backdrop-blur-xl' : 'border-slate-200/80 bg-white/80 backdrop-blur-xl'}`}>
+          <header className={`sticky top-0 z-50 border-b auren-sticky-app-header ${isDark ? 'border-slate-800/80 bg-slate-950/80 backdrop-blur-xl' : 'border-slate-200/80 bg-white/80 backdrop-blur-xl'}`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-14">
                 <Logo isDark={isDark} compact={true} onClick={() => navigate(ROUTES.HOME)} />

@@ -410,7 +410,7 @@ export default function Hub() {
           : ''
 
   return (
-    <div className={`min-h-screen ${appPageBackground(isDark)}`}>
+    <div className={`min-h-screen min-h-[100dvh] ${appPageBackground(isDark)}`}>
       <HubNav
         isDark={isDark}
         activeTab={activeTab}

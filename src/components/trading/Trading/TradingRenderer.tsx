@@ -691,7 +691,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       <div
         className={`transition-all duration-700 ease-in-out flex ${
           terminalShell
-            ? 'min-h-dvh h-dvh max-h-dvh overflow-hidden'
+            ? 'auren-terminal-shell'
             : 'h-screen max-h-screen overflow-hidden'
         } ${
           terminalShell

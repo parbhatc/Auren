@@ -130,9 +130,7 @@ export function TradeHeader({
 
   return (
     <div
-      className={`relative shrink-0 z-[110] ${shell} ${
-        showMobileHeaderActions ? 'pt-[env(safe-area-inset-top,0px)]' : ''
-      }`}
+      className={`relative shrink-0 z-[110] max-lg:pt-[env(safe-area-inset-top,0px)] ${shell}`}
     >
       <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
         {!hideNavToggle && !showNav && (

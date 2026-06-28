@@ -181,19 +181,18 @@ export const renderPracticeTradeLayout = (
   const panelWidth = options?.panelWidth ?? 332
   const mobileScalpBar = options?.mobileScalpBar ?? null
   const panelFrame = options?.panelFrame !== false
-  const reserveMobileNavGap = Boolean(mobileScalpBar && options?.showMobileNav !== false)
-  const mobileNavPadClass = reserveMobileNavGap
-    ? 'max-lg:pb-[calc(2.25rem+max(0.25rem,env(safe-area-inset-bottom)))]'
-    : ''
+  const showMobileNav = options?.showMobileNav !== false
+  const hasScalpBar = mobileScalpBar != null
+  const mobileBottomPadClass = showMobileNav ? 'auren-mobile-nav-clearance' : ''
   return (
     <div className="flex flex-col lg:flex-row flex-1 min-h-0 min-w-0 w-full h-full gap-0 lg:gap-4 pr-0 lg:pr-2">
       <div
-        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${mobileNavPadClass}`}
+        className={`flex flex-col min-w-0 w-full flex-1 min-h-0 gap-0 lg:gap-3 ${mobileBottomPadClass}`}
       >
         <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           {chartElement}
         </div>
-        {mobileScalpBar ? (
+        {hasScalpBar ? (
           <div className="lg:hidden relative z-30 shrink-0 min-h-0">{mobileScalpBar}</div>
         ) : null}
       </div>

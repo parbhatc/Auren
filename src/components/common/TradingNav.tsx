@@ -162,14 +162,12 @@ class TradingNav extends Component<TradingNavProps> {
       isDark ? 'text-slate-500 active:text-slate-300 hover:text-slate-300' : 'text-slate-500 active:text-slate-700 hover:text-slate-700'
     }`
 
-    // Mobile Bottom Nav — compact tab bar
+    // Mobile Bottom Nav — compact tab bar (positioned by .auren-mobile-bottom-bar wrapper)
     const bottomNav = showMobileNav ? (
       <nav
-        className={`lg:hidden fixed inset-x-0 bottom-0 z-50 border-t transition-all duration-300 ease-in-out ${
-          showMobileNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
-        } ${
-          isDark ? 'border-slate-800/80 bg-slate-950/96' : 'border-slate-200/90 bg-white/96'
-        } pb-[max(0px,env(safe-area-inset-bottom))]`}
+        className={`lg:hidden w-full border-t ${
+          isDark ? 'border-slate-800/80 bg-slate-950' : 'border-slate-200/90 bg-white'
+        } pb-[env(safe-area-inset-bottom,0px)]`}
         aria-label="Practice navigation"
       >
         <div className="flex h-9 max-h-9 items-stretch px-1">

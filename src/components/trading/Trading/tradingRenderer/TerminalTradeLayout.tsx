@@ -54,7 +54,8 @@ export function TerminalTradeLayout({
         chartElement,
         padDetached ? null : <TradePanel {...padProps} />,
         {
-          mobileScalpBar: mobileOverlayOpen ? null : (
+          mobileScalpBar:
+            mobileOverlayOpen || mobileTradePrefs.floatingPad ? null : (
             <MobileScalpBar
               accountId={padSessionId}
               props={padProps}

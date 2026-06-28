@@ -52,7 +52,7 @@ class StatsHeader extends Component<StatsHeaderProps> {
 
     return (
       <header
-        className={`border-b ${
+        className={`border-b auren-sticky-app-header ${
           isDark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-white/80'
         } backdrop-blur-sm sticky top-0 z-50`}
       >

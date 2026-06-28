@@ -34,12 +34,14 @@ export function QuickTradeCard({
   isDark,
   className = '',
   headerActions,
+  dockBottomSafeArea = true,
 }: {
   props: TradePanelProps
   maxQty: number
   isDark: boolean
   className?: string
   headerActions?: ReactNode
+  dockBottomSafeArea?: boolean
 }) {
   const [ui, setUi] = useState<TradePanelSettings>(() => getTradePanelSettings())
   const tradeDisabled = !isTradePanelTradingEnabled(props)
@@ -179,10 +181,12 @@ export function QuickTradeCard({
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border ${shell} ${MOBILE_FLUSH_SHELL} ${className}`}
+      className={`overflow-hidden rounded-2xl border ${shell} ${MOBILE_FLUSH_SHELL} ${
+        dockBottomSafeArea ? 'max-lg:pb-[env(safe-area-inset-bottom,0px)]' : ''
+      } ${className}`}
       aria-label="Quick trade"
     >
-      <div className="relative px-2 py-1.5 max-lg:px-2 max-lg:py-1.5 max-lg:pb-[max(0.35rem,env(safe-area-inset-bottom))]">
+      <div className="relative px-2 py-1.5 max-lg:px-2 max-lg:py-1.5">
         {headerActions ? (
           <div className="absolute right-0 top-0 z-10 hidden shrink-0 items-center gap-0.5 lg:flex">
             {headerActions}

@@ -91,7 +91,7 @@ export default function HubNav({
     : 'border-slate-200/80 bg-white/80 backdrop-blur-xl'
 
   return (
-    <div className={`sticky top-0 z-50 border-b ${shell}`}>
+    <div className={`sticky top-0 z-50 border-b auren-sticky-app-header ${shell}`}>
       <div className="max-w-7xl mx-auto px-3 sm:px-6">
         <header className="flex items-center gap-3 h-14">
           <button

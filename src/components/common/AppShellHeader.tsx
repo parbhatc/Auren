@@ -31,7 +31,7 @@ export function AppShellHeader({
     : 'border-slate-200 bg-white/95 text-slate-800'
 
   return (
-    <div className={`shrink-0 z-50 sticky top-0 w-full ${shell}`}>
+    <div className={`shrink-0 z-50 sticky top-0 w-full auren-sticky-app-header ${shell}`}>
       <header
         className={`h-10 border-b border-inherit flex items-center gap-2 px-2 mx-auto w-full ${maxWidthClass}`}
       >

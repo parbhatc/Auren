@@ -1,12 +1,19 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import { resolveBwcRoot } from './scripts/resolve-bwc-root.mjs'
 import { betterweightChartStatic } from './vite.bwcStatic'
 
 const bwcRoot = resolveBwcRoot()
+const devHttps =
+  process.env.VITE_DEV_HTTPS === '1' || process.env.VITE_DEV_HTTPS === 'true'
 
 export default defineConfig({
-  plugins: [react(), betterweightChartStatic(bwcRoot)],
+  plugins: [
+    ...(devHttps ? [basicSsl()] : []),
+    react(),
+    betterweightChartStatic(bwcRoot),
+  ],
   server: {
     port: 3000,
     host: true,

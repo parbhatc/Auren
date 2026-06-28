@@ -76,7 +76,7 @@ export default function SettingsPageLayout({
 
   return (
     <div className={appPageBackground(isDark)}>
-      <div className={`sticky top-0 z-50 border-b ${appHeaderShell(isDark)}`}>
+      <div className={`sticky top-0 z-50 border-b auren-sticky-app-header ${appHeaderShell(isDark)}`}>
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3">
           <button type="button" onClick={() => navigate(ROUTES.HOME)} className="shrink-0">
             <Logo isDark={isDark} compact size="sm" />

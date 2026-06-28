@@ -275,6 +275,18 @@ npm run dev
 
 App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 
+**iPhone / PWA testing (HTTPS)**
+
+iOS requires HTTPS for reliable standalone PWA mode. Use the self-signed dev server:
+
+```bash
+npm run dev:https
+```
+
+On your phone (same Wi‑Fi), open `https://<your-pc-lan-ip>:3000` (see the **Network** URL in the terminal). Safari will warn about the certificate — tap **Advanced → Proceed**. Then **Share → Add to Home Screen** and launch from the icon.
+
+Keep the API on `http://localhost:3001`; Vite proxies `/api` and WebSockets over HTTPS.
+
 ### 6. First-time use
 
 On a fresh install (empty database), the server creates a default admin account:

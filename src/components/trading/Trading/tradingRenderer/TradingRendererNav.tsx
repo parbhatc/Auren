@@ -53,7 +53,7 @@ export function TradingRendererNav({
       </div>
 
       <div
-        className={`lg:hidden fixed bottom-0 left-0 right-0 transition-all duration-300 ease-in-out transform z-50 ${
+        className={`lg:hidden auren-mobile-bottom-bar transition-all duration-300 ease-in-out transform z-50 ${
           showNav ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
         }`}
       >
