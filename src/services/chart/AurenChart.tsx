@@ -32,8 +32,10 @@ export type AurenChartServices = {
   accountId: string
 }
 
-/** After MDS resubscribeAll (~150ms) before forcing a BWC history reload. */
-const CHART_RELOAD_AFTER_MDS_OPEN_MS = 500
+/** Brief pause after MDS resubscribe before forcing a BWC history reload. */
+const CHART_RELOAD_AFTER_MDS_RESUBSCRIBE_MS = 200
+const CHART_RELOAD_WIDGET_RETRY_MS = 250
+const CHART_RELOAD_WIDGET_RETRY_MAX = 24
 const DEV_CHART_CACHE_CLEARED_KEY = 'auren.dev.chart.cache.cleared.v1'
 
 function isLocalDevPracticeTradeRoute(): boolean {
@@ -186,9 +188,11 @@ export default function AurenChart(props: AurenChartProps) {
 
   const datafeedSource = (props.tradeseaServices as AurenChartServices | null | undefined)?.datafeed
   const mds = (props.tradeseaServices as AurenChartServices | null | undefined)?.mds
-  const mdsHadConnectedRef = useRef(false)
+  const mdsNeedsHistoryReloadRef = useRef(false)
+  const chartReloadPendingRef = useRef(false)
   const chartReloadInFlightRef = useRef(false)
   const chartReloadQueuedRef = useRef(false)
+  const runChartReloadRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     // Localhost only: clear stale BWC debug/layout settings and force one reload.
@@ -200,27 +204,65 @@ export default function AurenChart(props: AurenChartProps) {
 
   useEffect(() => {
     if (!mds || !datafeedSource) return
-    if (mds.getConnectionState() === 'connected') {
-      mdsHadConnectedRef.current = true
-    }
 
     let reloadTimer: ReturnType<typeof setTimeout> | null = null
+    let widgetRetryTimer: ReturnType<typeof setTimeout> | null = null
+    let widgetRetryCount = 0
+
+    const clearWidgetRetry = () => {
+      if (widgetRetryTimer) clearTimeout(widgetRetryTimer)
+      widgetRetryTimer = null
+      widgetRetryCount = 0
+    }
+
+    const scheduleChartReload = () => {
+      if (reloadTimer) clearTimeout(reloadTimer)
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null
+        void runChartReloadRef.current?.()
+      }, CHART_RELOAD_AFTER_MDS_RESUBSCRIBE_MS)
+    }
+
+    const scheduleWidgetRetry = () => {
+      if (widgetRetryTimer || widgetRetryCount >= CHART_RELOAD_WIDGET_RETRY_MAX) return
+      widgetRetryTimer = setTimeout(() => {
+        widgetRetryTimer = null
+        widgetRetryCount += 1
+        void runChartReloadRef.current?.()
+      }, CHART_RELOAD_WIDGET_RETRY_MS)
+    }
 
     const runChartReload = async () => {
       const widget = widgetRef.current
-      if (!widget?.reset) return
+      if (!widget?.reset) {
+        chartReloadPendingRef.current = true
+        scheduleWidgetRetry()
+        return
+      }
+      if (mds.getConnectionState() !== 'connected') {
+        chartReloadPendingRef.current = true
+        return
+      }
+
+      chartReloadPendingRef.current = false
+      clearWidgetRetry()
+
       if (chartReloadInFlightRef.current) {
         chartReloadQueuedRef.current = true
         return
       }
       chartReloadInFlightRef.current = true
       try {
+        datafeedSource.refreshMdsSubscriptions()
         datafeedSource.clearHistoryCache()
         candleDebug.chartReload()
         await widget.reset({ data: true })
         candleDebug.chartReloadDone()
+        mdsNeedsHistoryReloadRef.current = false
       } catch (err) {
         console.warn('[AurenChart] MDS reconnect chart reload failed:', err)
+        chartReloadPendingRef.current = true
+        scheduleWidgetRetry()
       } finally {
         chartReloadInFlightRef.current = false
         if (chartReloadQueuedRef.current) {
@@ -230,21 +272,25 @@ export default function AurenChart(props: AurenChartProps) {
       }
     }
 
-    const off = mds.on('open', () => {
-      if (!mdsHadConnectedRef.current) {
-        mdsHadConnectedRef.current = true
-        return
-      }
+    runChartReloadRef.current = runChartReload
+
+    const offClose = mds.on('close', () => {
+      mdsNeedsHistoryReloadRef.current = true
       if (reloadTimer) clearTimeout(reloadTimer)
-      reloadTimer = setTimeout(() => {
-        reloadTimer = null
-        void runChartReload()
-      }, CHART_RELOAD_AFTER_MDS_OPEN_MS)
+      reloadTimer = null
+    })
+
+    const offResubscribed = mds.on('resubscribed', () => {
+      if (!mdsNeedsHistoryReloadRef.current) return
+      scheduleChartReload()
     })
 
     return () => {
-      off()
+      offClose()
+      offResubscribed()
+      runChartReloadRef.current = null
       if (reloadTimer) clearTimeout(reloadTimer)
+      clearWidgetRetry()
     }
   }, [mds, datafeedSource])
 
@@ -315,6 +361,10 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         widgetRef.current = widget
+
+        if (chartReloadPendingRef.current || mdsNeedsHistoryReloadRef.current) {
+          void runChartReloadRef.current?.()
+        }
 
         if (!bwcHasOrderLines(widget)) {
           console.warn(

@@ -58,6 +58,7 @@ type MdsEventMap = {
   reconnectOnLimit: boolean
   connectionsLimitBlocked: void
   open: void
+  resubscribed: void
   close: { code: number; reason: string }
   error: Error
 }
@@ -960,6 +961,7 @@ export class TradeseaMdsClient {
         this.sendWire(payload, true)
       }
       this.logWs('Resubscribed', { streams: payloads.length })
+      this.emit('resubscribed', undefined as MdsEventMap['resubscribed'])
       return
     }
 
@@ -967,6 +969,7 @@ export class TradeseaMdsClient {
     if (bootstrapSymbols.length) {
       this.applyBootstrap(false)
       this.logWs('Resubscribed', { streams: this.activeSubs.size })
+      this.emit('resubscribed', undefined as MdsEventMap['resubscribed'])
       return
     }
 
@@ -976,7 +979,7 @@ export class TradeseaMdsClient {
     this.setBootstrap({ symbols: fallbackSymbols, resolution: this.bootstrap?.resolution || '1' })
     this.applyBootstrap(false)
     this.logWs('Resubscribed', { streams: this.activeSubs.size, defaultSymbol: fallbackSymbols[0] })
-    return
+    this.emit('resubscribed', undefined as MdsEventMap['resubscribed'])
   }
 
   private sendWire(payload: SubscriptionPayload, subscribe: boolean): void {
