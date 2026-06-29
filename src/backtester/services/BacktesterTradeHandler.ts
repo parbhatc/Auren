@@ -508,27 +508,30 @@ export class BacktesterTradeHandler {
    * Convert timeframe string to minutes
    */
   private timeframeToMinutes(timeframe: string): number {
-    // Remove any non-numeric characters except D, M, S, H
-    const clean = timeframe.trim().toUpperCase()
-    
+    const clean = String(timeframe || '').trim().toUpperCase()
+    if (!clean) return 1
+
     // Days
     if (clean.endsWith('D')) {
-      return parseInt(clean.replace('D', '')) * 1440 // 24 * 60
+      const days = parseInt(clean.slice(0, -1), 10)
+      return Number.isFinite(days) && days > 0 ? days * 1440 : 1
     }
-    
+
     // Hours
     if (clean.endsWith('H')) {
-      return parseInt(clean.replace('H', '')) * 60
+      const hours = parseInt(clean.slice(0, -1), 10)
+      return Number.isFinite(hours) && hours > 0 ? hours * 60 : 1
     }
-    
+
+    // Seconds (e.g. "30S" -> 0.5 minutes)
+    if (clean.endsWith('S')) {
+      const seconds = parseInt(clean.slice(0, -1), 10)
+      return Number.isFinite(seconds) && seconds > 0 ? seconds / 60 : 1
+    }
+
     // Minutes (default) - just the number
-    const minutes = parseInt(clean)
-    if (!isNaN(minutes)) {
-      return minutes
-    }
-    
-    // Default to 1 minute
-    return 1
+    const minutes = parseInt(clean, 10)
+    return Number.isFinite(minutes) && minutes > 0 ? minutes : 1
   }
 
   /**

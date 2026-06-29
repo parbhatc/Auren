@@ -34,6 +34,72 @@ export type AurenChartServices = {
 
 /** After MDS resubscribeAll (~150ms) before forcing a BWC history reload. */
 const CHART_RELOAD_AFTER_MDS_OPEN_MS = 500
+const DEV_CHART_CACHE_CLEARED_KEY = 'auren.dev.chart.cache.cleared.v1'
+
+function isLocalDevPracticeTradeRoute(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname
+  const isLocal = host === 'localhost' || host === '127.0.0.1'
+  return isLocal && window.location.pathname.startsWith('/practice/trade/')
+}
+
+function clearLocalDevChartCachesOnce(): boolean {
+  if (!isLocalDevPracticeTradeRoute()) return false
+  if (typeof window === 'undefined') return false
+  if (window.sessionStorage.getItem(DEV_CHART_CACHE_CLEARED_KEY) === '1') return false
+
+  const shouldClearKey = (k: string): boolean => {
+    const key = String(k || '').toLowerCase()
+    return key.includes('bwc') || key.includes('betterweight') || key.includes('tradingview')
+  }
+
+  try {
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i)
+      if (!key || !shouldClearKey(key)) continue
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    for (let i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.sessionStorage.key(i)
+      if (!key || !shouldClearKey(key)) continue
+      window.sessionStorage.removeItem(key)
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    if (typeof caches !== 'undefined') {
+      void caches.keys().then((names) => Promise.all(names.map((name) => caches.delete(name))))
+    }
+  } catch {
+    // ignore
+  }
+
+  window.sessionStorage.setItem(DEV_CHART_CACHE_CLEARED_KEY, '1')
+  return true
+}
+
+function purgeOrphanedBwcFloatingToolbars(): void {
+  if (typeof document === 'undefined') return
+  const selectors = [
+    '.tv-floating-toolbar',
+    '.tv-drawing-edit-toolbar',
+    '.tv-floating-toolbar__hint',
+  ]
+  for (const selector of selectors) {
+    document.querySelectorAll(selector).forEach((el) => {
+      if (el instanceof HTMLElement) {
+        el.remove()
+      }
+    })
+  }
+}
 
 function chartShellHtml(chartId: string): string {
   return `
@@ -125,6 +191,14 @@ export default function AurenChart(props: AurenChartProps) {
   const chartReloadQueuedRef = useRef(false)
 
   useEffect(() => {
+    // Localhost only: clear stale BWC debug/layout settings and force one reload.
+    const didClear = clearLocalDevChartCachesOnce()
+    if (didClear) {
+      window.location.reload()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!mds || !datafeedSource) return
     if (mds.getConnectionState() === 'connected') {
       mdsHadConnectedRef.current = true
@@ -178,6 +252,8 @@ export default function AurenChart(props: AurenChartProps) {
     const shell = shellRef.current
     if (!shell) return
 
+    // Defensive cleanup in case a previous chart unmount leaked floating toolbar nodes.
+    purgeOrphanedBwcFloatingToolbars()
     shell.innerHTML = chartShellHtml(chartId)
     const mount = shell.querySelector(`#${chartId}`) as HTMLElement | null
     if (!mount) return
@@ -283,6 +359,7 @@ export default function AurenChart(props: AurenChartProps) {
       })
       widgetRef.current?.destroy?.()
       widgetRef.current = null
+      purgeOrphanedBwcFloatingToolbars()
       datafeedSource.teardownCandleStreams()
       datafeedSource.setChartSymbolChangeRequest?.(null)
       schedulePageScrollReset()
