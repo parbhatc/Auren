@@ -25,3 +25,20 @@ export function isIosSafariBrowser(): boolean {
 }
 
 export const IOS_PWA_BANNER_DISMISS_KEY = 'auren_ios_pwa_banner_dismissed'
+
+/** Subscribe to browser online/offline changes. Returns an unsubscribe function. */
+export function subscribeOnlineStatus(onChange: (online: boolean) => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  const handler = () => onChange(navigator.onLine)
+  window.addEventListener('online', handler)
+  window.addEventListener('offline', handler)
+  return () => {
+    window.removeEventListener('online', handler)
+    window.removeEventListener('offline', handler)
+  }
+}
+
+export function isOnline(): boolean {
+  return typeof navigator === 'undefined' ? true : navigator.onLine
+}

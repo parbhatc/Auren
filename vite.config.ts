@@ -1,18 +1,66 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { VitePWA } from 'vite-plugin-pwa'
 import { resolveBwcRoot } from './scripts/resolve-bwc-root.mjs'
 import { betterweightChartStatic } from './vite.bwcStatic'
 
 const bwcRoot = resolveBwcRoot()
 const devHttps =
   process.env.VITE_DEV_HTTPS === '1' || process.env.VITE_DEV_HTTPS === 'true'
+const pwaDev =
+  process.env.VITE_PWA_DEV === '1' || process.env.VITE_PWA_DEV === 'true'
 
 export default defineConfig({
   plugins: [
     ...(devHttps ? [basicSsl()] : []),
     react(),
     betterweightChartStatic(bwcRoot),
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: null,
+      includeAssets: ['icons/**/*', 'manifest.webmanifest'],
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,mjs,webmanifest}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [
+          /^\/api/,
+          /^\/news/,
+          /^\/tradesea-/,
+          /^\/backtester/,
+          /^\/practice-account-ws/,
+        ],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: ({ request, url }) =>
+              request.method === 'GET' &&
+              (url.pathname.startsWith('/chart/') ||
+                url.pathname.startsWith('/js/') ||
+                url.pathname.startsWith('/css/') ||
+                url.pathname.startsWith('/vendor/') ||
+                url.pathname.startsWith('/testing/js/')),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'auren-bwc-static',
+              expiration: {
+                maxEntries: 400,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
+          },
+        ],
+      },
+      devOptions: {
+        enabled: pwaDev,
+        type: 'module',
+      },
+    }),
   ],
   server: {
     port: 3000,
