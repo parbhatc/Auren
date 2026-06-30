@@ -19,50 +19,42 @@ const SessionDateNavigation = ({
     return null
   }
 
-  // Parse date string (YYYY-MM-DD) to Date object in local timezone
-  // This prevents timezone issues where UTC dates appear as previous day
   const parseDateString = (dateString: string): Date => {
     const [year, month, day] = dateString.split('-').map(Number)
-    // Create date at midnight in local timezone (not UTC)
     return new Date(year, month - 1, day, 0, 0, 0, 0)
   }
 
-  // Format the session date
-  const formatSessionDate = (dateString: string): { full: string; short: string } => {
+  const formatSessionDate = (dateString: string): { full: string; medium: string; short: string } => {
     const date = parseDateString(dateString)
     return {
       full: date.toLocaleDateString('en-US', {
         weekday: 'short',
-        year: 'numeric',
         month: 'short',
         day: 'numeric',
+        year: '2-digit',
+      }),
+      medium: date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: '2-digit',
       }),
       short: date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
+        month: 'numeric',
         day: 'numeric',
-        year: 'numeric',
       }),
     }
   }
 
   const sessionDate = formatSessionDate(session.startDate)
 
-  // Format date for input (YYYY-MM-DD)
-  const formatDateForInput = (dateString: string): string => {
-    return dateString // Already in YYYY-MM-DD format
-  }
+  const formatDateForInput = (dateString: string): string => dateString
 
   const handlePrevious = () => {
-    if (tradeHandler) {
-      tradeHandler.logDateNavigation('previous', session.startDate)
-    }
+    tradeHandler?.logDateNavigation('previous', session.startDate)
   }
 
   const handleNext = () => {
-    if (tradeHandler) {
-      tradeHandler.logDateNavigation('next', session.startDate)
-    }
+    tradeHandler?.logDateNavigation('next', session.startDate)
   }
 
   const handleDateSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,61 +67,80 @@ const SessionDateNavigation = ({
   const handleCalendarClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    // Trigger click on the date input to open native date picker
-    if (dateInputRef.current) {
-      dateInputRef.current.focus()
-      // Try showPicker() method first (modern browsers), fallback to click()
-      if (typeof dateInputRef.current.showPicker === 'function') {
-        try {
-          dateInputRef.current.showPicker()
-        } catch (err) {
-          dateInputRef.current.click()
-        }
-      } else {
+    if (!dateInputRef.current) return
+    dateInputRef.current.focus()
+    if (typeof dateInputRef.current.showPicker === 'function') {
+      try {
+        dateInputRef.current.showPicker()
+      } catch {
         dateInputRef.current.click()
       }
+    } else {
+      dateInputRef.current.click()
     }
   }
 
+  const toolbarChipShell = isDark
+    ? 'border border-[#475569]/60 bg-[#0f172a]/80 text-[#e6edf3]'
+    : 'border border-slate-200 bg-white/95 text-slate-700'
+  const toolbarChipBtn = isDark
+    ? 'text-[#94a3b8] hover:text-[#e6edf3] hover:bg-[#1e293b]/80 active:bg-[#1e293b]'
+    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200'
+
+  const shell = compact
+    ? toolbarChipShell
+    : isDark
+      ? 'bg-slate-900/90 border-slate-700/80 text-slate-200'
+      : 'bg-white/95 border-slate-200 text-slate-700'
+  const btn = compact
+    ? toolbarChipBtn
+    : isDark
+      ? 'hover:bg-slate-700 text-slate-300 active:bg-slate-600'
+      : 'hover:bg-slate-100 text-slate-600 active:bg-slate-200'
+  const dateBtn = compact
+    ? isDark
+      ? 'text-[#e6edf3] hover:bg-[#1e293b]/80'
+      : 'text-slate-700 hover:bg-slate-100/50'
+    : isDark
+      ? 'text-slate-200 hover:bg-slate-700/50'
+      : 'text-slate-700 hover:bg-slate-100/50'
+
   return (
-    <div className={`${compact ? 'w-full max-w-full' : 'w-full sm:w-auto'} relative`}>
+    <div className={`session-date-nav ${compact ? 'session-date-nav--compact' : ''} relative min-w-0`}>
       <div
-        className={`flex items-center justify-center gap-2 px-2 py-1 rounded-lg border ${
-          compact ? 'w-full max-w-full' : 'w-full sm:w-auto'
-        } ${
-          isDark
-            ? 'bg-slate-900/90 border-slate-700/80 text-slate-200'
-            : 'bg-white/95 border-slate-200 text-slate-700'
+        className={`session-date-nav__shell flex items-center justify-center rounded-md border ${shell} ${
+          compact ? 'gap-0.5 px-1 py-0.5' : 'gap-1 px-2 py-1 rounded-lg'
         }`}
       >
         <button
+          type="button"
           onClick={handlePrevious}
-          className={`p-1.5 sm:p-1 rounded transition-all flex-shrink-0 ${
-            isDark
-              ? 'hover:bg-slate-700 text-slate-300 cursor-pointer active:bg-slate-600'
-              : 'hover:bg-slate-100 text-slate-600 cursor-pointer active:bg-slate-200'
+          className={`session-date-nav__btn rounded transition-colors flex-shrink-0 ${btn} ${
+            compact ? 'p-0.5' : 'p-1'
           }`}
           aria-label="Previous date"
         >
-          <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          <ChevronLeft className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden />
         </button>
 
-        {/* Date Display / Calendar Input */}
-        <div className="flex items-center gap-1 flex-1 sm:flex-none min-w-0">
-          <div className="flex-1 sm:flex-none relative min-w-0">
+        <div className="flex items-center min-w-0 flex-1 justify-center">
+          <div className="relative min-w-0 max-w-full">
             <button
+              type="button"
               onClick={handleCalendarClick}
-              className={`w-full px-1 sm:px-2 text-xs sm:text-sm font-medium text-center min-w-0 cursor-pointer rounded transition-all ${
-                isDark 
-                  ? 'text-slate-200 hover:bg-slate-700/50' 
-                  : 'text-slate-700 hover:bg-slate-100/50'
+              className={`session-date-nav__date w-full px-0.5 font-medium text-center truncate cursor-pointer rounded transition-colors ${dateBtn} ${
+                compact ? 'text-[11px] leading-tight' : 'text-xs sm:text-sm'
               }`}
               aria-label="Select date"
+              title={sessionDate.full}
             >
-              <span className="hidden sm:inline">{sessionDate.full}</span>
-              <span className="sm:hidden">{sessionDate.short}</span>
+              {compact ? sessionDate.medium : (
+                <>
+                  <span className="hidden sm:inline">{sessionDate.full}</span>
+                  <span className="sm:hidden">{sessionDate.medium}</span>
+                </>
+              )}
             </button>
-            {/* Date input overlay for direct clicks - positioned over the date button */}
             <input
               ref={dateInputRef}
               type="date"
@@ -141,29 +152,27 @@ const SessionDateNavigation = ({
               max={new Date().toISOString().split('T')[0]}
             />
           </div>
-          <button
-            onClick={handleCalendarClick}
-            className={`p-1 rounded transition-all flex-shrink-0 ${
-              isDark
-                ? 'hover:bg-slate-700 text-slate-300 cursor-pointer active:bg-slate-600'
-                : 'hover:bg-slate-100 text-slate-600 cursor-pointer active:bg-slate-200'
-            }`}
-            aria-label="Open calendar"
-          >
-            <Calendar className="w-4 h-4" />
-          </button>
+          {!compact && (
+            <button
+              type="button"
+              onClick={handleCalendarClick}
+              className={`p-1 rounded transition-colors flex-shrink-0 ${btn}`}
+              aria-label="Open calendar"
+            >
+              <Calendar className="w-4 h-4" aria-hidden />
+            </button>
+          )}
         </div>
 
         <button
+          type="button"
           onClick={handleNext}
-          className={`p-1.5 sm:p-1 rounded transition-all flex-shrink-0 ${
-            isDark
-              ? 'hover:bg-slate-700 text-slate-300 cursor-pointer active:bg-slate-600'
-              : 'hover:bg-slate-100 text-slate-600 cursor-pointer active:bg-slate-200'
+          className={`session-date-nav__btn rounded transition-colors flex-shrink-0 ${btn} ${
+            compact ? 'p-0.5' : 'p-1'
           }`}
           aria-label="Next date"
         >
-          <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+          <ChevronRight className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden />
         </button>
       </div>
     </div>

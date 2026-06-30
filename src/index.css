@@ -321,7 +321,24 @@ body {
 .trading-chart-host .tv-toolbar__date-nav {
   min-width: 0;
   flex: 0 1 auto;
-  max-width: min(100%, 320px);
+  max-width: min(100%, 148px);
+}
+
+.trading-chart-host .tv-toolbar__date-nav .session-date-nav {
+  width: 100%;
+  max-width: 100%;
+}
+
+.trading-chart-host .tv-toolbar__date-nav .session-date-nav__shell {
+  width: 100%;
+}
+
+.trading-chart-host .tv-toolbar__trade-symbol .relative > button {
+  min-height: 1.625rem;
+}
+
+.trading-chart-host .tv-toolbar__date-nav .session-date-nav__shell {
+  min-height: 1.625rem;
 }
 
 .trading-chart-host .tv-toolbar__trade-symbol {
@@ -355,8 +372,8 @@ body {
   }
 
   .trading-chart-host .tv-toolbar__date-nav {
-    flex: 1 1 auto;
-    max-width: min(100%, 280px);
+    flex: 0 1 auto;
+    max-width: min(100%, 132px);
   }
 
   /* Order / settings sheet open: hide chart chrome above the dimmed overlay */

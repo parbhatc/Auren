@@ -162,4 +162,26 @@ export function resolutionToMinutes(resolution) {
 
 }
 
+export function alignTimeToResolutionSec(timeSec, resolution) {
+  const barSec = Math.max(1, resolutionToSeconds(resolution))
+  return Math.floor(Number(timeSec) / barSec) * barSec
+}
+
+/**
+ * Map global replay wall time (HTF step) to last visible bar open on target TF.
+ * @param {number} anchorSec
+ * @param {string} sourceRes
+ * @param {string} targetRes
+ */
+export function capReplayWallForResolution(anchorSec, sourceRes, targetRes) {
+  const sourceSec = resolutionToSeconds(sourceRes)
+  const targetSec = resolutionToSeconds(targetRes)
+  if (targetSec >= sourceSec) {
+    return alignTimeToResolutionSec(anchorSec, targetRes)
+  }
+  const htfOpen = alignTimeToResolutionSec(anchorSec, sourceRes)
+  const lastLtOpen = htfOpen + sourceSec - targetSec
+  return alignTimeToResolutionSec(lastLtOpen, targetRes)
+}
+
 

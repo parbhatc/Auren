@@ -15,7 +15,7 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
-    "betterweightchart": "github:parbhatc/BetterweightChart#deb83b7ba4902954d43741dd9a113b1bad05c372",
+    "betterweightchart": "github:parbhatc/BetterweightChart#b400157",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
     "lightweight-charts": "github:parbhatc/lightweight-charts",

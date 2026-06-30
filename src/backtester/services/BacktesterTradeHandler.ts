@@ -6,6 +6,8 @@ import { BACKTESTER_CHART_SYMBOL_KEY } from '../constants'
 import type { BacktesterChartDataFeed } from '../components/chart/BacktesterChartDataFeed'
 import type { DomPositionContext } from '../../services/tradesea/tradeseaPnL'
 import { calcTradeseaTickPnL } from '../../services/tradesea/tradeseaPnL'
+import { tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaResolutions'
+import type { ResolutionString } from '../../types/chart'
 
 /**
  * Backtester Trade Handler
@@ -25,6 +27,7 @@ export class BacktesterTradeHandler {
   private onSessionUpdate?: (session: BacktestSession) => void
   private onStatsRefresh?: () => void
   private tradeCache: BacktesterTradeCache | null = null
+  private replayPaneSyncRaf: number | null = null
 
   constructor(session: BacktestSession | null, client: BacktesterChartClient | null) {
     this.session = session
@@ -173,13 +176,184 @@ export class BacktesterTradeHandler {
     return `${year}-${month}-${day}`
   }
 
-  private async reloadChartAfterSessionAnchor(): Promise<void> {
-    this.datafeed?.resetSessionState()
-    const chart = this.client?.getChart() as { reloadSessionDate?: () => Promise<void>; resetAllChartData?: () => Promise<void> } | null
-    if (chart?.reloadSessionDate) {
-      await chart.reloadSessionDate()
+  private parseReplayResponseTime(time: string): number | null {
+    const ms = Date.parse(String(time || ''))
+    if (!Number.isFinite(ms)) return null
+    return Math.floor(ms / 1000)
+  }
+
+  private getBwcWidget(): {
+    getBars?: () => Array<{ time?: number }>
+    getResolution?: () => string
+    replay?: {
+      getState?: () => { stepInterval?: string; autoSelectInterval?: boolean }
+      setReplayPosition?: (pos: {
+        selectedBarIndex: number
+        currentBarIndex: number
+        selectedBarTime: number
+        currentBarTime: number
+      }) => void
+    }
+  } | null {
+    try {
+      const chartComponent = this.client?.getChart() as {
+        widgetRef?: unknown
+        getChartWidget?: () => unknown
+      } | null
+      return (chartComponent?.widgetRef ?? chartComponent?.getChartWidget?.() ?? null) as {
+        getBars?: () => Array<{ time?: number }>
+        getResolution?: () => string
+        replay?: {
+          getState?: () => { stepInterval?: string; autoSelectInterval?: boolean }
+          setReplayPosition?: (pos: {
+            selectedBarIndex: number
+            currentBarIndex: number
+            selectedBarTime: number
+            currentBarTime: number
+          }) => void
+        }
+      } | null
+    } catch {
+      return null
+    }
+  }
+
+  /** Mirrors BWC `replayBarsPerStep` — one chart bar per step when auto-select is on. */
+  private replayBarsPerStep(
+    stepIntervalId: string,
+    chartResolutionId: string,
+    autoSelectInterval: boolean,
+  ): number {
+    if (autoSelectInterval) return 1
+    const id = String(stepIntervalId || '1').trim().toUpperCase()
+    if (id === 'TICK') return 1
+    const chartSec = Math.max(1, tradeseaResolutionToSeconds(chartResolutionId))
+    const stepSec = id === '1S' ? 1 : Math.max(1, tradeseaResolutionToSeconds(stepIntervalId))
+    return Math.max(1, Math.round(stepSec / chartSec))
+  }
+
+  private resolvePlaybackStep(chartResolution: string): {
+    playbackTimeframe: string
+    candlesToSkip: number
+  } {
+    const widget = this.getBwcWidget()
+    const replayState = widget?.replay?.getState?.()
+
+    if (replayState) {
+      const autoSelect = Boolean(replayState.autoSelectInterval)
+      const stepInterval = String(replayState.stepInterval ?? '1')
+      return {
+        playbackTimeframe: autoSelect ? chartResolution : stepInterval,
+        candlesToSkip: this.replayBarsPerStep(stepInterval, chartResolution, autoSelect),
+      }
+    }
+
+    const chartSec = Math.max(1, tradeseaResolutionToSeconds(chartResolution))
+    const playbackSec = Math.max(1, tradeseaResolutionToSeconds(this.playbackTimeframe))
+    return {
+      playbackTimeframe: this.playbackTimeframe,
+      candlesToSkip: Math.max(1, Math.round(playbackSec / chartSec)),
+    }
+  }
+
+  private getReplayCursorSec(chartResolution: string): number | null {
+    const resolution = chartResolution as ResolutionString
+    return (
+      this.datafeed?.getPlaybackAnchorSecForResolution?.(resolution) ??
+      this.datafeed?.getPlaybackAnchorSecPublic?.() ??
+      null
+    )
+  }
+
+  /** Align server barCache.last with chart replay cursor (e.g. after 1m→30s TF switch). */
+  syncServerReplayCursor(chartResolution?: string): void {
+    if (!this.client?.isConnected()) return
+    let resolution = chartResolution
+    if (!resolution) {
+      try {
+        resolution = this.getBwcWidget()?.getResolution?.()
+      } catch {
+        resolution = undefined
+      }
+    }
+    if (!resolution) return
+    const cursorSec = this.getReplayCursorSec(resolution)
+    if (cursorSec == null) return
+    this.client.send({
+      type: 'syncReplayCursor',
+      cursorSec: Math.floor(cursorSec),
+    })
+  }
+
+  private resolvePlaybackStepSec(): number {
+    const stepInterval = this.resolvePlaybackStepResolution()
+    const id = stepInterval.trim().toUpperCase()
+    if (id === 'TICK') return 1
+    if (id === '1S') return 1
+    return Math.max(1, tradeseaResolutionToSeconds(stepInterval))
+  }
+
+  private resolvePlaybackStepResolution(): string {
+    const widget = this.getBwcWidget()
+    const replayState = widget?.replay?.getState?.()
+    return String(replayState?.stepInterval ?? this.playbackTimeframe ?? '1')
+  }
+
+  private syncAllPanesReplayCursor(): void {
+    const widget = this.getBwcWidget() as {
+      syncHostReplayPanes?: () => void
+    } | null
+    widget?.syncHostReplayPanes?.()
+  }
+
+  /** Coalesce pane sync so multi-bar Next steps keep viewport tail stable. */
+  private scheduleSyncAllPanesReplayCursor(): void {
+    if (typeof requestAnimationFrame !== 'function') {
+      this.syncAllPanesReplayCursor()
       return
     }
+    if (this.replayPaneSyncRaf != null) {
+      cancelAnimationFrame(this.replayPaneSyncRaf)
+    }
+    this.replayPaneSyncRaf = requestAnimationFrame(() => {
+      this.replayPaneSyncRaf = null
+      this.syncAllPanesReplayCursor()
+    })
+  }
+
+  /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
+  syncReplayCursorFromBar(_anchorSec: number, _chartResolution?: string): void {
+    this.scheduleSyncAllPanesReplayCursor()
+  }
+
+  private syncWidgetReplayCursor(anchorSec?: number, chartResolution?: string): void {
+    if (anchorSec != null && Number.isFinite(anchorSec)) {
+      const widget = this.getBwcWidget()
+      const resolution = (chartResolution ?? widget?.getResolution?.() ?? '1') as ResolutionString
+      this.datafeed?.setPlaybackAnchorSec?.(Math.floor(anchorSec), resolution)
+    }
+    this.syncAllPanesReplayCursor()
+  }
+
+  private async reloadChartAfterSessionAnchor(opts?: {
+    preserveViewport?: boolean
+    playbackAnchorSec?: number
+    clearPlaybackAnchor?: boolean
+  }): Promise<void> {
+    const chart = this.client?.getChart() as {
+      reloadSessionDate?: (o?: {
+        preserveViewport?: boolean
+        playbackAnchorSec?: number
+        clearPlaybackAnchor?: boolean
+      }) => Promise<void>
+      resetAllChartData?: () => Promise<void>
+    } | null
+    if (chart?.reloadSessionDate) {
+      await chart.reloadSessionDate(opts)
+      this.syncWidgetReplayCursor(opts?.playbackAnchorSec)
+      return
+    }
+    this.datafeed?.resetSessionState?.()
     await chart?.resetAllChartData?.()
   }
 
@@ -192,7 +366,12 @@ export class BacktesterTradeHandler {
     // Set up callbacks when client is updated
     client?.setCallbacks({
       onReplayResponse: async (data: { type: string; time: string }) => {
-        await this.reloadChartAfterSessionAnchor()
+        const anchorSec = this.parseReplayResponseTime(data.time)
+        await this.reloadChartAfterSessionAnchor({
+          preserveViewport: true,
+          playbackAnchorSec: anchorSec ?? undefined,
+          clearPlaybackAnchor: false,
+        })
         console.log('[Backtester Trade Handler] Replayed to: ' + data.time)
       },
       onDateNavigationResponse: async (data: {
@@ -225,7 +404,10 @@ export class BacktesterTradeHandler {
           this.client?.updateSession(updatedSession)
           this.onSessionUpdate?.(updatedSession)
 
-          await this.reloadChartAfterSessionAnchor()
+          await this.reloadChartAfterSessionAnchor({
+            preserveViewport: false,
+            clearPlaybackAnchor: true,
+          })
 
           await backtesterAPI.updateSession(updatedSession)
           this.onStatsRefresh?.()
@@ -560,56 +742,38 @@ export class BacktesterTradeHandler {
    * Calculates how many candles to skip based on playback timeframe vs chart timeframe
    */
   handleNextCandle = (): void => {
-    // Get symbol and resolution from chart
-    let symbol: string | undefined
-    let chartResolution: string | undefined
+    const stepResolution = this.resolvePlaybackStepResolution()
+    const stepSec = this.resolvePlaybackStepSec()
+    const current = this.datafeed?.getPlaybackAnchorSecPublic?.() ?? null
 
-    try {
-      const chartComponent = this.client?.getChart()
-      const widget = (chartComponent as any)?.widgetRef ?? chartComponent?.getChartWidget?.()
-      if (widget?.getSymbol) {
-        symbol = widget.getSymbol()
-        chartResolution = widget.getResolution?.() || chartResolution
-      } else if (widget?.activeChart) {
-        const activeChart = widget.activeChart()
-        symbol = activeChart?.symbol?.()
-        chartResolution = activeChart?.resolution?.() || chartResolution
-      }
-    } catch (error) {
-      console.warn('[BacktesterTradeHandler] Error getting chart info:', error)
-    }
-
-    // Fallback to session if chart info not available
-    symbol = symbol || this.session?.symbol
-    chartResolution = chartResolution || '1' // Default resolution
-
-    if (!symbol || !chartResolution) {
-      console.warn('[BacktesterTradeHandler] Symbol or resolution not available for nextCandle', { symbol, chartResolution })
+    if (current == null || !Number.isFinite(current)) {
+      console.warn('[BacktesterTradeHandler] Replay cursor not set for nextCandle')
       return
     }
 
-    // Calculate how many candles to skip
-    const chartMinutes = this.timeframeToMinutes(chartResolution)
-    const playbackMinutes = this.timeframeToMinutes(this.playbackTimeframe)
-    const candlesToSkip = Math.max(1, Math.floor(playbackMinutes / chartMinutes))
+    const targetSec = current + stepSec
+    this.datafeed?.setPlaybackAnchorSec?.(
+      Math.floor(targetSec),
+      stepResolution as ResolutionString,
+    )
 
-    // Send nextCandle messages (one for each candle to skip)
     if (this.client && this.client.isConnected()) {
-      for (let i = 0; i < candlesToSkip; i++) {
-        this.client.send({
-          type: 'nextCandle',
-          symbol: symbol,
-          resolution: chartResolution,
-          playbackTimeframe: this.playbackTimeframe
-        })
-      }
+      this.client.send({
+        type: 'nextCandle',
+        stepSec,
+        cursorSec: Math.floor(current),
+        targetSec: Math.floor(targetSec),
+        playbackTimeframe: stepResolution,
+      })
     }
 
-    // Log action
-    this.logPlaybackAction('next_candle', { 
-      chartResolution, 
-      playbackTimeframe: this.playbackTimeframe,
-      candlesToSkip 
+    queueMicrotask(() => this.scheduleSyncAllPanesReplayCursor())
+
+    this.logPlaybackAction('next_candle', {
+      stepResolution,
+      stepSec,
+      cursorSec: current,
+      targetSec,
     })
   }
 

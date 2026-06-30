@@ -435,11 +435,18 @@ class PracticeService {
     const rules = account.rules
     const start = rules.startingBalance ?? account.size
 
+    const resetRules = {
+      ...rules,
+      sessionDailyLossLimit: computeSessionDailyLossLimit(rules, start),
+    }
+
     await Database.initialize()
+    await Database.run('DELETE FROM practice_trades WHERE account_id = ?', [accountId])
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
     await Database.run(
       `UPDATE practice_accounts SET
         status = 'active', balance = ?, high_water_mark = ?, day_pnl_json = '[]',
+        rules_json = ?,
         passed_at = NULL, blown_at = NULL, drawdown_floor_locked = ?,
         lockout_until = NULL, lockout_reason = NULL,
         last_reset_at = ?,
@@ -448,6 +455,7 @@ class PracticeService {
       [
         start,
         start,
+        JSON.stringify(resetRules),
         account.mode === 'funded' ? 1 : 0,
         new Date(getLastResetBoundaryMs()).toISOString(),
         accountId,

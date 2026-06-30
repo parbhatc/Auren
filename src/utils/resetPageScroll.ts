@@ -1,4 +1,5 @@
 import { MOBILE_TRADE_OVERLAY_BODY_CLASS } from '../constants/mobileTrade'
+import { releaseBwcDebugHud } from './bwcDebugHud'
 import { releaseBwcTouchScrollLock } from './bwcTouchScrollLock'
 
 /** Restore document scrolling after full-screen trade terminal (mobile). */
@@ -9,6 +10,7 @@ export function resetPageScroll(): void {
   const root = document.getElementById('root')
 
   releaseBwcTouchScrollLock()
+  releaseBwcDebugHud()
 
   html.style.overflow = ''
   html.style.height = ''

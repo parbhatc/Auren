@@ -10,6 +10,7 @@ import SessionDateNavigation from '../../../components/backtester/BacktesterChar
 import { PadTradeSymbolPicker } from '../../../components/trading/shared/pad/TradeContractPicker'
 import type { BacktesterChartDataFeed } from './BacktesterChartDataFeed'
 import { CHART_ORDER_LINE_THEME } from '../../../constants/chartOrderLineTheme'
+import type { ResolutionString } from '../../../types/chart'
 
 /** Wait until the chart mount has non-zero layout (avoids LWC "Value is null" on 0×0 containers). */
 function waitForMountLayout(mount: HTMLElement, timeoutMs = 4000): Promise<void> {
@@ -139,16 +140,40 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
     }
   }
 
-  /** Reload history from the server anchor and reset viewport (practice-trade style). */
-  reloadSessionDate = async (): Promise<void> => {
-    const datafeed = this.props.datafeed as { resetSessionState?: () => void } | undefined
-    datafeed?.resetSessionState?.()
+  /** Reload history from the server anchor and optionally reset viewport. */
+  reloadSessionDate = async (opts?: {
+    preserveViewport?: boolean
+    playbackAnchorSec?: number
+    clearPlaybackAnchor?: boolean
+  }): Promise<void> => {
+    const datafeed = this.getDatafeed() as {
+      setPlaybackAnchorSec?: (sec: number | null) => void
+      resetSessionState?: (o?: { clearPlaybackAnchor?: boolean }) => void
+    } | undefined
+
+    if (opts?.playbackAnchorSec != null) {
+      datafeed?.setPlaybackAnchorSec?.(opts.playbackAnchorSec)
+    }
+    datafeed?.resetSessionState?.({
+      clearPlaybackAnchor: opts?.clearPlaybackAnchor !== false && opts?.preserveViewport !== true,
+    })
 
     const widget = this.widgetRef
     if (!widget?.reset) return
-    try {
-      await widget.reset({ data: true, viewport: true, price: true, time: true })
+    const preserve = opts?.preserveViewport === true
+    if (preserve) {
       widget.replay?.enter?.()
+    }
+    try {
+      await widget.reset({
+        data: true,
+        viewport: !preserve,
+        price: !preserve,
+        time: !preserve,
+      })
+      if (!preserve) {
+        widget.replay?.enter?.()
+      }
     } catch (err) {
       console.warn('[BacktesterChart] session date reload failed:', err)
     }
@@ -395,6 +420,14 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
       if (generation !== this.bootGeneration) return
 
       const bwcFeed = createBwcDatafeed(datafeed as never)
+      const chartDatafeed = datafeed as {
+        getPlaybackAnchorSecForResolution?: (resolution: string) => number | null
+        getPlaybackAnchorSecPublic?: () => number | null
+        validateResolutionAtCursor?: (
+          symbol: string,
+          resolution: ResolutionString,
+        ) => Promise<{ ok: boolean; message?: string }>
+      } | undefined
       const { onReplayHostAction } = this.props
       const widget = (await bootChart({
         mount,
@@ -417,11 +450,31 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         replayHideToggle: true,
         replayHideExit: true,
         orderLineTheme: CHART_ORDER_LINE_THEME,
+        getPlaybackAnchorSec: (resolution?: string) =>
+          chartDatafeed?.getPlaybackAnchorSecForResolution?.(String(resolution ?? '1')) ?? null,
+        getPlaybackAnchorRawSec: () => chartDatafeed?.getPlaybackAnchorSecPublic?.() ?? null,
+        validateResolutionChange: async ({
+          symbol: sym,
+          to,
+        }: {
+          symbol?: string
+          to: string
+        }) => {
+          const probeSymbol = String(sym ?? symbol ?? '').trim().toUpperCase()
+          if (!probeSymbol || !chartDatafeed?.validateResolutionAtCursor) return { ok: true }
+          return chartDatafeed.validateResolutionAtCursor(
+            probeSymbol,
+            String(to).toUpperCase() as ResolutionString,
+          )
+        },
         onReplayHostAction: (action: string, payload: Record<string, unknown>) => {
           onReplayHostAction?.(action, payload)
         },
         onSymbolChange: (sym) => {
           this.props.onSymbolChange?.(sym)
+        },
+        onIntervalChange: (interval: string) => {
+          this.handleIntervalChange(interval)
         },
       })) as BwcWidget
 

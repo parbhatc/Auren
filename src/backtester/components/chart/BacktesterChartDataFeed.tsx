@@ -15,8 +15,12 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   private chartSubscriptions: Map<string, string> = new Map()
   // Track last bar per symbol/resolution from getBars responses
   private lastBarsCache: Map<string, Bar> = new Map()
-  /** Latest 1m replay cursor (advances on next candle); falls back to session start. */
+  /** Sub-minute bars seen during replay — used to patch forming HTF candles. */
+  private replayLtfBars: Map<string, Bar[]> = new Map()
+  /** Latest replay cursor (advances on next candle); falls back to session start. */
   private playbackAnchorSec: number | null = null
+  /** Resolution that last advanced `playbackAnchorSec` (usually 1m). */
+  private playbackAnchorResolution: ResolutionString = '1'
   private bookListeners = new Set<(streamId: string, kind: MarketBookUpdateKind) => void>()
   private tradeHandler: any = null // Reference to BacktesterTradeHandler
 
@@ -36,7 +40,9 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    * Get cache key for symbol/resolution combination
    */
   private getCacheKey(symbol: string, resolution: ResolutionString): string {
-    return `${symbol}:${resolution}`
+    const sym = String(symbol || '').trim().toUpperCase()
+    const res = String(resolution || '').trim().toUpperCase()
+    return `${sym}:${res}`
   }
 
   private getActiveSession(): BacktestSession | null {
@@ -53,28 +59,28 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return Math.floor(new Date(year, month - 1, day, hours, minutes, 0, 0).getTime() / 1000)
   }
 
-  private notePlaybackBar(timeSec: number, resolution: ResolutionString): void {
-    const r = String(resolution).trim().toUpperCase()
-    if ((r !== '1' && r !== '30S') || !Number.isFinite(timeSec)) return
+  private notePlaybackBar(timeSec: number, resolution: ResolutionString, advanceAnchor = true): void {
+    if (!advanceAnchor) return
+    if (!Number.isFinite(timeSec)) return
     const t = Math.floor(timeSec)
     if (this.playbackAnchorSec == null || t > this.playbackAnchorSec) {
       this.playbackAnchorSec = t
+      this.playbackAnchorResolution = resolution
     }
   }
 
-  /** Current replay position (1m cursor), not just session startTime. */
+  /** Current replay position, not just session startTime. */
   private getPlaybackAnchorSec(): number | null {
     if (this.playbackAnchorSec != null) return this.playbackAnchorSec
 
     let latest: number | null = null
-    for (const [key, bar] of this.lastBarsCache) {
-      if ((!key.endsWith(':1') && !key.endsWith(':30S')) || bar?.time == null) continue
+    for (const bar of this.lastBarsCache.values()) {
+      if (bar?.time == null) continue
       const t = this.normalizeBarTime(bar.time)
       if (latest == null || t > latest) latest = t
     }
     for (const sub of this.subscriptions.values()) {
-      const r = String(sub.resolution).trim().toUpperCase()
-      if ((r !== '1' && r !== '30S') || sub.lastBar?.time == null) continue
+      if (sub.lastBar?.time == null) continue
       const t = this.normalizeBarTime(sub.lastBar.time)
       if (latest == null || t > latest) latest = t
     }
@@ -110,6 +116,27 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return Math.floor(timeSec / barSec) * barSec
   }
 
+  /**
+   * When replay advanced on HTF (e.g. 1m @ 9:02), map to the last LTF bar in that period
+   * (e.g. 30s @ 9:02:30) so OHLC matches the HTF close.
+   */
+  private capPlaybackAnchorForTargetResolution(
+    anchorSec: number,
+    targetResolution: ResolutionString,
+  ): number {
+    const sourceRes = this.playbackAnchorResolution ?? '1'
+    const sourceSec = tradeseaResolutionToSeconds(String(sourceRes))
+    const targetSec = tradeseaResolutionToSeconds(String(targetResolution))
+
+    if (!Number.isFinite(sourceSec) || !Number.isFinite(targetSec) || targetSec >= sourceSec) {
+      return this.alignTimeToResolutionSec(anchorSec, targetResolution)
+    }
+
+    const htfOpen = this.alignTimeToResolutionSec(anchorSec, sourceRes)
+    const lastLtOpen = htfOpen + sourceSec - targetSec
+    return this.alignTimeToResolutionSec(lastLtOpen, targetResolution)
+  }
+
   /** Cap history window to replay anchor — BWC host-controlled replay uses Date.now() otherwise. */
   private clampPeriodToSessionAnchor(
     periodParams: { from?: number; to?: number; countBack?: number; firstDataRequest?: boolean },
@@ -119,14 +146,13 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     if (anchorSec == null) return periodParams
 
     const barSec = Math.max(1, tradeseaResolutionToSeconds(String(resolution)))
-    const cappedTo = this.alignTimeToResolutionSec(anchorSec, resolution)
+    const cappedTo = this.capPlaybackAnchorForTargetResolution(anchorSec, resolution)
     const count = Math.max(1, Number(periodParams.countBack) || 1)
     let from = periodParams.from
     let to = periodParams.to
 
-    // Request 1m data through the live replay cursor; chart right edge uses HTF bucket time.
-    if (to == null || !Number.isFinite(Number(to)) || Number(to) > anchorSec) {
-      to = anchorSec
+    if (to == null || !Number.isFinite(Number(to)) || Number(to) > cappedTo) {
+      to = cappedTo
       if (periodParams.firstDataRequest) {
         from = cappedTo - (count - 1) * barSec
       }
@@ -141,8 +167,166 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   private filterBarsToSessionAnchor(bars: Bar[], resolution: ResolutionString): Bar[] {
     const anchorSec = this.getPlaybackAnchorSec()
     if (anchorSec == null) return bars
-    const cappedTo = this.alignTimeToResolutionSec(anchorSec, resolution)
+    const cappedTo = this.capPlaybackAnchorForTargetResolution(anchorSec, resolution)
     return bars.filter((bar) => bar.time <= cappedTo)
+  }
+
+  private isSubMinuteResolution(resolution: ResolutionString): boolean {
+    return String(resolution).trim().toUpperCase().endsWith('S')
+  }
+
+  private mergeReplayLtfBars(cacheKey: string, bars: Bar[]): void {
+    if (!bars.length) return
+    const byTime = new Map<number, Bar>()
+    for (const bar of this.replayLtfBars.get(cacheKey) ?? []) {
+      byTime.set(bar.time, bar)
+    }
+    for (const bar of bars) {
+      byTime.set(bar.time, bar)
+    }
+    const merged = Array.from(byTime.values()).sort((a, b) => a.time - b.time)
+    this.replayLtfBars.set(cacheKey, merged.slice(-5000))
+  }
+
+  private aggregateLtfIntoHtfBar(ltBars: Bar[], htfOpen: number, toUtc: number): Bar | null {
+    const sub = ltBars.filter((b) => b.time >= htfOpen && b.time <= toUtc)
+    if (!sub.length) return null
+
+    let high = -Infinity
+    let low = Infinity
+    let volume = 0
+    for (const b of sub) {
+      high = Math.max(high, b.high)
+      low = Math.min(low, b.low)
+      volume += b.volume ?? 0
+    }
+
+    return {
+      time: htfOpen,
+      open: sub[0]!.open,
+      high,
+      low,
+      close: sub[sub.length - 1]!.close,
+      volume,
+    }
+  }
+
+  private patchFormingHtfBars(bars: Bar[], symbol: string, htfResolution: ResolutionString): Bar[] {
+    if (!bars.length) return bars
+
+    const anchorSec = this.getPlaybackAnchorSec()
+    if (anchorSec == null) return bars
+
+    const sourceRes = this.playbackAnchorResolution ?? '1'
+    const sourceSec = tradeseaResolutionToSeconds(String(sourceRes))
+    const targetSec = tradeseaResolutionToSeconds(String(htfResolution))
+    if (!Number.isFinite(sourceSec) || !Number.isFinite(targetSec) || sourceSec >= targetSec) {
+      return bars
+    }
+
+    const htfOpen = this.alignTimeToResolutionSec(anchorSec, htfResolution)
+    if (anchorSec >= htfOpen + targetSec) return bars
+
+    const ltfKey = this.getCacheKey(symbol, sourceRes)
+    const ltBars = this.replayLtfBars.get(ltfKey) ?? []
+    if (!ltBars.length) return bars
+
+    const agg = this.aggregateLtfIntoHtfBar(ltBars, htfOpen, anchorSec)
+    if (!agg) return bars
+
+    const idx = bars.findIndex((b) => b.time === htfOpen)
+    if (idx === -1) return bars
+
+    const patched = bars.slice()
+    patched[idx] = { ...patched[idx]!, ...agg, time: htfOpen }
+    return patched
+  }
+
+  /**
+   * Block switching to sub-minute TF when CSV has no bar at the mapped replay cursor
+   * (e.g. 1m @ 9:10 → 30s needs data through 9:10:30).
+   */
+  async validateResolutionAtCursor(
+    symbol: string,
+    targetResolution: ResolutionString,
+  ): Promise<{ ok: boolean; message?: string }> {
+    const sym = String(symbol || '').trim().toUpperCase()
+    if (!sym) return { ok: false, message: 'Symbol not available' }
+
+    await this.loadSymbols()
+    const supported =
+      this.symbolResolutions.get(sym) ??
+      (this.symbolsCache?.[sym] as { supportedChartResolutions?: string[] } | undefined)
+        ?.supportedChartResolutions ??
+      this.supportedResolutions
+
+    const target = String(targetResolution).trim().toUpperCase() as ResolutionString
+    if (!supported.map((r) => String(r).toUpperCase()).includes(target)) {
+      return {
+        ok: false,
+        message: `${target} data is not available for ${sym}`,
+      }
+    }
+
+    if (!this.isSubMinuteResolution(target)) {
+      return { ok: true }
+    }
+
+    const anchorSec = this.getPlaybackAnchorSec()
+    if (anchorSec == null) return { ok: true }
+
+    const probeTime = this.capPlaybackAnchorForTargetResolution(anchorSec, target)
+    const barSec = Math.max(1, tradeseaResolutionToSeconds(target))
+
+    const ltfKey = this.getCacheKey(sym, target)
+    const cachedLtf = this.replayLtfBars.get(ltfKey) ?? []
+    if (cachedLtf.some((b) => b.time === probeTime)) {
+      return { ok: true }
+    }
+    const cachedLast = cachedLtf.length > 0 ? cachedLtf[cachedLtf.length - 1] : undefined
+    if (cachedLast && cachedLast.time >= probeTime) {
+      return { ok: true }
+    }
+
+    try {
+      const response = await backtesterAPI.getHistory({
+        symbol: sym,
+        resolution: target,
+        from: Math.max(0, probeTime - barSec * 2),
+        to: probeTime,
+        countBack: 5,
+      })
+
+      if (response.noData || !response.bars?.length) {
+        const when = new Date(probeTime * 1000).toLocaleString()
+        return {
+          ok: false,
+          message: `No ${target} data at ${when} for this replay session`,
+        }
+      }
+
+      const bars = this.sanitizeBars((response.bars ?? []) as Bar[])
+      if (bars.some((b) => b.time === probeTime)) {
+        return { ok: true }
+      }
+
+      const last = bars.length > 0 ? bars[bars.length - 1] : undefined
+      if (last && last.time <= probeTime && probeTime < last.time + barSec) {
+        return { ok: true }
+      }
+
+      if (last && last.time >= probeTime) {
+        return { ok: true }
+      }
+
+      const when = new Date(probeTime * 1000).toLocaleString()
+      return {
+        ok: false,
+        message: `No ${target} data at ${when} for this replay session`,
+      }
+    } catch {
+      return { ok: false, message: `Could not verify ${target} data for ${sym}` }
+    }
   }
 
   private normalizeSymbol(symbol: string): string {
@@ -274,7 +458,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   }
 
   /** Clear cached bars and pending getBars state after reconnect or session change. */
-  resetSessionState(): void {
+  resetSessionState(opts?: { clearPlaybackAnchor?: boolean }): void {
     for (const [, controller] of this.pendingGetBarsAbort) {
       controller.abort()
     }
@@ -285,7 +469,31 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     this.pendingGetBarsRequests.clear()
     this.pendingWsMessages = []
     this.lastBarsCache.clear()
-    this.playbackAnchorSec = null
+    this.replayLtfBars.clear()
+    if (opts?.clearPlaybackAnchor !== false) {
+      this.playbackAnchorSec = null
+      this.playbackAnchorResolution = '1'
+    }
+  }
+
+  /** Host replay cursor (unix seconds) — survives session cache clears during bar replay. */
+  setPlaybackAnchorSec(sec: number | null, resolution: ResolutionString = '1'): void {
+    if (sec == null || !Number.isFinite(Number(sec))) {
+      this.playbackAnchorSec = null
+      return
+    }
+    this.playbackAnchorSec = Math.floor(Number(sec))
+    this.playbackAnchorResolution = resolution
+  }
+
+  getPlaybackAnchorSecPublic(): number | null {
+    return this.getPlaybackAnchorSec()
+  }
+
+  getPlaybackAnchorSecForResolution(resolution: ResolutionString): number | null {
+    const anchorSec = this.getPlaybackAnchorSec()
+    if (anchorSec == null) return null
+    return this.capPlaybackAnchorForTargetResolution(anchorSec, resolution)
   }
 
   /** Send after WS is open and server session handshake completed. */
@@ -550,8 +758,12 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       return
     }
 
-    const bars = this.filterBarsToSessionAnchor(
-      this.sanitizeBars(response.bars as Bar[]),
+    const bars = this.patchFormingHtfBars(
+      this.filterBarsToSessionAnchor(
+        this.sanitizeBars(response.bars as Bar[]),
+        request.resolution,
+      ),
+      request.symbol,
       request.resolution,
     )
     if (!bars.length) {
@@ -564,6 +776,10 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     if (bars.length > 0) {
       const lastBar = bars[bars.length - 1]
       const cacheKey = this.getCacheKey(request.symbol, request.resolution)
+
+      if (this.isSubMinuteResolution(request.resolution)) {
+        this.mergeReplayLtfBars(cacheKey, bars)
+      }
       
       // Check if cache already exists - only update if new bar is more recent
       const cachedLastBar = this.lastBarsCache.get(cacheKey)
@@ -632,7 +848,16 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     const candle = this.normalizeBar(data.candle)
     if (!candle) return
 
-    this.notePlaybackBar(candle.time, subscription.resolution)
+    this.notePlaybackBar(candle.time, subscription.resolution, false)
+
+    const cacheKey = this.getCacheKey(subscription.symbol, subscription.resolution)
+    if (this.isSubMinuteResolution(subscription.resolution)) {
+      this.mergeReplayLtfBars(cacheKey, [candle])
+    }
+    const cachedLastBar = this.lastBarsCache.get(cacheKey)
+    if (!cachedLastBar || candle.time >= cachedLastBar.time) {
+      this.lastBarsCache.set(cacheKey, candle)
+    }
 
     // Update last bar
     subscription.lastBar = candle
@@ -643,8 +868,8 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       subscription.onRealtimeCallback(candle)
     }
 
-    // Call onRealTimeBar on trade cache after realtime data is pushed
     if (this.tradeHandler) {
+      this.tradeHandler.syncReplayCursorFromBar?.(candle.time, subscription.resolution)
       this.tradeHandler.onRealTimeBar(subscription.symbol, subscription.resolution, candle)
     }
   }

@@ -548,7 +548,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     const autoSelect = payload.autoSelectInterval === true
     const internalFormat = autoSelect
       ? this.getChartResolution() || '1'
-      : this.bwcStepIntervalToPlaybackMinutes(String(payload.stepInterval ?? '1'))
+      : String(payload.stepInterval ?? '1')
 
     this.tradeHandler?.setPlaybackTimeframe(internalFormat)
     this.setState({ playbackTimeframe: internalFormat })
@@ -687,6 +687,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
   handleChartIntervalChange = (interval: string) => {
     this.tradeHandler?.setPlaybackTimeframe(interval)
+    this.tradeHandler?.syncServerReplayCursor(interval)
     this.setState({ playbackTimeframe: interval }, () => this.syncBwcReplayStepInterval())
   }
 

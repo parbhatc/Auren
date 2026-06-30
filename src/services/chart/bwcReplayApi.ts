@@ -26,6 +26,12 @@ export type BwcReplayApi = {
   setSpeed: (speed: number) => void
   setStepInterval: (stepInterval: string) => void
   setAutoSelectInterval: (on: boolean) => void
+  setReplayPosition?: (pos: {
+    selectedBarIndex: number
+    currentBarIndex: number
+    selectedBarTime: number
+    currentBarTime: number
+  }) => void
   getMaxBarIndex: () => number | null
   hasForwardBars: () => boolean
   getCursorBarIndex: () => number | null

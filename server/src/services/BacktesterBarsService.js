@@ -79,10 +79,7 @@ class BacktesterBarsService {
 
   clearSymbolBarCache(userId, sessionId) {
     const runtime = this.getRuntime(userId, sessionId)
-    if (!runtime?.barCache?.cache) return
-    for (const symbol of Object.keys(runtime.barCache.cache)) {
-      runtime.barCache.clear(symbol)
-    }
+    runtime?.barCache?.clearAll?.()
   }
 
   toEpochMs(value) {

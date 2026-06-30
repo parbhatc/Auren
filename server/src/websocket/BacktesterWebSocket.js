@@ -1,7 +1,7 @@
 import WebSocketBase from './WebSocketBase.js'
 import aggregateBars from '../utils/BarAggregator.js'
 import { csvFolderForChartResolution } from '../utils/backtesterCsvPaths.js'
-import { parseBacktesterResolution, isSubMinuteResolution } from '../utils/backtesterResolution.js'
+import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, resolutionToMinutes } from '../utils/backtesterResolution.js'
 import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 
 class BacktesterWebSocket extends WebSocketBase {
@@ -62,6 +62,9 @@ class BacktesterWebSocket extends WebSocketBase {
       case 'nextCandle':
         this.onNextCandle(ws, data, clientInfo, serverInfo)
         break
+      case 'syncReplayCursor':
+        this.onSyncReplayCursor(ws, data, clientInfo, serverInfo)
+        break
       default:
         console.log('[backtester WS] Unhandled message type:', data.type)
     }
@@ -121,10 +124,7 @@ class BacktesterWebSocket extends WebSocketBase {
       getBacktesterBarsService().clearSymbolBarCache(this.runtimeUserId, this.runtimeSessionId)
       return
     }
-    if (!this.barCache?.cache) return
-    for (const symbol of Object.keys(this.barCache.cache)) {
-      this.barCache.clear(symbol)
-    }
+    this.barCache?.clearAll?.()
   }
 
   getNavigationSymbols() {
@@ -315,72 +315,114 @@ class BacktesterWebSocket extends WebSocketBase {
             originalDate: isExactMatch ? null : targetDate.toLocaleString()
         });
         return true;
-    }
+  }
 
-    onNextCandle(ws, data, clientInfo, serverInfo){
-      const { symbol, resolution, playbackTimeframe } = data
+  onSyncReplayCursor(ws, data, clientInfo, serverInfo) {
+    const cursorMs = this.toEpochMs(data?.cursorSec)
+    if (cursorMs == null || !Number.isFinite(cursorMs)) return true
+    if (!this.barCache?.last) {
+      this.barCache.last = new Date(cursorMs)
+      return true
+    }
+    if (cursorMs > this.barCache.last.getTime()) {
+      this.barCache.last = new Date(cursorMs)
+    }
+    return true
+  }
+
+  onNextCandle(ws, data, clientInfo, serverInfo) {
+      const { playbackTimeframe, cursorSec, stepSec, targetSec } = data
       const last = this.barCache.last;
-      
+
       if (!last){
-          console.log("No cached data for", symbol);
+          console.log("No cached data for replay next");
           return true;
       }
-      
-      const timeframeToUse = playbackTimeframe || resolution
-      const chartRes = parseBacktesterResolution(timeframeToUse)
-      const csvResolution = csvFolderForChartResolution(chartRes)
-      const nativeSubMinute = isSubMinuteResolution(chartRes)
-      const loadOpts = { csvResolution }
 
-      let fetchBars = nativeSubMinute ? 1 : this.getResolutionInMinutes(timeframeToUse);
-      let isComplete = nativeSubMinute ? true : this.isCompleteCandle(last, timeframeToUse);
+      const stepResolution = playbackTimeframe || '1'
+      const stepWallSec = Number(stepSec) > 0
+        ? Math.floor(Number(stepSec))
+        : Math.max(1, resolutionToSeconds(stepResolution))
+
+      let baseSec = cursorSec != null ? Math.floor(Number(cursorSec)) : Math.floor(last.getTime() / 1000)
+      if (!Number.isFinite(baseSec)) baseSec = Math.floor(last.getTime() / 1000)
+
+      const targetWallSec = targetSec != null && Number.isFinite(Number(targetSec))
+        ? Math.floor(Number(targetSec))
+        : baseSec + stepWallSec
+
       console.log({
-          resolutionMinutes: fetchBars,
-          csvResolution,
-          playbackTimeframe: playbackTimeframe || 'not provided',
-          chartResolution: resolution,
-          last: last.toLocaleString(), 
-          isComplete,
-          timeframeToUse
+          stepWallSec,
+          stepResolution,
+          baseSec,
+          targetWallSec,
+          last: last.toLocaleString(),
       })
 
-      const symbols = new Map()
+      const groups = new Map()
 
       for (const clientSubscriptions of this.subscriptions.values()) {
         for (const [uid, sub] of clientSubscriptions.entries()) {
-          if (!symbols.has(sub.symbol)) {
-            symbols.set(sub.symbol, new Map())
+          const key = `${sub.symbol}:${sub.resolution}`
+          if (!groups.has(key)) {
+            groups.set(key, { symbol: sub.symbol, resolution: sub.resolution, uids: [] })
           }
-          symbols.get(sub.symbol).set(uid, sub)
+          groups.get(key).uids.push(uid)
         }
       }
-      
-      if (!isComplete && !nativeSubMinute) {
-        fetchBars += this.getBarsNeededToComplete(last, timeframeToUse)
-      }
 
-      for (const [symbol, subscriptions] of symbols.entries()) {
-        const bars = nativeSubMinute
-          ? this.csvLoader.loadForward(symbol, last.getTime(), fetchBars, loadOpts)
-          : this.barCache.loadForward(symbol, last.getTime(), fetchBars, loadOpts)
+      for (const group of groups.values()) {
+        const { symbol, resolution, uids } = group
+        const subRes = parseBacktesterResolution(resolution)
+        const nativeSubMinute = isSubMinuteResolution(subRes)
+        const csvResolution = csvFolderForChartResolution(subRes)
+        const capSec = capReplayWallForResolution(targetWallSec, stepResolution, subRes)
+        const capMs = capSec * 1000
 
-        if (bars.length > 0) {
-          this.barCache.last = new Date(bars[bars.length - 1].time)
+        const loadOpts = { csvResolution }
+        const newestMs = this.barCache.getNewest(symbol, loadOpts)
+        let afterMs = newestMs ?? last.getTime()
+        if (cursorSec != null && Number.isFinite(Number(cursorSec))) {
+          afterMs = Math.max(afterMs, Number(cursorSec) * 1000)
         }
 
-        console.log("checking symbol: " + symbol + " " + new Date(last.getTime()).toLocaleString() + last.getTime())
+        let bars = []
+        if (nativeSubMinute) {
+          let guard = 0
+          while (guard < 64) {
+            guard += 1
+            const chunk = this.csvLoader.loadForward(symbol, afterMs, 32, loadOpts)
+            if (!chunk.length) break
+            for (const bar of chunk) {
+              if (bar.time <= capMs) bars.push(bar)
+            }
+            const chunkLast = chunk[chunk.length - 1]
+            afterMs = chunkLast.time
+            if (chunkLast.time >= capMs) break
+            if (chunk.length < 32) break
+          }
+          if (bars.length) {
+            this.barCache.addBars(symbol, bars, loadOpts)
+          }
+        } else {
+          const minuteOpts = { csvResolution: '1m' }
+          const resolutionMinutes = Math.max(1, resolutionToMinutes(subRes))
+          const fetchBars = Math.max(1, Math.ceil(stepWallSec / (resolutionMinutes * 60)))
+          bars = this.barCache.loadForward(symbol, afterMs, fetchBars, minuteOpts)
+          bars = bars.filter((bar) => bar.time <= capMs)
+        }
+
+        if (!bars.length) {
+          console.log(`No forward bars for ${symbol}@${resolution} through ${new Date(capMs).toLocaleString()}`)
+          continue
+        }
 
         for (const bar of bars) {
-          console.log("bar: " + new Date(bar.time).toLocaleString())
+          console.log("bar: " + symbol + " " + new Date(bar.time).toLocaleString())
         }
-        
-        for (const [uid, sub] of subscriptions.entries()) {
-          console.log("checking uid: ", uid)
 
-          const subRes = parseBacktesterResolution(sub.resolution)
-          const subNativeSubMin = isSubMinuteResolution(subRes)
-
-          if (subNativeSubMin) {
+        for (const uid of uids) {
+          if (nativeSubMinute) {
             for (const bar of bars) {
               this.send(ws, {
                 type: "realtimeBar",
@@ -390,30 +432,28 @@ class BacktesterWebSocket extends WebSocketBase {
             }
             continue
           }
-          
+
           let barsToAggregate = bars
-          if (subRes !== "1") {
-            const resolutionMinutes = this.getResolutionInMinutes(sub.resolution)
-            const allCachedBars = this.barCache.getAllBars(symbol)
-            
+          if (subRes !== '1') {
+            const resolutionMinutes = this.getResolutionInMinutes(resolution)
+            const allCachedBars = this.barCache.getAllBars(symbol, { csvResolution: '1m' })
+
             if (allCachedBars.length > 0) {
-              const minutes = last.getMinutes()
+              const capDate = new Date(capMs)
+              const minutes = capDate.getMinutes()
               const alignedMinutes = Math.floor(minutes / resolutionMinutes) * resolutionMinutes
-              const currentCandleStart = new Date(last.getTime())
+              const currentCandleStart = new Date(capMs)
               currentCandleStart.setMinutes(alignedMinutes, 0, 0)
               currentCandleStart.setSeconds(0, 0)
               barsToAggregate = allCachedBars.filter(bar => bar.time >= currentCandleStart.getTime())
             }
           }
-          
-          const aggregatedBars = aggregateBars(barsToAggregate, sub.resolution)
 
-          if (aggregatedBars.length === 0) {
-            console.log("No aggregated bars")
-            continue
-          }
-          
+          const aggregatedBars = aggregateBars(barsToAggregate, resolution)
+          if (!aggregatedBars.length) continue
+
           for (const bar of aggregatedBars) {
+            if (bar.time > capMs) continue
             this.send(ws, {
               type: "realtimeBar",
               subscriberUID: uid,
@@ -422,7 +462,9 @@ class BacktesterWebSocket extends WebSocketBase {
           }
         }
       }
-        return true;
+
+      this.barCache.last = new Date(targetWallSec * 1000)
+      return true;
     }
 
   handleClose(ws, clientInfo, serverInfo) {
