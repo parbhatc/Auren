@@ -95,11 +95,12 @@ const TOOLBAR_ANCHOR_SELECTORS: Record<string, string> = {
   replay: '#header-toolbar-replay',
 }
 
-function disableBwcNewsForBacktester(): void {
+/** Backtester used to force-disable news in shared BWC settings; ensure it stays on here. */
+function ensureBwcNewsForBacktester(): void {
   try {
     const raw = localStorage.getItem(BWC_NEWS_SETTINGS_KEY)
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-    localStorage.setItem(BWC_NEWS_SETTINGS_KEY, JSON.stringify({ ...parsed, enabled: false }))
+    localStorage.setItem(BWC_NEWS_SETTINGS_KEY, JSON.stringify({ ...parsed, enabled: true }))
   } catch {
     // ignore
   }
@@ -407,7 +408,7 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
     const theme = isDark === false ? 'light' : 'dark'
 
     try {
-      disableBwcNewsForBacktester()
+      ensureBwcNewsForBacktester()
       const { bootChart, registerAurenChartIndicators, registerTradeContextActions, clearChartContextActions } =
         await loadAurenChartBoot()
       if (generation !== this.bootGeneration) return

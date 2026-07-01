@@ -19,7 +19,6 @@ import { setupChartKeyboardShortcuts } from '../../components/common/chartKeyboa
 import { schedulePageScrollReset } from '../../utils/resetPageScroll'
 import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
 import { candleDebug } from '../tradesea/candleDebug'
-import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 import { CHART_ORDER_LINE_THEME } from '../../constants/chartOrderLineTheme'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 
@@ -146,12 +145,11 @@ function chartShellHtml(chartId: string): string {
   `
 }
 
-function resolveInitialSymbol(symbolProp: string | undefined): string {
+/** When unset, return undefined so BWC restores from tv-pane-symbols (not a React default). */
+function resolveInitialSymbol(symbolProp: string | undefined): string | undefined {
   const trimmed = String(symbolProp || '').trim()
-  if (trimmed) {
-    return chartSymbolToProductRoot(trimmed) || trimmed
-  }
-  return chartSymbolToProductRoot(DEFAULT_PRACTICE_CHART_SYMBOL) || 'MNQ'
+  if (!trimmed) return undefined
+  return chartSymbolToProductRoot(trimmed) || trimmed
 }
 
 function wireTradeContextActions(handler: ChartTradeHandler): void {
