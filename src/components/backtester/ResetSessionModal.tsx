@@ -40,6 +40,7 @@ class ResetSessionModal extends Component<ResetSessionModalProps, ResetSessionMo
       results: undefined,
       resetBalance: true,
       initialBalance: this.state.balance,
+      currentBalance: this.state.balance,
     }
 
     this.props.onReset(updatedSession)

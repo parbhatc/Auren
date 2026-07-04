@@ -326,11 +326,9 @@ export class BacktesterTradeHandler {
     this.scheduleSyncAllPanesReplayCursor()
   }
 
-  private syncWidgetReplayCursor(anchorSec?: number, chartResolution?: string): void {
+  private syncWidgetReplayCursor(anchorSec?: number, _chartResolution?: string): void {
     if (anchorSec != null && Number.isFinite(anchorSec)) {
-      const widget = this.getBwcWidget()
-      const resolution = (chartResolution ?? widget?.getResolution?.() ?? '1') as ResolutionString
-      this.datafeed?.setPlaybackAnchorSec?.(Math.floor(anchorSec), resolution)
+      this.datafeed?.setPlaybackAnchorSec?.(Math.floor(anchorSec))
     }
     this.syncAllPanesReplayCursor()
   }
@@ -546,9 +544,7 @@ export class BacktesterTradeHandler {
     try {
       ;(this as { onPositionUpdate?: () => void }).onPositionUpdate?.()
       const upl = this.getPositionUplFor(chartSymbol)
-      if (upl != null) {
-        ;(this as { onUnrealizedPnLUpdate?: (pnl: number) => void }).onUnrealizedPnLUpdate?.(upl)
-      }
+      ;(this as { onUnrealizedPnLUpdate?: (pnl: number) => void }).onUnrealizedPnLUpdate?.(upl ?? 0)
     } catch {
       // ignore
     }
@@ -756,6 +752,9 @@ export class BacktesterTradeHandler {
       Math.floor(targetSec),
       stepResolution as ResolutionString,
     )
+
+    // Trim pane bars to anchor before BWC overlay refresh (host-controlled replay).
+    this.syncAllPanesReplayCursor()
 
     if (this.client && this.client.isConnected()) {
       this.client.send({

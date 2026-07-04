@@ -74,10 +74,7 @@ const BacktesterSessionsListWrapper = ({
         }
 
         // Load sessions from database
-        const sessionsResponse = await backtesterAPI.getSessions()
-        if (sessionsResponse.success) {
-          setSessions(sessionsResponse.sessions)
-        }
+        await loadSessions()
       } catch (err: any) {
         if (err?.response?.status === 401) {
           localStorage.removeItem('token')
@@ -151,6 +148,13 @@ const BacktesterSessionsListWrapper = ({
   const [editStartTime, setEditStartTime] = useState<string>('')
   const [editError, setEditError] = useState<string>('')
 
+  const loadSessions = async () => {
+    const sessionsResponse = await backtesterAPI.getSessions()
+    if (sessionsResponse.success) {
+      setSessions(sessionsResponse.sessions)
+    }
+  }
+
   const handleDeleteClick = (sessionId: string) => {
     setDeleteConfirmId(sessionId)
   }
@@ -192,7 +196,7 @@ const BacktesterSessionsListWrapper = ({
 
     try {
       await backtesterAPI.updateSession(pendingResetSession)
-      setSessions(sessions.map((s) => (s.id === pendingResetSession.id ? pendingResetSession : s)))
+      await loadSessions()
       setResetSessionId(null)
       setResetError(null)
       setShowResetConfirm(false)

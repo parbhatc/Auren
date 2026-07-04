@@ -132,6 +132,34 @@ class BacktesterController {
       return 1 // Default
     }
   }
+
+  /**
+   * Normalize legacy/mixed backtester timestamps into Unix seconds.
+   * Some older rows were accidentally divided by 1000 before save.
+   */
+  normalizeBacktesterTimestampSec(value) {
+    const num = Number(value)
+    if (!Number.isFinite(num) || num <= 0) return null
+    if (num > 1e15) return Math.floor(num / 1000000)
+    if (num > 1e12) return Math.floor(num / 1000)
+    if (num > 1e9) return Math.floor(num)
+    if (num > 1e6) return Math.floor(num * 1000)
+    return Math.floor(num)
+  }
+
+  normalizeBacktesterTradeRow(trade) {
+    if (!trade) return trade
+    const entrySec = this.normalizeBacktesterTimestampSec(trade.entry_time)
+    const exitSec =
+      trade.exit_time !== null && trade.exit_time !== undefined
+        ? this.normalizeBacktesterTimestampSec(trade.exit_time)
+        : null
+    return {
+      ...trade,
+      entry_time: entrySec ?? trade.entry_time,
+      exit_time: exitSec ?? trade.exit_time,
+    }
+  }
   /**
    * Get available symbols from CSV folder
    */
@@ -643,14 +671,23 @@ class BacktesterController {
 
       // Store Unix timestamps (seconds) directly as INTEGER
       // Ensure entryTime is a number (Unix timestamp in seconds)
-      const entryTimestamp = typeof entryTime === 'number' 
-        ? entryTime
-        : Math.floor(new Date(entryTime).getTime() / 1000)
+      const entryTimestamp = this.normalizeBacktesterTimestampSec(
+        typeof entryTime === 'number' ? entryTime : new Date(entryTime).getTime()
+      )
       
       // Ensure exitTime is a number or null
       const exitTimestamp = (exitTime !== null && exitTime !== undefined)
-        ? (typeof exitTime === 'number' ? exitTime : Math.floor(new Date(exitTime).getTime() / 1000))
+        ? this.normalizeBacktesterTimestampSec(
+            typeof exitTime === 'number' ? exitTime : new Date(exitTime).getTime()
+          )
         : null
+
+      if (entryTimestamp === null || (exitTime !== null && exitTime !== undefined && exitTimestamp === null)) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Invalid trade timestamps'
+        })
+      }
 
       const tradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
@@ -768,29 +805,10 @@ class BacktesterController {
         params.push(sessionId)
       }
 
-      if (startDate) {
-        // Compare date part of entry_time with startDate
-        // entry_time is stored as Unix timestamp (seconds)
-        // Convert startDate to Unix timestamp (start of day) for comparison
-        const startDateObj = new Date(startDate + 'T00:00:00Z')
-        const startTimestamp = Math.floor(startDateObj.getTime() / 1000)
-        query += ' AND entry_time >= ?'
-        params.push(startTimestamp)
-      }
-
-      if (endDate) {
-        // Compare date part of entry_time with endDate
-        // Include the full end date (up to 23:59:59) by using end of day timestamp
-        const endDateObj = new Date(endDate + 'T23:59:59Z')
-        const endTimestamp = Math.floor(endDateObj.getTime() / 1000)
-        query += ' AND entry_time <= ?'
-        params.push(endTimestamp)
-      }
-
       // Validate date range - ensure startDate <= endDate (only when both dates are provided)
       if (startDate && endDate && startDate.trim() && endDate.trim()) {
-        const startDateObj = new Date(startDate + 'T00:00:00Z')
-        const endDateObj = new Date(endDate + 'T23:59:59Z')
+        const startDateObj = new Date(startDate + 'T00:00:00')
+        const endDateObj = new Date(endDate + 'T23:59:59')
         if (startDateObj > endDateObj) {
           return res.status(HTTP_STATUS.BAD_REQUEST).json({
             success: false,
@@ -801,11 +819,25 @@ class BacktesterController {
 
       query += ' ORDER BY entry_time DESC'
 
-      const trades = await Database.query(query, params)
+      const trades = (await Database.query(query, params)).map((trade) =>
+        this.normalizeBacktesterTradeRow(trade)
+      )
+
+      const startMs = startDate ? new Date(startDate + 'T00:00:00').getTime() : null
+      const endMs = endDate ? new Date(endDate + 'T23:59:59').getTime() : null
+      const filteredTrades = trades.filter((trade) => {
+        const entrySec = this.normalizeBacktesterTimestampSec(trade.entry_time)
+        if (entrySec === null) return false
+        const entryMs = entrySec * 1000
+        if (startMs !== null && entryMs < startMs) return false
+        if (endMs !== null && entryMs > endMs) return false
+        return true
+      })
+      filteredTrades.sort((a, b) => Number(b.entry_time || 0) - Number(a.entry_time || 0))
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
-        trades
+        trades: filteredTrades
       })
     } catch (error) {
       return ErrorHandler.handleServerError(res, error)
@@ -835,7 +867,7 @@ class BacktesterController {
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
-        trade
+        trade: this.normalizeBacktesterTradeRow(trade)
       })
     } catch (error) {
       return ErrorHandler.handleServerError(res, error)
@@ -955,26 +987,23 @@ class BacktesterController {
       // Calculate realized P&L as the difference between current balance and initial balance
       const cumulativeRealizedPnL = currentBalance - initialBalance
 
-      // Build query to filter trades by date (using session's start_date) for daily RP&L display
-      let dailyTradesQuery = 'SELECT * FROM backtester_trades WHERE session_id = ? AND user_id = ?'
-      const dailyTradesParams = [sessionId, userId]
+      const sessionTrades = (await Database.query(
+        'SELECT * FROM backtester_trades WHERE session_id = ? AND user_id = ?',
+        [sessionId, userId]
+      )).map((trade) => this.normalizeBacktesterTradeRow(trade))
 
-      // Filter trades by the session's start_date (current viewing date) for daily RP&L
+      let dailyTrades = sessionTrades
       if (session.start_date) {
-        // Convert start_date (YYYY-MM-DD) to Unix timestamps for start and end of day (local day)
         const [y, m, d] = String(session.start_date).split('-').map(Number)
-        const startDateObj = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0)
-        const endDateObj = new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999)
-        const startTimestamp = Math.floor(startDateObj.getTime() / 1000)
-        const endTimestamp = Math.floor(endDateObj.getTime() / 1000)
-        
-        // Filter trades where entry_time falls within this day
-        dailyTradesQuery += ' AND entry_time >= ? AND entry_time <= ?'
-        dailyTradesParams.push(startTimestamp, endTimestamp)
+        const startMs = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0).getTime()
+        const endMs = new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999).getTime()
+        dailyTrades = sessionTrades.filter((trade) => {
+          const entrySec = this.normalizeBacktesterTimestampSec(trade.entry_time)
+          if (entrySec === null) return false
+          const entryMs = entrySec * 1000
+          return entryMs >= startMs && entryMs <= endMs
+        })
       }
-
-      // Get trades for this session filtered by date (for daily RP&L display)
-      const dailyTrades = await Database.query(dailyTradesQuery, dailyTradesParams)
 
       // Calculate daily realized P&L from closed trades on current date (with fees subtracted)
       const realizedPnL = dailyTrades

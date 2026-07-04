@@ -104,7 +104,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
     // Set callback for when trade is saved to refresh stats
     ;(this.tradeHandler as any).onTradeSaved = () => {
-      this.loadSessionStats()
+      void this.loadSessionStats()
     }
 
     // Set callback for when unrealized P&L updates
@@ -113,6 +113,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     }
 
     ;(this.tradeHandler as any).onPositionUpdate = () => {
+      this.syncPositionStats({ refreshSessionStats: true })
       this.forceUpdate()
     }
 
@@ -230,6 +231,18 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     }
 
     this.wsClient.connect()
+  }
+
+  syncPositionStats = (options?: { refreshSessionStats?: boolean }) => {
+    const currentUpl = this.tradeHandler?.getPositionUplFor?.(this.getChartSymbol()) ?? 0
+    const unrealizedPnL = Number.isFinite(currentUpl) ? currentUpl : 0
+
+    this.setState({ unrealizedPnL }, () => {
+      this.publishStats()
+      if (options?.refreshSessionStats) {
+        void this.loadSessionStats()
+      }
+    })
   }
 
   loadSessionStats = async () => {

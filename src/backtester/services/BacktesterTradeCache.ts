@@ -10,6 +10,16 @@ import type { BacktesterChartDataFeed } from '../components/chart/BacktesterChar
 class BacktesterTradeCache extends ChartTradeCache {
   private tradeHandler: BacktesterTradeHandler
   private sessionId: string | null = null
+
+  private normalizeTradeTimestampSec(value: number | null | undefined): number {
+    const num = Number(value)
+    if (!Number.isFinite(num) || num <= 0) return Math.floor(Date.now() / 1000)
+    if (num > 1e15) return Math.floor(num / 1000000)
+    if (num > 1e12) return Math.floor(num / 1000)
+    if (num > 1e9) return Math.floor(num)
+    if (num > 1e6) return Math.floor(num * 1000)
+    return Math.floor(num)
+  }
   
   constructor(handler: BacktesterTradeHandler, chart: unknown) {
     super(handler as never, chart)
@@ -48,8 +58,8 @@ class BacktesterTradeCache extends ChartTradeCache {
       position.entry, 
       price, 
       position.contracts, 
-      position.entryTime / 1000, 
-      exitTime / 1000,
+      this.normalizeTradeTimestampSec(position.entryTime), 
+      this.normalizeTradeTimestampSec(exitTime),
       position.stopLoss || null,
       position.takeProfit || null
     )
@@ -75,8 +85,8 @@ class BacktesterTradeCache extends ChartTradeCache {
         position.entry, 
         lastBar.close, 
         contracts, 
-        position.entryTime / 1000, 
-        lastBar.time / 1000,
+        this.normalizeTradeTimestampSec(position.entryTime), 
+        this.normalizeTradeTimestampSec(lastBar.time),
         position.stopLoss || null,
         position.takeProfit || null
       )
@@ -145,7 +155,15 @@ class BacktesterTradeCache extends ChartTradeCache {
   }
 
   getTradeDataFromPosition(position: any, exitPrice: number, exitTime: number) {
-    return this.getTradeData(position.symbol, position.type, position.entry, exitPrice, position.contracts, position.entryTime / 1000, exitTime / 1000)
+    return this.getTradeData(
+      position.symbol,
+      position.type,
+      position.entry,
+      exitPrice,
+      position.contracts,
+      this.normalizeTradeTimestampSec(position.entryTime),
+      this.normalizeTradeTimestampSec(exitTime)
+    )
   }
 
   didBarHitPrice(bar: any, price: number) {
