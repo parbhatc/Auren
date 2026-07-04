@@ -163,6 +163,15 @@ export class BacktesterTradeHandler {
     return calcTradeseaTickPnL(ctx.entry, mark, ctx.signedContracts, ctx.tickSize, ctx.tickValue)
   }
 
+  /** Session replay anchor as Unix seconds (startDate + startTime, local). */
+  private getSessionAnchorSec(session: BacktestSession): number | null {
+    if (!session.startDate || !session.startTime) return null
+    const [year, month, day] = session.startDate.split('-').map(Number)
+    const [hours, minutes] = session.startTime.split(':').map(Number)
+    if (![year, month, day, hours, minutes].every((n) => Number.isFinite(n))) return null
+    return Math.floor(new Date(year, month - 1, day, hours, minutes, 0, 0).getTime() / 1000)
+  }
+
   private resolveSessionStartDate(data: { startDate?: string; date?: string }): string | null {
     if (data.startDate && /^\d{4}-\d{2}-\d{2}$/.test(data.startDate)) {
       return data.startDate
@@ -402,10 +411,13 @@ export class BacktesterTradeHandler {
           this.client?.updateSession(updatedSession)
           this.onSessionUpdate?.(updatedSession)
 
+          const sessionAnchorSec = this.getSessionAnchorSec(updatedSession)
           await this.reloadChartAfterSessionAnchor({
-            preserveViewport: false,
-            clearPlaybackAnchor: true,
+            preserveViewport: true,
+            playbackAnchorSec: sessionAnchorSec ?? undefined,
+            clearPlaybackAnchor: false,
           })
+          this.syncServerReplayCursor()
 
           await backtesterAPI.updateSession(updatedSession)
           this.onStatsRefresh?.()
