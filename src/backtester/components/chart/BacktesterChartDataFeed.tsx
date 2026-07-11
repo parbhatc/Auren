@@ -986,11 +986,15 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     // anything above 1m→1m aggregated. Stray finer bars (e.g. a 30s bar leaking
     // into a 1m pane from stale replay state) create a bar past the step target
     // that then gets trimmed — the visible "adds two, removes one" flash. Drop
-    // any streamed bar not aligned to the chart resolution. Only enforced for
-    // minute-to-hour resolutions where UTC-second alignment is unambiguous
-    // (sub-minute charts legitimately carry finer bars; daily+ is timezone-bound).
+    // any streamed bar not aligned to the chart resolution via a plain UTC-second
+    // modulo — but ONLY for resolutions that evenly divide an hour, where the
+    // UTC grid matches the server's session-anchored (18:00 ET) grid. Multi-hour
+    // resolutions (4h) are session-anchored, so their opens are NOT UTC-epoch
+    // multiples; a modulo check there would drop every legitimate candle. Those
+    // panes never receive finer bars (the server stamps every emit at the chart
+    // resolution open), so skipping the check is safe.
     const resSec = Math.max(1, tradeseaResolutionToSeconds(String(subscription.resolution)))
-    const enforceAlignment = resSec >= 60 && resSec < 86400
+    const enforceAlignment = resSec >= 60 && resSec <= 3600 && 3600 % resSec === 0
 
     let lastCandle: Bar | null = null
     for (const raw of rawCandles) {

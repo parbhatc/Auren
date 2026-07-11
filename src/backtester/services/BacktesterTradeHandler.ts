@@ -307,6 +307,14 @@ export class BacktesterTradeHandler {
   private resolvePlaybackStepResolution(): string {
     const widget = this.getBwcWidget()
     const replayState = widget?.replay?.getState?.()
+    // Auto-select interval steps by the chart's own resolution (the interval
+    // button shows the chart TF). Without this we fall back to the stale
+    // stepInterval ("1"), which on a 15m chart becomes a sub-resolution intrabar
+    // step that only updates the forming candle and never advances.
+    if (replayState?.autoSelectInterval) {
+      const chartRes = widget?.getResolution?.()
+      if (chartRes) return String(chartRes)
+    }
     return String(replayState?.stepInterval ?? this.playbackTimeframe ?? '1')
   }
 

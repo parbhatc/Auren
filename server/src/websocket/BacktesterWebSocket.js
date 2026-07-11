@@ -414,6 +414,8 @@ class BacktesterWebSocket extends WebSocketBase {
 
         const loadOpts = { csvResolution }
         const newestMs = this.barCache.getNewest(symbol, loadOpts)
+        // Full replay wall for this step; capMs is only the last emitted candle OPEN.
+        const loadToMs = Math.max(capMs, targetWallSec * 1000)
         let afterMs = newestMs ?? last.getTime()
         if (cursorSec != null && Number.isFinite(Number(cursorSec))) {
           afterMs = Math.max(afterMs, Number(cursorSec) * 1000)
@@ -439,10 +441,14 @@ class BacktesterWebSocket extends WebSocketBase {
           }
         } else {
           const minuteOpts = { csvResolution: '1m' }
-          const resolutionMinutes = Math.max(1, resolutionToMinutes(subRes))
-          const fetchBars = Math.max(1, Math.ceil(stepWallSec / (resolutionMinutes * 60)))
+          // Load 1m bars through the FULL replay wall (targetWallSec), not just the
+          // emitted candle's open (capMs). With an unaligned cursor (e.g. 9:29 on a
+          // 4h chart), capMs is the new candle's open (10:00) while the wall is
+          // 13:29 — loading only to capMs left the new candle with one minute of
+          // data (wrong OHLC until a history reload re-fetched it).
+          const fetchBars = Math.max(1, Math.ceil((loadToMs - afterMs) / 60000))
           bars = this.barCache.loadForward(symbol, afterMs, fetchBars, minuteOpts)
-          bars = bars.filter((bar) => bar.time <= capMs)
+          bars = bars.filter((bar) => bar.time <= loadToMs)
         }
 
         if (!bars.length) {
@@ -455,27 +461,18 @@ class BacktesterWebSocket extends WebSocketBase {
         if (!nativeSubMinute) {
           let barsToAggregate = bars
           if (subRes !== '1') {
-            // Epoch-aligned candle open (matches aggregateBars); minutes-within-hour
-            // alignment collapsed multi-hour resolutions (4h) to hourly windows.
-            const candleStartMs = alignBarOpenSec(Math.floor(capMs / 1000), resolution) * 1000
-
-            // Incremental aggregation source: refilter the full cache only when
-            // the aligned candle window changes; otherwise append this step's bars.
-            const cacheKey = `${symbol}:${resolution}`
-            if (!this.aggSourceCache) this.aggSourceCache = new Map()
-            const cached = this.aggSourceCache.get(cacheKey)
-            if (cached && cached.candleStartMs === candleStartMs) {
-              for (const bar of bars) {
-                if (bar.time >= candleStartMs) cached.bars.push(bar)
-              }
-              barsToAggregate = cached.bars
-            } else {
-              const allCachedBars = this.barCache.getAllBars(symbol, { csvResolution: '1m' })
-              if (allCachedBars.length > 0) {
-                barsToAggregate = allCachedBars.filter(bar => bar.time >= candleStartMs)
-              }
-              this.aggSourceCache.set(cacheKey, { candleStartMs, bars: barsToAggregate })
-            }
+            // Aggregate the COMPLETE window from the candle containing the pre-step
+            // cursor through the replay wall, loaded straight from the (memory-cached)
+            // CSV data. Rebuilding from the WS bar cache broke two ways: the forming
+            // candle's head (bars before the replay session started stepping) may
+            // only live in the HTTP history service's cache — re-aggregating without
+            // it corrupts the candle's open/high/low — and stale cached step bars
+            // couldn't complete the previous candle after an unaligned cursor.
+            const candleStartMs = alignBarOpenSec(baseSec, resolution) * 1000
+            const windowBars = this.barCache.loadRange(symbol, candleStartMs - 1, loadToMs, { csvResolution: '1m' })
+            barsToAggregate = windowBars.filter(
+              (bar) => bar.time >= candleStartMs && bar.time <= loadToMs,
+            )
           }
           framesToSend = aggregateBars(barsToAggregate, resolution).filter(
             (bar) => bar.time <= capMs,
