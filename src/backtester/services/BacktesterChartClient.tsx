@@ -109,6 +109,12 @@ export class BacktesterChartClient extends WebSocketClientBase {
           return true
         }
         return false
+      case 'realtimeBars':
+        if (this.datafeed && typeof this.datafeed.handleRealtimeBars === 'function') {
+          this.datafeed.handleRealtimeBars(data)
+          return true
+        }
+        return false
       case 'replayResponse':
         {
           const callbacks = this.callbacks as BacktesterChartClientCallbacks

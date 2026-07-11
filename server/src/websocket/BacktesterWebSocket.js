@@ -1,7 +1,7 @@
 import WebSocketBase from './WebSocketBase.js'
 import aggregateBars from '../utils/BarAggregator.js'
 import { csvFolderForChartResolution } from '../utils/backtesterCsvPaths.js'
-import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, resolutionToMinutes } from '../utils/backtesterResolution.js'
+import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, resolutionToMinutes, alignTimeToResolutionSec, alignBarOpenSec } from '../utils/backtesterResolution.js'
 import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 
 class BacktesterWebSocket extends WebSocketBase {
@@ -120,6 +120,7 @@ class BacktesterWebSocket extends WebSocketBase {
   }
 
   clearSymbolBarCache() {
+    this.aggSourceCache?.clear?.()
     if (this.runtimeUserId && this.runtimeSessionId) {
       getBacktesterBarsService().clearSymbolBarCache(this.runtimeUserId, this.runtimeSessionId)
       return
@@ -141,6 +142,7 @@ class BacktesterWebSocket extends WebSocketBase {
 
   onSessionData(ws, data, clientInfo, serverInfo) {
     const { session, symbols } = data
+    this.aggSourceCache?.clear?.()
 
     for (const symbol of Object.keys(symbols)) {
       this.symbols.set(symbol, symbols[symbol])
@@ -351,14 +353,6 @@ class BacktesterWebSocket extends WebSocketBase {
         ? Math.floor(Number(targetSec))
         : baseSec + stepWallSec
 
-      console.log({
-          stepWallSec,
-          stepResolution,
-          baseSec,
-          targetWallSec,
-          last: last.toLocaleString(),
-      })
-
       const groups = new Map()
 
       for (const clientSubscriptions of this.subscriptions.values()) {
@@ -378,6 +372,45 @@ class BacktesterWebSocket extends WebSocketBase {
         const csvResolution = csvFolderForChartResolution(subRes)
         const capSec = capReplayWallForResolution(targetWallSec, stepResolution, subRes)
         const capMs = capSec * 1000
+
+        // Intrabar replay: a step finer than the chart resolution (e.g. 30s step on
+        // a 1m chart) advances the replay clock by the sub-step and rebuilds the
+        // currently-forming chart candle from finer data, so its H/L/C update in
+        // place (TradingView-style) instead of failing to advance (the 1m cache has
+        // no bar before the next full minute). Emits ONE candle stamped at the chart
+        // candle open, folded from finer bars whose open time is in [candleStart, targetWall).
+        const subResSec = resolutionToSeconds(subRes)
+        if (!nativeSubMinute && stepWallSec > 0 && stepWallSec < subResSec) {
+          const fineOpts = { csvResolution: csvFolderForChartResolution(stepResolution) }
+          const candleStartSec = alignBarOpenSec(targetWallSec - 1, subRes)
+          const candleStartMs = candleStartSec * 1000
+          const windowEndMs = targetWallSec * 1000
+          const fineBars = this.csvLoader
+            .loadForward(symbol, candleStartMs - 1, 64, fineOpts)
+            .filter((bar) => bar.time >= candleStartMs && bar.time < windowEndMs)
+          if (!fineBars.length) continue
+          let high = -Infinity
+          let low = Infinity
+          let volume = 0
+          for (const bar of fineBars) {
+            if (bar.high > high) high = bar.high
+            if (bar.low < low) low = bar.low
+            volume += bar.volume || 0
+          }
+          const partial = {
+            time: candleStartMs,
+            time_string: new Date(candleStartMs).toLocaleString(),
+            open: fineBars[0].open,
+            high,
+            low,
+            close: fineBars[fineBars.length - 1].close,
+            volume,
+          }
+          for (const uid of uids) {
+            this.send(ws, { type: "realtimeBars", subscriberUID: uid, candles: [partial] })
+          }
+          continue
+        }
 
         const loadOpts = { csvResolution }
         const newestMs = this.barCache.getNewest(symbol, loadOpts)
@@ -417,49 +450,45 @@ class BacktesterWebSocket extends WebSocketBase {
           continue
         }
 
-        for (const bar of bars) {
-          console.log("bar: " + symbol + " " + new Date(bar.time).toLocaleString())
-        }
-
-        for (const uid of uids) {
-          if (nativeSubMinute) {
-            for (const bar of bars) {
-              this.send(ws, {
-                type: "realtimeBar",
-                subscriberUID: uid,
-                candle: bar
-              })
-            }
-            continue
-          }
-
+        // Bars to emit are identical for every uid in the group — compute once.
+        let framesToSend = bars
+        if (!nativeSubMinute) {
           let barsToAggregate = bars
           if (subRes !== '1') {
-            const resolutionMinutes = this.getResolutionInMinutes(resolution)
-            const allCachedBars = this.barCache.getAllBars(symbol, { csvResolution: '1m' })
+            // Epoch-aligned candle open (matches aggregateBars); minutes-within-hour
+            // alignment collapsed multi-hour resolutions (4h) to hourly windows.
+            const candleStartMs = alignBarOpenSec(Math.floor(capMs / 1000), resolution) * 1000
 
-            if (allCachedBars.length > 0) {
-              const capDate = new Date(capMs)
-              const minutes = capDate.getMinutes()
-              const alignedMinutes = Math.floor(minutes / resolutionMinutes) * resolutionMinutes
-              const currentCandleStart = new Date(capMs)
-              currentCandleStart.setMinutes(alignedMinutes, 0, 0)
-              currentCandleStart.setSeconds(0, 0)
-              barsToAggregate = allCachedBars.filter(bar => bar.time >= currentCandleStart.getTime())
+            // Incremental aggregation source: refilter the full cache only when
+            // the aligned candle window changes; otherwise append this step's bars.
+            const cacheKey = `${symbol}:${resolution}`
+            if (!this.aggSourceCache) this.aggSourceCache = new Map()
+            const cached = this.aggSourceCache.get(cacheKey)
+            if (cached && cached.candleStartMs === candleStartMs) {
+              for (const bar of bars) {
+                if (bar.time >= candleStartMs) cached.bars.push(bar)
+              }
+              barsToAggregate = cached.bars
+            } else {
+              const allCachedBars = this.barCache.getAllBars(symbol, { csvResolution: '1m' })
+              if (allCachedBars.length > 0) {
+                barsToAggregate = allCachedBars.filter(bar => bar.time >= candleStartMs)
+              }
+              this.aggSourceCache.set(cacheKey, { candleStartMs, bars: barsToAggregate })
             }
           }
+          framesToSend = aggregateBars(barsToAggregate, resolution).filter(
+            (bar) => bar.time <= capMs,
+          )
+        }
+        if (!framesToSend.length) continue
 
-          const aggregatedBars = aggregateBars(barsToAggregate, resolution)
-          if (!aggregatedBars.length) continue
-
-          for (const bar of aggregatedBars) {
-            if (bar.time > capMs) continue
-            this.send(ws, {
-              type: "realtimeBar",
-              subscriberUID: uid,
-              candle: bar
-            })
-          }
+        for (const uid of uids) {
+          this.send(ws, {
+            type: "realtimeBars",
+            subscriberUID: uid,
+            candles: framesToSend
+          })
         }
       }
 

@@ -4,6 +4,7 @@ import type { MarketBookUpdateKind, TradeseaMarketBook } from '../../../services
 import { tradeseaResolutionToSeconds } from '../../../services/tradesea/tradeseaResolutions'
 import type { BacktestSession } from '../../../types/backtester'
 import { BacktesterChartClient } from '../../services/BacktesterChartClient'
+import { isBwcChartPanning } from '../../../utils/bwcPan'
 
 export class BacktesterChartDataFeed implements IDatafeedChartApi {
   private readonly baseResolutions: ResolutionString[] = ['1', '2', '3', '5', '15', '30', '60', '240', '1D']
@@ -463,6 +464,10 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   }
 
   private notifyMarketBook(symbol: string, kind: MarketBookUpdateKind = 'ltp'): void {
+    // Mirror bwcPositionBridge's live-bar guard: skip fan-out while the user
+    // is actively dragging the chart's time scale to avoid driving React
+    // updates mid-pan.
+    if (isBwcChartPanning()) return
     const streamId = this.normalizeSymbol(symbol)
     for (const fn of this.bookListeners) {
       try {
@@ -954,38 +959,74 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    * Called when the server sends a realtimeBar message
    */
   handleRealtimeBar(data: { subscriberUID: string; candle: Bar }): void {
+    this.handleRealtimeBars({ subscriberUID: data.subscriberUID, candles: [data.candle] })
+  }
+
+  /**
+   * Batched realtime bar handler. Applies each candle to the chart series
+   * (BWC needs every intermediate bar), but coalesces the tail work
+   * (market-book notify, replay cursor sync, trade cache update) to once
+   * per batch instead of once per bar — avoids k+1 RAF schedules and k
+   * market-book fan-outs when a step returns k bars.
+   */
+  handleRealtimeBars(data: { subscriberUID: string; candles: Bar[] }): void {
     const subscription = this.subscriptions.get(data.subscriberUID)
     if (!subscription) {
       console.warn(`[BacktesterChartDataFeed] No subscription found for subscriberUID: ${data.subscriberUID}`)
       return
     }
 
-    const candle = this.normalizeBar(data.candle)
-    if (!candle) return
-
-    this.notePlaybackBar(candle.time, subscription.resolution, false)
+    const rawCandles = data.candles || []
+    if (!rawCandles.length) return
 
     const cacheKey = this.getCacheKey(subscription.symbol, subscription.resolution)
-    if (this.isSubMinuteResolution(subscription.resolution)) {
-      this.mergeReplayLtfBars(cacheKey, [candle])
-    }
-    const cachedLastBar = this.lastBarsCache.get(cacheKey)
-    if (!cachedLastBar || candle.time >= cachedLastBar.time) {
-      this.lastBarsCache.set(cacheKey, candle)
+    const isSubMinute = this.isSubMinuteResolution(subscription.resolution)
+
+    // A chart must only ever hold bars at its own resolution: 1m→1m, 30s→30s,
+    // anything above 1m→1m aggregated. Stray finer bars (e.g. a 30s bar leaking
+    // into a 1m pane from stale replay state) create a bar past the step target
+    // that then gets trimmed — the visible "adds two, removes one" flash. Drop
+    // any streamed bar not aligned to the chart resolution. Only enforced for
+    // minute-to-hour resolutions where UTC-second alignment is unambiguous
+    // (sub-minute charts legitimately carry finer bars; daily+ is timezone-bound).
+    const resSec = Math.max(1, tradeseaResolutionToSeconds(String(subscription.resolution)))
+    const enforceAlignment = resSec >= 60 && resSec < 86400
+
+    let lastCandle: Bar | null = null
+    for (const raw of rawCandles) {
+      const candle = this.normalizeBar(raw)
+      if (!candle) continue
+
+      if (enforceAlignment && Number.isFinite(candle.time) && candle.time % resSec !== 0) {
+        continue
+      }
+
+      this.notePlaybackBar(candle.time, subscription.resolution, false)
+
+      if (isSubMinute) {
+        this.mergeReplayLtfBars(cacheKey, [candle])
+      }
+      const cachedLastBar = this.lastBarsCache.get(cacheKey)
+      if (!cachedLastBar || candle.time >= cachedLastBar.time) {
+        this.lastBarsCache.set(cacheKey, candle)
+      }
+
+      subscription.lastBar = candle
+
+      if (subscription.onRealtimeCallback) {
+        subscription.onRealtimeCallback(candle)
+      }
+
+      lastCandle = candle
     }
 
-    // Update last bar
-    subscription.lastBar = candle
+    if (!lastCandle) return
+
     this.notifyMarketBook(subscription.symbol, 'ltp')
 
-    // Call the realtime callback
-    if (subscription.onRealtimeCallback) {
-      subscription.onRealtimeCallback(candle)
-    }
-
     if (this.tradeHandler) {
-      this.tradeHandler.syncReplayCursorFromBar?.(candle.time, subscription.resolution)
-      this.tradeHandler.onRealTimeBar(subscription.symbol, subscription.resolution, candle)
+      this.tradeHandler.syncReplayCursorFromBar?.(lastCandle.time, subscription.resolution)
+      this.tradeHandler.onRealTimeBar(subscription.symbol, subscription.resolution, lastCandle)
     }
   }
 

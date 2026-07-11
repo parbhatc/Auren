@@ -28,6 +28,8 @@ export class BacktesterTradeHandler {
   private onStatsRefresh?: () => void
   private tradeCache: BacktesterTradeCache | null = null
   private replayPaneSyncRaf: number | null = null
+  private nextCandleInFlight: boolean = false
+  private nextCandleTimeout: NodeJS.Timeout | null = null
 
   constructor(session: BacktestSession | null, client: BacktesterChartClient | null) {
     this.session = session
@@ -332,6 +334,11 @@ export class BacktesterTradeHandler {
 
   /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
   syncReplayCursorFromBar(_anchorSec: number, _chartResolution?: string): void {
+    this.nextCandleInFlight = false
+    if (this.nextCandleTimeout) {
+      clearTimeout(this.nextCandleTimeout)
+      this.nextCandleTimeout = null
+    }
     this.scheduleSyncAllPanesReplayCursor()
   }
 
@@ -750,12 +757,24 @@ export class BacktesterTradeHandler {
    * Calculates how many candles to skip based on playback timeframe vs chart timeframe
    */
   handleNextCandle = (): void => {
+    // Guard against overlapping round-trips: a spammed button or a fast
+    // auto-play interval can otherwise queue up steps faster than the
+    // server can reply, piling up WS traffic and redundant re-renders.
+    if (this.nextCandleInFlight) return
+    this.nextCandleInFlight = true
+    if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
+    this.nextCandleTimeout = setTimeout(() => {
+      this.nextCandleInFlight = false
+    }, 2000) as any
+
     const stepResolution = this.resolvePlaybackStepResolution()
     const stepSec = this.resolvePlaybackStepSec()
     const current = this.datafeed?.getPlaybackAnchorSecPublic?.() ?? null
 
     if (current == null || !Number.isFinite(current)) {
       console.warn('[BacktesterTradeHandler] Replay cursor not set for nextCandle')
+      this.nextCandleInFlight = false
+      if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
       return
     }
 
@@ -765,8 +784,9 @@ export class BacktesterTradeHandler {
       stepResolution as ResolutionString,
     )
 
-    // Trim pane bars to anchor before BWC overlay refresh (host-controlled replay).
-    this.syncAllPanesReplayCursor()
+    // Single RAF-coalesced pane sync; incoming realtimeBars re-schedule through
+    // the same scheduler, so the cursor ends correct after the WS round-trip.
+    this.scheduleSyncAllPanesReplayCursor()
 
     if (this.client && this.client.isConnected()) {
       this.client.send({
@@ -776,9 +796,10 @@ export class BacktesterTradeHandler {
         targetSec: Math.floor(targetSec),
         playbackTimeframe: stepResolution,
       })
+    } else {
+      this.nextCandleInFlight = false
+      if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
     }
-
-    queueMicrotask(() => this.scheduleSyncAllPanesReplayCursor())
 
     this.logPlaybackAction('next_candle', {
       stepResolution,

@@ -167,6 +167,56 @@ export function alignTimeToResolutionSec(timeSec, resolution) {
   return Math.floor(Number(timeSec) / barSec) * barSec
 }
 
+// CME Globex session opens 18:00 ET; TradingView anchors intraday HTF candles to
+// that boundary (4h -> 18:00, 22:00, 02:00, 06:00, 10:00, 14:00 ET), NOT UTC
+// midnight. Aligning from the epoch put 4h candles on the wrong hours.
+const ET_SESSION_ANCHOR_SEC = 18 * 3600
+
+const _etFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+})
+/** @type {Map<number, number>} */
+const _etOffsetCache = new Map()
+
+/** ET UTC offset in seconds at unix `sec` (e.g. -14400 in EDT, -18000 in EST). DST-aware, hour-cached. */
+function etOffsetSec(sec) {
+  const key = Math.floor(sec / 3600)
+  const cached = _etOffsetCache.get(key)
+  if (cached !== undefined) return cached
+  if (_etOffsetCache.size > 200000) _etOffsetCache.clear()
+  const o = {}
+  for (const p of _etFmt.formatToParts(new Date(sec * 1000))) {
+    if (p.type !== 'literal') o[p.type] = p.value
+  }
+  let hour = Number(o.hour)
+  if (hour === 24) hour = 0
+  const wallSec = Math.floor(
+    Date.UTC(Number(o.year), Number(o.month) - 1, Number(o.day), hour, Number(o.minute), Number(o.second)) / 1000,
+  )
+  const off = wallSec - sec
+  _etOffsetCache.set(key, off)
+  return off
+}
+
+/**
+ * Align a bar time to its resolution open, anchored to the CME session (18:00 ET)
+ * for intraday resolutions so history and replay match TradingView. Daily+ falls
+ * back to plain epoch alignment (handled by their own aggregation branches).
+ * @param {number} timeSec @param {string} resolution
+ */
+export function alignBarOpenSec(timeSec, resolution) {
+  const t = Number(timeSec)
+  const barSec = Math.max(1, resolutionToSeconds(resolution))
+  if (barSec >= 86400) return Math.floor(t / barSec) * barSec
+  const off = etOffsetSec(t)
+  const etLocal = t + off
+  const bucketEtLocal =
+    Math.floor((etLocal - ET_SESSION_ANCHOR_SEC) / barSec) * barSec + ET_SESSION_ANCHOR_SEC
+  return bucketEtLocal - off
+}
+
 /**
  * Map global replay wall time (HTF step) to last visible bar open on target TF.
  * @param {number} anchorSec
@@ -177,11 +227,11 @@ export function capReplayWallForResolution(anchorSec, sourceRes, targetRes) {
   const sourceSec = resolutionToSeconds(sourceRes)
   const targetSec = resolutionToSeconds(targetRes)
   if (targetSec >= sourceSec) {
-    return alignTimeToResolutionSec(anchorSec, targetRes)
+    return alignBarOpenSec(anchorSec, targetRes)
   }
-  const htfOpen = alignTimeToResolutionSec(anchorSec, sourceRes)
+  const htfOpen = alignBarOpenSec(anchorSec, sourceRes)
   const lastLtOpen = htfOpen + sourceSec - targetSec
-  return alignTimeToResolutionSec(lastLtOpen, targetRes)
+  return alignBarOpenSec(lastLtOpen, targetRes)
 }
 
 

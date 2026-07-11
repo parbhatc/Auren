@@ -21,11 +21,6 @@ declare module '/chart/sdk.js' {
   export function clearChartContextActions(): void
 }
 
-declare module '/chart/sdk.js' {
-  export function bootChart(options?: Record<string, unknown>): Promise<Record<string, unknown>>
-  export function registerIndicator(def: unknown): void
-}
-
 declare module '/testing/js/indicators/fvg/FvgIndicator.js' {
   const FvgIndicator: unknown
   export default FvgIndicator

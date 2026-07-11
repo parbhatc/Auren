@@ -23,7 +23,10 @@ function safeUnder(root: string, urlPath: string): string | null {
 function serveFile(res: Connect.ServerResponse, filePath: string): void {
   const ext = path.extname(filePath)
   res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
-  res.setHeader('Cache-Control', ext === '.html' ? 'no-store' : 'public, max-age=86400')
+  // Dev/preview only (prod copies these into dist and the host serves them).
+  // Never cache here — the BWC sources are edited live in the sibling repo and a
+  // stale HTTP cache silently runs old modules across reloads.
+  res.setHeader('Cache-Control', 'no-store')
   fs.createReadStream(filePath).pipe(res)
 }
 

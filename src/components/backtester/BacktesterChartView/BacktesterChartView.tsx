@@ -40,12 +40,15 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   private wsClient: BacktesterChartClient | null = null
   private datafeed: BacktesterChartDataFeed = new BacktesterChartDataFeed()
   private tradeHandler: BacktesterTradeHandler | null = null
+  private tradePadPropsCacheKey: string | null = null
+  private tradePadPropsCache: ReturnType<typeof buildBacktesterTradePadProps> | null = null
+  private pendingUnrealizedPnL: number | null = null
+  private unrealizedPnLFlushScheduled = false
 
   state = {
     isPlaying: false,
     playbackSpeed: 1,
     playbackTimeframe: '1',
-    currentCandle: 0,
     contractQuantity: 1 as number | string,
     showPreviousBarSelector: false,
     showNav: true,
@@ -107,14 +110,27 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
       void this.loadSessionStats()
     }
 
-    // Set callback for when unrealized P&L updates
+    // Set callback for when unrealized P&L updates. This fires on every bar
+    // while a position is open (including within a single batched step), so
+    // coalesce to at most one setState per animation frame to avoid a full
+    // re-render per bar during step-spam/auto-play.
     ;(this.tradeHandler as any).onUnrealizedPnLUpdate = (unrealizedPnL: number) => {
-      this.setState({ unrealizedPnL }, () => this.publishStats())
+      this.pendingUnrealizedPnL = unrealizedPnL
+      if (this.unrealizedPnLFlushScheduled) return
+      this.unrealizedPnLFlushScheduled = true
+      requestAnimationFrame(() => {
+        this.unrealizedPnLFlushScheduled = false
+        if (this.pendingUnrealizedPnL == null) return
+        const nextUnrealizedPnL = this.pendingUnrealizedPnL
+        this.pendingUnrealizedPnL = null
+        this.setState({ unrealizedPnL: nextUnrealizedPnL }, () => this.publishStats())
+      })
     }
 
     ;(this.tradeHandler as any).onPositionUpdate = () => {
+      // syncPositionStats already triggers a setState-driven re-render;
+      // forceUpdate here was a redundant second render per position change.
       this.syncPositionStats({ refreshSessionStats: true })
-      this.forceUpdate()
     }
 
     // Load session stats
@@ -498,10 +514,6 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
   handleNextCandle = () => {
     this.tradeHandler?.handleNextCandle()
-
-    this.setState((prevState: { currentCandle: number }) => ({
-      currentCandle: prevState.currentCandle + 1,
-    }))
   }
 
   handleReplayHostAction = (action: string, payload: Record<string, unknown>) => {
@@ -757,27 +769,40 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     const { sessions = [] } = this.props
 
     const chartSymbol = session ? this.getChartSymbol() : ''
-    const tradePadProps = session
-      ? buildBacktesterTradePadProps({
-          sessionId: session.id,
-          isDark,
-          marketDataLive: wsConnected,
-          contractQuantity,
-          chartSymbol,
-          tradeHandler: this.tradeHandler,
-          datafeed: this.datafeed,
-          getChartSymbol: this.getChartSymbol,
-          onQuantityChange: this.handleQuantityChange,
-          onQuantityUpdate: this.handleQuantityUpdate,
-          onQuantityInputChange: this.handleQuantityInputChange,
-          onQuantityBlur: this.handleQuantityBlur,
-          onChartSymbolChange: this.handleChartSymbolPick,
-          onDetach: () => {
-            togglePadDetached(session.id)
-            this.forceUpdate()
-          },
-        })
+    // Memoized: this rebuilds unconditionally on every render otherwise,
+    // recreating an object + inline closures and re-rendering the trade
+    // panel subtree on every bar (during step-spam/auto-play this fires
+    // once per rendered candle). Cache on the actual inputs that matter.
+    const tradePadPropsCacheKey = session
+      ? `${session.id}|${isDark}|${wsConnected}|${contractQuantity}|${chartSymbol}`
       : null
+    let tradePadProps = tradePadPropsCacheKey ? this.tradePadPropsCache : null
+    if (session && tradePadPropsCacheKey !== this.tradePadPropsCacheKey) {
+      tradePadProps = buildBacktesterTradePadProps({
+        sessionId: session.id,
+        isDark,
+        marketDataLive: wsConnected,
+        contractQuantity,
+        chartSymbol,
+        tradeHandler: this.tradeHandler,
+        datafeed: this.datafeed,
+        getChartSymbol: this.getChartSymbol,
+        onQuantityChange: this.handleQuantityChange,
+        onQuantityUpdate: this.handleQuantityUpdate,
+        onQuantityInputChange: this.handleQuantityInputChange,
+        onQuantityBlur: this.handleQuantityBlur,
+        onChartSymbolChange: this.handleChartSymbolPick,
+        onDetach: () => {
+          togglePadDetached(session.id)
+          this.forceUpdate()
+        },
+      })
+      this.tradePadPropsCacheKey = tradePadPropsCacheKey
+      this.tradePadPropsCache = tradePadProps
+    } else if (!session) {
+      this.tradePadPropsCacheKey = null
+      this.tradePadPropsCache = null
+    }
 
     if (!session) {
       return (

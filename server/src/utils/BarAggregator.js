@@ -1,3 +1,5 @@
+import { alignBarOpenSec } from './backtesterResolution.js'
+
 /**
  * Aggregates 1-minute bars into higher timeframes
  * @param {Array} bars - Array of 1-minute bars with {time, open, high, low, close, volume}
@@ -62,19 +64,19 @@ function aggregateBars(bars, resolution) {
             const bucketTime = new Date(alignedDate.getFullYear(), alignedMonth, 1);
             bucketKey = bucketTime.getTime();
         }
-        // Handle numeric minute resolutions (1, 2, 5, 15, etc.)
+        // Handle numeric minute resolutions (1, 2, 5, 15, 60, 240, etc.)
         else {
             const resolutionMinutes = parseInt(resolution);
             if (isNaN(resolutionMinutes) || resolutionMinutes <= 1) {
                 return bars; // Invalid resolution, return as-is
             }
-            
-            // Round down to the nearest resolution-minute boundary
-            const minutes = barDate.getMinutes();
-            const alignedMinutes = Math.floor(minutes / resolutionMinutes) * resolutionMinutes;
-            const bucketTime = new Date(barDate);
-            bucketTime.setMinutes(alignedMinutes, 0, 0);
-            bucketKey = bucketTime.getTime();
+
+            // Align to the CME session (18:00 ET) via alignBarOpenSec so intraday
+            // HTF candles match TradingView (4h -> 18/22/02/06/10/14 ET) and stay
+            // consistent with the replay path. The old code aligned only
+            // minutes-within-the-hour (getMinutes 0-59), collapsing every
+            // resolution >= 60min to hourly candles (4h -> 1h).
+            bucketKey = alignBarOpenSec(Math.floor(bar.time / 1000), resolution) * 1000;
         }
         
         if (!buckets.has(bucketKey)) {
