@@ -180,7 +180,9 @@ class BacktesterBarsService {
       if (fromMs != null && toMs != null && toMs > fromMs) {
         bars = this.csvLoader.loadBars(symbol, fromMs, toMs, loadOpts)
       }
-      if (!bars.length && anchorMs != null) {
+      // countBack takes priority over the wall-clock window (TV semantics):
+      // session gaps/weekends shrink [from,to], so top up via countback.
+      if (bars.length < oneMinCount && anchorMs != null) {
         const initialOneMin =
           nativeSubMinute || resolution === '1'
             ? Math.min(30000, Math.max(oneMinCount, 20000))
@@ -189,8 +191,14 @@ class BacktesterBarsService {
       }
     } else if (fromMs != null && toMs != null && toMs > fromMs) {
       bars = this.csvLoader.loadBars(symbol, fromMs, toMs, loadOpts)
-      if (!bars.length && toMs != null) {
-        bars = this.csvLoader.loadCountback(symbol, toMs, oneMinCount, false, loadOpts)
+      if (requestedCount > 0 && bars.length < oneMinCount) {
+        // Merge instead of replace: the exclusive countback drops the bar at
+        // exactly toMs, which the resolution-switch probe requires.
+        const topUp = this.csvLoader.loadCountback(symbol, toMs, oneMinCount, false, loadOpts)
+        const byTime = new Map()
+        for (const bar of topUp) byTime.set(bar.time, bar)
+        for (const bar of bars) byTime.set(bar.time, bar)
+        bars = [...byTime.values()].sort((a, b) => a.time - b.time)
       }
     } else if (toMs != null) {
       bars = this.csvLoader.loadCountback(symbol, toMs, oneMinCount, false, loadOpts)
