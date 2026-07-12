@@ -115,6 +115,12 @@ export class BacktesterChartClient extends WebSocketClientBase {
           return true
         }
         return false
+      case 'nextCandleAck':
+        if (this.datafeed && typeof this.datafeed.handleNextCandleAck === 'function') {
+          this.datafeed.handleNextCandleAck(data)
+          return true
+        }
+        return true
       case 'replayResponse':
         {
           const callbacks = this.callbacks as BacktesterChartClientCallbacks

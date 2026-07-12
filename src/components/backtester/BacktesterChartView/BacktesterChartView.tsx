@@ -594,13 +594,23 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     else replay.pause()
   }
 
+  /** Normalize resolution ids for comparison ('1m'/'1M'/'1' → '1', '30s' → '30S'). */
+  private normalizeResolutionId = (res: string): string => {
+    const id = String(res || '').trim().toUpperCase()
+    if (/^\d+M$/.test(id)) return id.slice(0, -1)
+    return id
+  }
+
   syncBwcReplayStepInterval = (widget?: { replay?: import('../../../services/chart/bwcReplayApi').BwcReplayApi }) => {
     const replay = widget?.replay ?? (this.chartRef.current as { widgetRef?: { replay?: import('../../../services/chart/bwcReplayApi').BwcReplayApi } } | null)?.widgetRef?.replay
     if (!replay) return
 
     const chartRes = this.getChartResolution() || '1'
     const { playbackTimeframe } = this.state
-    if (playbackTimeframe === chartRes) {
+    // Compare normalized ids — a raw string mismatch ('1' vs '1m') permanently
+    // flipped the interval to manual with a stale value, making the server take
+    // the intrabar branch (re-forming the same candle instead of advancing).
+    if (this.normalizeResolutionId(playbackTimeframe) === this.normalizeResolutionId(chartRes)) {
       replay.setAutoSelectInterval(true)
       return
     }

@@ -340,6 +340,21 @@ export class BacktesterTradeHandler {
     })
   }
 
+  /** Server ack for a nextCandle step — clears the in-flight latch even when
+   *  the step emitted no bars (data gap / no forward bars / no subscriptions),
+   *  which previously left the step button dead for the 2s timeout per click. */
+  handleNextCandleAck = (data: { cursorSec: number; emitted: number }): void => {
+    this.nextCandleInFlight = false
+    if (this.nextCandleTimeout) {
+      clearTimeout(this.nextCandleTimeout)
+      this.nextCandleTimeout = null
+    }
+    if (data.emitted === 0) {
+      // Both sides advanced to the same target; keep the pane cursor in sync.
+      this.scheduleSyncAllPanesReplayCursor()
+    }
+  }
+
   /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
   syncReplayCursorFromBar(_anchorSec: number, _chartResolution?: string): void {
     this.nextCandleInFlight = false
@@ -786,7 +801,11 @@ export class BacktesterTradeHandler {
       return
     }
 
-    const targetSec = current + stepSec
+    // Align to the step grid: after stepping on a finer TF (30s) the raw anchor
+    // can sit mid-bucket (hh:mm:30); "current + stepSec" would then target
+    // mid-bucket walls forever (dead steps / forming-bar-only updates). The
+    // first step from a mid-bucket anchor completes the current bucket.
+    const targetSec = Math.floor(current / stepSec) * stepSec + stepSec
     this.datafeed?.setPlaybackAnchorSec?.(
       Math.floor(targetSec),
       stepResolution as ResolutionString,

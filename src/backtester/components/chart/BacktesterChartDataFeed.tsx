@@ -586,11 +586,10 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       return
     }
     this.playbackAnchorSec = Math.floor(Number(sec))
-    const nextSec = tradeseaResolutionToSeconds(String(resolution))
-    const curSec = tradeseaResolutionToSeconds(String(this.playbackAnchorResolution ?? '1'))
-    if (!Number.isFinite(nextSec) || !Number.isFinite(curSec) || nextSec <= curSec) {
-      this.playbackAnchorResolution = resolution
-    }
+    // Always adopt the caller's resolution. The old "only when finer" rule
+    // ratcheted this down permanently (one 30s step latched '30S' forever,
+    // so later 1m steps kept a mid-bucket anchor and stepped mid-minute walls).
+    this.playbackAnchorResolution = resolution
   }
 
   getPlaybackAnchorSecPublic(): number | null {
@@ -960,6 +959,13 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    */
   handleRealtimeBar(data: { subscriberUID: string; candle: Bar }): void {
     this.handleRealtimeBars({ subscriberUID: data.subscriberUID, candles: [data.candle] })
+  }
+
+  /** Server acks every nextCandle, even when no bars were emitted (data gaps,
+   *  no subscriptions) — lets the step latch clear without the 2s timeout. */
+  handleNextCandleAck(data: { cursorSec: number; emitted: number }): void {
+    ;(this.tradeHandler as { handleNextCandleAck?: (d: { cursorSec: number; emitted: number }) => void } | null)
+      ?.handleNextCandleAck?.(data)
   }
 
   /**

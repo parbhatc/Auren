@@ -354,6 +354,7 @@ class BacktesterWebSocket extends WebSocketBase {
         : baseSec + stepWallSec
 
       const groups = new Map()
+      let emittedFrames = 0
 
       for (const clientSubscriptions of this.subscriptions.values()) {
         for (const [uid, sub] of clientSubscriptions.entries()) {
@@ -409,6 +410,7 @@ class BacktesterWebSocket extends WebSocketBase {
           for (const uid of uids) {
             this.send(ws, { type: "realtimeBars", subscriberUID: uid, candles: [partial] })
           }
+          emittedFrames += 1
           continue
         }
 
@@ -416,10 +418,13 @@ class BacktesterWebSocket extends WebSocketBase {
         const newestMs = this.barCache.getNewest(symbol, loadOpts)
         // Full replay wall for this step; capMs is only the last emitted candle OPEN.
         const loadToMs = Math.max(capMs, targetWallSec * 1000)
-        let afterMs = newestMs ?? last.getTime()
-        if (cursorSec != null && Number.isFinite(Number(cursorSec))) {
-          afterMs = Math.max(afterMs, Number(cursorSec) * 1000)
-        }
+        // The client cursor is authoritative when provided. Using the cache's
+        // newest bar as the floor breaks after any backward move (prev-day nav,
+        // rewind): the cache still holds future bars, so loadForward starts past
+        // the cap and every step emits nothing — permanently dead stepping.
+        let afterMs = cursorSec != null && Number.isFinite(Number(cursorSec))
+          ? Number(cursorSec) * 1000
+          : (newestMs ?? last.getTime())
 
         let bars = []
         if (nativeSubMinute) {
@@ -487,9 +492,18 @@ class BacktesterWebSocket extends WebSocketBase {
             candles: framesToSend
           })
         }
+        emittedFrames += framesToSend.length
       }
 
       this.barCache.last = new Date(targetWallSec * 1000)
+      // Always ack — several paths above emit nothing (no fine bars, no forward
+      // bars, empty frames, no subscriptions). Without an ack the client's
+      // nextCandleInFlight latch waits out its 2s timeout on every such step.
+      this.send(ws, {
+        type: 'nextCandleAck',
+        cursorSec: targetWallSec,
+        emitted: emittedFrames,
+      })
       return true;
     }
 

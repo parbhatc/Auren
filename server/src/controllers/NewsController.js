@@ -44,6 +44,7 @@ function eventMatchesTypes(title, types) {
     ) {
       return true
     }
+    if (type === 'nfp' && /^non-?farm employment change$/.test(t)) return true
     if (type && t.includes(type)) return true
   }
   return false
@@ -63,7 +64,7 @@ class NewsController {
     res.json({
       sources: [{ id: 'forexfactory', label: 'ForexFactory' }],
       default_source: 'forexfactory',
-      default_types: ['ppi', 'cpi', 'fomc'],
+      default_types: ['ppi', 'cpi', 'fomc', 'nfp'],
       default_currencies: 'USD',
       time_zone: 'America/New_York',
       endpoints: {
