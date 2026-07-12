@@ -18,13 +18,16 @@
 }
 
 html {
-  /* 100vh not 100% — iOS standalone + black-translucent offsets the view without growing the % containing block (chin gap). */
+  /* vh/dvh not 100% — iOS standalone offsets the view without growing the % containing block (chin gap).
+     dvh tracks the visible viewport in Safari (URL bar collapse) so the page never scrolls past the app shell. */
   height: 100vh;
+  height: 100dvh;
   background-color: #020617;
 }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -37,6 +40,7 @@ body {
 #root {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* iOS PWA safe-area helpers (requires viewport-fit=cover in index.html) */
@@ -140,6 +144,7 @@ body {
 /* Practice stats — scroll inside main; header stays pinned */
 .practice-stats-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .practice-stats-scroll {
