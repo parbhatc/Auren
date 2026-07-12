@@ -275,15 +275,13 @@ npm run dev
 
 App: `http://localhost:3000` (Vite proxies `/api` to the backend)
 
-**iPhone / PWA testing (HTTPS)**
-
-iOS requires HTTPS for reliable standalone PWA mode. Use the self-signed dev server:
+Optional HTTPS for phone testing on the LAN:
 
 ```bash
 npm run dev:https
 ```
 
-On your phone (same Wi‑Fi), open `https://<your-pc-lan-ip>:3000` (see the **Network** URL in the terminal). Safari will warn about the certificate — tap **Advanced → Proceed**. Then **Share → Add to Home Screen** and launch from the icon.
+On your phone (same Wi‑Fi), open `https://<your-pc-lan-ip>:3000` (see the **Network** URL in the terminal). Safari will warn about the certificate — tap **Advanced → Proceed**.
 
 Keep the API on `http://localhost:3001`; Vite proxies `/api` and WebSockets over HTTPS.
 

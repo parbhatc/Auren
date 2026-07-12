@@ -20,6 +20,33 @@ function safeUnder(root: string, urlPath: string): string | null {
   return full
 }
 
+// Unique per server start. Stamped onto every BWC module specifier below so the
+// browser fetches a fresh URL each run — see bustModuleSpecifiers().
+const BUILD_ID = String(Date.now())
+
+/**
+ * Append `?v=<BUILD_ID>` to every relative/root-absolute module specifier in a JS
+ * module. `no-store` stops the browser caching NEW responses, but it does not evict
+ * entries stored earlier (e.g. before a header/export existed): the ES module loader
+ * fetches transitive imports with `cache: "default"`, so a bare URL like `../js/sdk.js`
+ * can resolve to a poisoned disk-cache entry and silently run old code — even after a
+ * hard reload (dynamic import() ignores the reload's cache bypass). Giving every
+ * specifier a per-run query makes each a guaranteed cache-miss, so the whole graph is
+ * always fresh. Only `.js/.mjs/.json/.css` paths are touched to avoid rewriting
+ * lookalike strings/comments.
+ */
+function bustModuleSpecifiers(code: string): string {
+  const spec = "(\\.{1,2}/[^'\"]*?\\.(?:js|mjs|json|css)|/[^'\"]*?\\.(?:js|mjs|json|css))"
+  const stamp = (s: string) => `${s}${s.includes('?') ? '&' : '?'}v=${BUILD_ID}`
+  return code
+    // static: `... from "./x.js"` / `export ... from "/js/x.js"`
+    .replace(new RegExp(`(\\bfrom\\s*)(['"])${spec}(\\2)`, 'g'), (_m, kw, q, s, q2) => `${kw}${q}${stamp(s)}${q2}`)
+    // side-effect: `import "./x.js"`
+    .replace(new RegExp(`(\\bimport\\s*)(['"])${spec}(\\2)`, 'g'), (_m, kw, q, s, q2) => `${kw}${q}${stamp(s)}${q2}`)
+    // dynamic: `import("./x.js")`
+    .replace(new RegExp(`(\\bimport\\(\\s*)(['"])${spec}(\\2)(\\s*\\))`, 'g'), (_m, kw, q, s, q2, close) => `${kw}${q}${stamp(s)}${q2}${close}`)
+}
+
 function serveFile(res: Connect.ServerResponse, filePath: string): void {
   const ext = path.extname(filePath)
   res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
@@ -27,6 +54,10 @@ function serveFile(res: Connect.ServerResponse, filePath: string): void {
   // Never cache here — the BWC sources are edited live in the sibling repo and a
   // stale HTTP cache silently runs old modules across reloads.
   res.setHeader('Cache-Control', 'no-store')
+  if (ext === '.js' || ext === '.mjs') {
+    res.end(bustModuleSpecifiers(fs.readFileSync(filePath, 'utf8')))
+    return
+  }
   fs.createReadStream(filePath).pipe(res)
 }
 

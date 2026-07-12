@@ -14,12 +14,6 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Service worker must not be long-cached so updates can ship.
-    location ~* ^/(sw\.js|workbox-.*\.js)$ {
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        try_files $uri =404;
-    }
-
     location /api {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;

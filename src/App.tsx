@@ -44,8 +44,6 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
 import { RouteScrollRestore } from './components/common/RouteScrollRestore'
-import { IosPwaInstallBanner } from './components/common/IosPwaInstallBanner'
-import { OfflineBanner } from './components/common/OfflineBanner'
 
 const LegacyRedirect = () => <Navigate to={ROUTES.HOME} replace />
 
@@ -142,8 +140,6 @@ function App() {
   return (
     <Router>
       <RouteScrollRestore />
-      <IosPwaInstallBanner />
-      <OfflineBanner />
       <Routes>
         <Route
           path={ROUTES.HOME}

@@ -7,12 +7,10 @@ import './services/tradesea/practiceChartSymbolDebug'
 import { registerCandleDebugGlobals } from './services/debug/candleDebugCapture'
 import { registerConsoleCaptureGlobals } from './services/debug/consoleLogCapture'
 import { installBwcTouchScrollLockIntercept } from './utils/bwcTouchScrollLock'
-import { registerAppServiceWorker } from './pwa/register'
 
 registerCandleDebugGlobals()
 registerConsoleCaptureGlobals()
 installBwcTouchScrollLockIntercept()
-registerAppServiceWorker()
 
 /** Suppress noisy unhandled rejections from browser extensions (not from app code). */
 if (import.meta.env.DEV) {
