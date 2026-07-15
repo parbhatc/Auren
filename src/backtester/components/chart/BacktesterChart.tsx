@@ -440,7 +440,8 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         replay: true,
         skipAppLoader: true,
         // Load more history up front; backtester CSV data is local so larger batches are cheap.
-        countBack: 2000,
+        // 4000 matches BWC COUNT_BACK_MAX — session levels need 30h of bars (3600 on 30s).
+        countBack: 4000,
         historyChunk: 500,
         datafeed: bwcFeed,
         replayHideSelectModeMenu: true,
