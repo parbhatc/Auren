@@ -10,6 +10,25 @@ server {
     root /root/Auren/dist;
     index index.html;
 
+    # Always revalidate the app shell so refreshes discover the newest hashed bundle.
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files $uri =404;
+    }
+
+    # Retirement workers clear any caches left by older PWA builds.
+    location = /sw.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri =404;
+    }
+
+    location = /service-worker.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
