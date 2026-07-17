@@ -989,6 +989,60 @@ body {
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.2);
 }
 
+/* Toastify defaults to a full-width, edge-to-edge sheet below 480px. Keep
+   connection feedback compact so it does not cover the mobile chart/header. */
+@media (max-width: 480px) {
+  .Toastify__toast-container--top-right {
+    top: max(8px, env(safe-area-inset-top));
+    right: 8px;
+    left: auto;
+    width: auto;
+    max-width: calc(100vw - 16px);
+    padding: 0;
+  }
+
+  .auren-toastify.Toastify__toast,
+  .mds-connection-toastify.Toastify__toast {
+    width: auto !important;
+    max-width: calc(100vw - 16px);
+    margin: 0 0 8px auto;
+    border-radius: 10px;
+  }
+
+  .auren-toast,
+  .mds-connection-toast {
+    gap: 8px;
+    min-width: 0;
+    width: min(260px, calc(100vw - 16px));
+    padding: 8px 30px 8px 9px;
+    border-radius: 10px;
+  }
+
+  .auren-toast__icon,
+  .mds-connection-toast__icon {
+    width: 28px;
+    height: 28px;
+    margin-left: 2px;
+    border-radius: 8px;
+  }
+
+  .auren-toast__title,
+  .mds-connection-toast__title {
+    font-size: 0.8125rem;
+  }
+
+  .auren-toast__subtitle,
+  .mds-connection-toast__subtitle {
+    font-size: 0.6875rem;
+  }
+
+  .auren-toastify .Toastify__close-button,
+  .mds-connection-toastify .Toastify__close-button {
+    top: 7px;
+    right: 7px;
+  }
+}
+
 [id*='chart_container'] .layout__area--right,
 [id*='chart_container'] .widgetbar-tabs {
   display: none !important;

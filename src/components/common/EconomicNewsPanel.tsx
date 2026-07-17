@@ -135,8 +135,15 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
   fetchTodayEvents = async () => {
     try {
       // Use provided date prop if available (for backtester sessions), otherwise use current date
-      const dateToUse = this.props.date 
-        ? (typeof this.props.date === 'string' ? new Date(this.props.date) : this.props.date)
+      // Date-only strings are UTC when passed directly to `new Date()`. In US
+      // time zones that shifts (for example) 2026-07-16 back to July 15.
+      // Anchor them at local noon so calendar news stays on the requested day.
+      const dateToUse = this.props.date
+        ? (typeof this.props.date === 'string'
+            ? /^\d{4}-\d{2}-\d{2}$/.test(this.props.date)
+              ? new Date(`${this.props.date}T12:00:00`)
+              : new Date(this.props.date)
+            : this.props.date)
         : new Date()
       const year = dateToUse.getFullYear()
       const month = dateToUse.getMonth() + 1
@@ -420,4 +427,3 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
 }
 
 export default EconomicNewsPanel
-

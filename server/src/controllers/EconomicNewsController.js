@@ -454,14 +454,17 @@ class EconomicNewsController {
         Object.keys(data.events).forEach(date => {
           data.events[date].forEach(event => {
             allEvents.push({
+              id: event.id || undefined,
               date: date, // Include the date from the key
               time: event.time || event.timeLabel || '',
+              timeLabel: event.timeLabel || event.time || '',
               currency: event.currency || '',
               impact: (event.impact || 'low').toLowerCase(),
               event: event.event || event.name || '',
               forecast: event.forecast || undefined,
               previous: event.previous || undefined,
               actual: event.actual || undefined,
+              url: event.url || undefined,
             })
           })
         })
@@ -471,14 +474,17 @@ class EconomicNewsController {
       // Old format (shouldn't happen after migration)
       if (Array.isArray(data.events)) {
         return data.events.map(event => ({
+          id: event.id || undefined,
           date: event.date || undefined,
           time: event.time || '',
+          timeLabel: event.timeLabel || event.time || '',
           currency: event.currency || '',
           impact: (event.impact || 'low').toLowerCase(),
           event: event.event || '',
           forecast: event.forecast || undefined,
           previous: event.previous || undefined,
           actual: event.actual || undefined,
+          url: event.url || undefined,
         }))
       }
       
