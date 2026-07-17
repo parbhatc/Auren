@@ -145,10 +145,10 @@ function chartShellHtml(chartId: string): string {
   `
 }
 
-/** When unset, return undefined so BWC restores from tv-pane-symbols (not a React default). */
-function resolveInitialSymbol(symbolProp: string | undefined): string | undefined {
+/** BWC's symbol picker requires a string during boot; use MNQ for fresh/empty layouts. */
+function resolveInitialSymbol(symbolProp: string | undefined): string {
   const trimmed = String(symbolProp || '').trim()
-  if (!trimmed) return undefined
+  if (!trimmed) return 'MNQ'
   return chartSymbolToProductRoot(trimmed) || trimmed
 }
 
