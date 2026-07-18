@@ -239,7 +239,7 @@ class ChartTradeCache {
       if(!position.line && bar && bar.close !== null && bar.close !== undefined){
         const update = this.symbolMatchesActiveChart(symbol)
         if(update){
-          const currentPrice = bar.close || position.entry
+          const currentPrice = bar.close ?? position.entry
           const line = this.createLines(cacheKey, position.entry, currentPrice, position.contracts, position.stopLoss, position.takeProfit)
           if(line){
             position.line = line
@@ -291,8 +291,8 @@ class ChartTradeCache {
     
     let position = this.cache.get(cacheKey) ?? this.cache.get(symbol)
     let lastBar = datafeed?.getLastBarForChart?.(this.chart)
-    let lastBarTime = lastBar?.time || entryTime || Date.now()
-    let lastBarClose = lastBar?.close || price
+    let lastBarTime = lastBar?.time ?? entryTime ?? Date.now()
+    let lastBarClose = lastBar?.close ?? price
 
     
     if(position){

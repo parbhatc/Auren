@@ -22,6 +22,7 @@ import { saveSelectedAccountId } from '../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../constants/trade'
 import { practiceTradePanelClass } from '../Practice/practiceTradeTheme'
 import { EvalStatsPanel } from '../Practice/EvalStatsPanel'
+import { calculateDirectionalPnl } from '../../../services/stats/tradePnl.js'
 
 /**
  * Unified Stats page renderer component
@@ -360,11 +361,19 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
 
   // Helper function to parse trade timestamp
   private parseTradeTimestamp(timestamp: number | string | null | undefined): Date | null {
-    if (!timestamp) return null
+    if (timestamp == null || timestamp === '') return null
+    let parsed: Date
     if (typeof timestamp === 'number') {
-      return new Date(timestamp * 1000)
+      parsed =
+        timestamp > 1e15
+          ? new Date(timestamp / 1000)
+          : timestamp > 1e12
+            ? new Date(timestamp)
+            : new Date(timestamp * 1000)
+    } else {
+      parsed = new Date(timestamp)
     }
-    return new Date(timestamp)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
   }
 
 
@@ -378,26 +387,14 @@ class StatsRenderer extends Component<StatsRendererProps, StatsRendererState> {
 
   // Helper function to calculate trade P&L
   private calculateTradePnL(trade: any): number {
-    if (!trade.exit_price || !trade.entry_price || !trade.contracts) return 0
-    
-    // Get tick size and tick value for this symbol (defaults to 1 if not found)
-    const tickSize = this.state.symbolData?.[trade.symbol]?.tickSize ?? 1
-    const tickValue = this.state.symbolData?.[trade.symbol]?.tickValue ?? 1
-    
-    // Calculate P&L based on direction
-    // For long: profit when exit > entry, so (exit - entry) / tickSize * tickValue * contracts
-    // For short: profit when exit < entry, so (entry - exit) / tickSize * tickValue * contracts
-    // Use absolute value of contracts since short trades may have negative contract values
-    const contracts = Math.abs(trade.contracts || 0)
-    if (trade.direction?.toLowerCase() === 'short') {
-      const priceDiff = trade.entry_price - trade.exit_price
-      const ticks = priceDiff / tickSize
-      return ticks * tickValue * contracts
-    } else {
-      const priceDiff = trade.exit_price - trade.entry_price
-      const ticks = priceDiff / tickSize
-      return ticks * tickValue * contracts
-    }
+    return calculateDirectionalPnl({
+      entryPrice: trade.entry_price,
+      exitPrice: trade.exit_price,
+      contracts: trade.contracts,
+      direction: trade.direction,
+      tickSize: this.state.symbolData?.[trade.symbol]?.tickSize,
+      tickValue: this.state.symbolData?.[trade.symbol]?.tickValue,
+    })
   }
 
   // Helper function to calculate trade duration in seconds

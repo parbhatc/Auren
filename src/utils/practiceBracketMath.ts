@@ -12,11 +12,6 @@ function isLongPosition(position: BracketPosition): boolean {
   return position.type === 'long' || Number(position.contracts) > 0
 }
 
-function entryPrice(position: BracketPosition): number | null {
-  const entry = Number(position.entry)
-  return Number.isFinite(entry) ? entry : null
-}
-
 /** Long stop: exit when price falls to the stop level. */
 function isLongStopHit(stopLoss: number, ltp: number): boolean {
   return ltp <= stopLoss
@@ -27,25 +22,14 @@ function isShortStopHit(stopLoss: number, ltp: number): boolean {
   return ltp >= stopLoss
 }
 
-/**
- * Long take profit — standard target above entry fills when market trades at/through TP.
- * TP at/below entry uses limit-style (ltp <= target).
- */
-function isLongTakeProfitHit(entry: number, takeProfit: number, ltp: number): boolean {
-  if (takeProfit > entry) {
-    return ltp >= takeProfit
-  }
-  return ltp <= takeProfit
+/** A long take-profit is a sell limit and fills at or above its level. */
+function isLongTakeProfitHit(takeProfit: number, ltp: number): boolean {
+  return ltp >= takeProfit
 }
 
-/**
- * Short take profit — standard target below entry fills when market trades at/through TP.
- */
-function isShortTakeProfitHit(entry: number, takeProfit: number, ltp: number): boolean {
-  if (takeProfit < entry) {
-    return ltp <= takeProfit
-  }
-  return ltp >= takeProfit
+/** A short take-profit is a buy limit and fills at or below its level. */
+function isShortTakeProfitHit(takeProfit: number, ltp: number): boolean {
+  return ltp <= takeProfit
 }
 
 export type BracketCrossHit = {
@@ -54,8 +38,11 @@ export type BracketCrossHit = {
 }
 
 /**
- * Detect bracket fill on this tick, including gaps between the previous and current mark.
- * Stop is evaluated before target when both cross on the same step.
+ * Detect a bracket fill from the current executable mark.
+ *
+ * A restored position must close even when both the previous and current marks are
+ * beyond the bracket. Requiring a new cross strands it after refresh/reconnect.
+ * Stop is evaluated before target when both are executable.
  */
 export function resolveBracketCrossHit(
   position: BracketPosition,
@@ -69,41 +56,20 @@ export function resolveBracketCrossHit(
   if (stopLoss == null && takeProfit == null) return null
 
   const isLong = isLongPosition(position)
-  const entry = entryPrice(position)
-  const prev = prevLtp != null && Number.isFinite(prevLtp) ? prevLtp : null
+  void prevLtp
 
   if (isLong) {
-    if (stopLoss != null) {
-      if (ltp <= stopLoss && (prev == null || prev > stopLoss)) {
-        return { reason: 'stop_loss', exitPrice: stopLoss }
-      }
+    if (stopLoss != null && isLongStopHit(stopLoss, ltp)) {
+      return { reason: 'stop_loss', exitPrice: stopLoss }
     }
-    if (takeProfit != null && entry != null) {
-      if (takeProfit > entry) {
-        if (ltp >= takeProfit && (prev == null || prev < takeProfit)) {
-          return { reason: 'take_profit', exitPrice: takeProfit }
-        }
-      } else if (ltp <= takeProfit && (prev == null || prev > takeProfit)) {
-        return { reason: 'take_profit', exitPrice: takeProfit }
-      }
-    } else if (takeProfit != null && ltp >= takeProfit && (prev == null || prev < takeProfit)) {
+    if (takeProfit != null && isLongTakeProfitHit(takeProfit, ltp)) {
       return { reason: 'take_profit', exitPrice: takeProfit }
     }
   } else {
-    if (stopLoss != null) {
-      if (ltp >= stopLoss && (prev == null || prev < stopLoss)) {
-        return { reason: 'stop_loss', exitPrice: stopLoss }
-      }
+    if (stopLoss != null && isShortStopHit(stopLoss, ltp)) {
+      return { reason: 'stop_loss', exitPrice: stopLoss }
     }
-    if (takeProfit != null && entry != null) {
-      if (takeProfit < entry) {
-        if (ltp <= takeProfit && (prev == null || prev > takeProfit)) {
-          return { reason: 'take_profit', exitPrice: takeProfit }
-        }
-      } else if (ltp >= takeProfit && (prev == null || prev < takeProfit)) {
-        return { reason: 'take_profit', exitPrice: takeProfit }
-      }
-    } else if (takeProfit != null && ltp <= takeProfit && (prev == null || prev > takeProfit)) {
+    if (takeProfit != null && isShortTakeProfitHit(takeProfit, ltp)) {
       return { reason: 'take_profit', exitPrice: takeProfit }
     }
   }
@@ -128,20 +94,12 @@ export function resolveBracketLtpHit(
   if (stopLoss == null && takeProfit == null) return null
 
   const isLong = isLongPosition(position)
-  const entry = entryPrice(position)
-
   if (isLong) {
     if (stopLoss != null && isLongStopHit(stopLoss, ltp)) return 'stop_loss'
-    if (takeProfit != null && entry != null && isLongTakeProfitHit(entry, takeProfit, ltp)) {
-      return 'take_profit'
-    }
-    if (takeProfit != null && entry == null && ltp >= takeProfit) return 'take_profit'
+    if (takeProfit != null && isLongTakeProfitHit(takeProfit, ltp)) return 'take_profit'
   } else {
     if (stopLoss != null && isShortStopHit(stopLoss, ltp)) return 'stop_loss'
-    if (takeProfit != null && entry != null && isShortTakeProfitHit(entry, takeProfit, ltp)) {
-      return 'take_profit'
-    }
-    if (takeProfit != null && entry == null && ltp <= takeProfit) return 'take_profit'
+    if (takeProfit != null && isShortTakeProfitHit(takeProfit, ltp)) return 'take_profit'
   }
   return null
 }

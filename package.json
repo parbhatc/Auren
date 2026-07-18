@@ -10,7 +10,8 @@
     "build": "node scripts/sync-bwc-vendor.mjs --prod && tsc && vite build",
     "build:lwc": "npm run build --prefix ../lightweightchart && node scripts/sync-bwc-vendor.mjs --dev",
     "preview": "vite preview --port 3000",
-    "sync-bwc-vendor": "node scripts/sync-bwc-vendor.mjs --dev"
+    "sync-bwc-vendor": "node scripts/sync-bwc-vendor.mjs --dev",
+    "test": "npm run test --prefix server"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",

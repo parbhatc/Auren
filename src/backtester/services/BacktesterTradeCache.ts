@@ -60,8 +60,8 @@ class BacktesterTradeCache extends ChartTradeCache {
       position.contracts, 
       this.normalizeTradeTimestampSec(position.entryTime), 
       this.normalizeTradeTimestampSec(exitTime),
-      position.stopLoss || null,
-      position.takeProfit || null
+      position.stopLoss ?? null,
+      position.takeProfit ?? null
     )
     super.handleClosePosition(position, price, exitTime)
   }
@@ -87,8 +87,8 @@ class BacktesterTradeCache extends ChartTradeCache {
         contracts, 
         this.normalizeTradeTimestampSec(position.entryTime), 
         this.normalizeTradeTimestampSec(lastBar.time),
-        position.stopLoss || null,
-        position.takeProfit || null
+        position.stopLoss ?? null,
+        position.takeProfit ?? null
       )
     }
     super.handleUpdateSize(oldSize, newSize, position)

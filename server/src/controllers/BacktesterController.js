@@ -649,7 +649,29 @@ class BacktesterController {
         exitTime
       } = req.body
 
-      if (!sessionId || !symbol || !direction || !entryPrice || !contracts || entryTime === undefined || entryTime === null) {
+      const entryPriceNumber = Number(entryPrice)
+      const contractsNumber = Number(contracts)
+      const exitPriceNumber = exitPrice == null || exitPrice === '' ? null : Number(exitPrice)
+      const stopLossNumber = stopLoss == null || stopLoss === '' ? null : Number(stopLoss)
+      const takeProfitNumber = takeProfit == null || takeProfit === '' ? null : Number(takeProfit)
+      const normalizedDirection = String(direction || '').toLowerCase()
+      const hasRequiredText = Boolean(sessionId && symbol && normalizedDirection)
+      if (
+        !hasRequiredText ||
+        !['long', 'short'].includes(normalizedDirection) ||
+        entryPrice == null ||
+        entryPrice === '' ||
+        contracts == null ||
+        contracts === '' ||
+        !Number.isFinite(entryPriceNumber) ||
+        !Number.isFinite(contractsNumber) ||
+        contractsNumber === 0 ||
+        (exitPriceNumber != null && !Number.isFinite(exitPriceNumber)) ||
+        (stopLossNumber != null && !Number.isFinite(stopLossNumber)) ||
+        (takeProfitNumber != null && !Number.isFinite(takeProfitNumber)) ||
+        entryTime === undefined ||
+        entryTime === null
+      ) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
           message: 'Missing required fields'
@@ -700,31 +722,31 @@ class BacktesterController {
           sessionId,
           userId,
           symbol,
-          direction,
-          entryPrice,
-          exitPrice || null,
-          stopLoss || null,
-          takeProfit || null,
-          contracts,
+          normalizedDirection,
+          entryPriceNumber,
+          exitPriceNumber,
+          stopLossNumber,
+          takeProfitNumber,
+          contractsNumber,
           entryTimestamp,
           exitTimestamp
         ]
       )
 
       // If trade is closed (has exitPrice), update session balance
-      if (exitPrice !== null && exitPrice !== undefined) {
+      if (exitPriceNumber != null) {
         // Get symbol config (tick size, tick value, and fees)
         const { tickSize, tickValue, totalFees } = this.getSymbolConfig(symbol)
         
         // Calculate P&L based on direction
-        const contractsCount = Math.abs(contracts || 0)
+        const contractsCount = Math.abs(contractsNumber)
         let pnl
-        if (direction?.toLowerCase() === 'short') {
-          const priceDiff = entryPrice - exitPrice
+        if (normalizedDirection === 'short') {
+          const priceDiff = entryPriceNumber - exitPriceNumber
           const ticks = priceDiff / tickSize
           pnl = ticks * tickValue * contractsCount
         } else {
-          const priceDiff = exitPrice - entryPrice
+          const priceDiff = exitPriceNumber - entryPriceNumber
           const ticks = priceDiff / tickSize
           pnl = ticks * tickValue * contractsCount
         }
@@ -734,7 +756,8 @@ class BacktesterController {
         const netPnL = pnl - feesPerTrade
         
         // Update session balance
-        const currentBalance = session.current_balance || session.initial_balance || 50000
+        const storedBalance = Number(session.current_balance ?? session.initial_balance ?? 50000)
+        const currentBalance = Number.isFinite(storedBalance) ? storedBalance : 50000
         const newBalance = currentBalance + netPnL
         
         await Database.run(
@@ -761,6 +784,14 @@ class BacktesterController {
       const userId = req.user.id
       const sessionId = req.params.id
       const { balance } = req.body
+      const balanceNumber = Number(balance)
+
+      if (balance == null || balance === '' || !Number.isFinite(balanceNumber)) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'Invalid balance',
+        })
+      }
 
       // Verify session belongs to user
       const session = await Database.get(
@@ -777,7 +808,7 @@ class BacktesterController {
 
       await Database.run(
         'UPDATE backtester_sessions SET current_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
-        [balance || 0, sessionId, userId]
+        [balanceNumber, sessionId, userId]
       )
 
       return res.status(HTTP_STATUS.OK).json({
@@ -2311,4 +2342,3 @@ class BacktesterController {
 }
 
 export default new BacktesterController()
-

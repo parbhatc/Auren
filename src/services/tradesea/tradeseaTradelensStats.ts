@@ -57,7 +57,8 @@ export interface TradeseaTradelensTrade {
 /** TradeLens timestamps are microseconds since epoch. */
 export function tradeseaMicrosToIso(micros: number | null | undefined): string | null {
   if (micros == null || !Number.isFinite(Number(micros))) return null
-  return new Date(Number(micros) / 1000).toISOString()
+  const parsed = new Date(Number(micros) / 1000)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
 }
 
 export function formatLocalDate(d: Date): string {
@@ -71,7 +72,14 @@ function parseYmdDate(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value).trim())
   if (!match) return null
   const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-  if (Number.isNaN(parsed.getTime())) return null
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== Number(match[1]) ||
+    parsed.getMonth() !== Number(match[2]) - 1 ||
+    parsed.getDate() !== Number(match[3])
+  ) {
+    return null
+  }
   parsed.setHours(0, 0, 0, 0)
   return parsed
 }
@@ -167,8 +175,14 @@ export function flattenTradelensTradesList(
     if (!Array.isArray(day?.trades)) continue
     const tradeseaDay = String(day.date || '').split('T')[0] || undefined
     for (const trade of day.trades) {
-      if (trade?.side) trade.side = String(trade.side).toLowerCase()
-      out.push(tradeseaDay ? { ...trade, tradeseaDay } : trade)
+      if (!trade) continue
+      const side = trade.side ? String(trade.side).toLowerCase() : trade.side
+      // Do not mutate API/cache objects while preparing UI rows.
+      out.push(
+        tradeseaDay || side !== trade.side
+          ? { ...trade, side, ...(tradeseaDay ? { tradeseaDay } : {}) }
+          : trade
+      )
     }
   }
   return out
@@ -216,35 +230,40 @@ export function buildDayStatsPayload(
   dayTrades: TradeData[],
   calculateTradePnL: (trade: TradeData) => number
 ): DayStatsPayload {
-  const dayProfit = dayTrades.reduce((sum, trade) => {
+  let dayProfit = 0
+  let totalContracts = 0
+  let longTradeCount = 0
+  let shortTradeCount = 0
+  let longContracts = 0
+  let shortContracts = 0
+  let wins = 0
+  let totalFeesDay = 0
+
+  // One pass replaces repeated filters/reductions and calculates each trade P&L once.
+  for (const trade of dayTrades) {
     const grossPnl = calculateTradePnL(trade)
-    let fees = 0
-    if (trade.fees !== undefined || trade.originalTrade?.fees !== undefined) {
-      fees = trade.fees || trade.originalTrade?.fees || 0
+    const pnlFees = Number(trade.fees ?? trade.originalTrade?.fees ?? 0) || 0
+    dayProfit += grossPnl - pnlFees
+    if (grossPnl - pnlFees > 0) wins += 1
+
+    const contracts = Math.abs(Number(trade.contracts) || 0)
+    totalContracts += contracts
+    const direction = trade.direction?.toLowerCase()
+    if (direction === 'long') {
+      longTradeCount += 1
+      longContracts += contracts
+    } else if (direction === 'short') {
+      shortTradeCount += 1
+      shortContracts += contracts
     }
-    return sum + grossPnl - fees
-  }, 0)
 
-  const totalContracts = dayTrades.reduce((sum, trade) => sum + Math.abs(trade.contracts || 0), 0)
-  const longTrades = dayTrades.filter((t) => t.direction?.toLowerCase() === 'long')
-  const shortTrades = dayTrades.filter((t) => t.direction?.toLowerCase() === 'short')
-  const longContracts = longTrades.reduce((sum, trade) => sum + Math.abs(trade.contracts || 0), 0)
-  const shortContracts = shortTrades.reduce((sum, trade) => sum + Math.abs(trade.contracts || 0), 0)
-
-  const wins = dayTrades.filter((trade) => {
-    const grossPnl = calculateTradePnL(trade)
-    const fees = trade.fees || trade.originalTrade?.fees || 0
-    return grossPnl - fees > 0
-  }).length
-
-  const totalFeesDay = dayTrades.reduce((sum, trade) => {
     const charges =
       trade.originalTrade?.totalCharges ??
       trade.originalTrade?.commission ??
       trade.fees ??
       0
-    return sum + (Number(charges) || 0)
-  }, 0)
+    totalFeesDay += Number(charges) || 0
+  }
 
   return {
     date: dateStr,
@@ -252,8 +271,8 @@ export function buildDayStatsPayload(
     profit: dayProfit,
     totalTrades: dayTrades.length,
     totalContracts,
-    longTrades: longTrades.length,
-    shortTrades: shortTrades.length,
+    longTrades: longTradeCount,
+    shortTrades: shortTradeCount,
     longContracts,
     shortContracts,
     wins,
@@ -391,10 +410,11 @@ export function buildTradeseaSymbolData(trades: TradeData[]): Record<
 > {
   const symbolData: Record<string, { tickSize: number; tickValue: number; totalFees?: number }> =
     {}
-  const symbols = new Set(trades.map((t) => t.symbol).filter(Boolean))
-  for (const symbol of symbols) {
-    const sample = trades.find((t) => t.symbol === symbol)
-    const pointValue = Number((sample as any)?.tickValue) || 1
+  // Populate on first sight in O(n); Set + find was O(n × unique symbols).
+  for (const trade of trades) {
+    const symbol = String(trade.symbol || '')
+    if (!symbol || symbolData[symbol]) continue
+    const pointValue = Number((trade as any)?.tickValue) || 1
     const tickSize = symbol.startsWith('M') ? 0.25 : 0.25
     symbolData[symbol] = {
       tickSize,

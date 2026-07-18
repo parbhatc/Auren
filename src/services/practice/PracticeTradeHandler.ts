@@ -41,7 +41,6 @@ export class PracticeTradeHandler {
   private upl = 0
   private disconnectAccountWs: (() => void) | null = null
   private accountWs: PracticeAccountWsClient | null = null
-  private accountPositionsHydrated = false
   private marketBookUnsub: (() => void) | null = null
   private uplRefreshRaf: number | null = null
   private uplDeferredWhilePan: number | null = null
@@ -176,13 +175,10 @@ export class PracticeTradeHandler {
     const client = connectPracticeAccountWs(this.practiceAccountId, {
       onSnapshot: (event) => {
         if (event.account) patchPracticeAccount(event.account)
-        if (!this.accountPositionsHydrated) {
-          this.ensureMarketBooksForPositions(event.positions)
-          void this.tradeCache?.loadPositionsFromServer(event.positions).then(() => {
-            this.tradeCache?.scheduleReconcilePositionLines()
-          })
-          this.accountPositionsHydrated = true
-        }
+        this.ensureMarketBooksForPositions(event.positions)
+        void this.tradeCache?.loadPositionsFromServer(event.positions).then(() => {
+          this.tradeCache?.scheduleReconcilePositionLines()
+        })
         this.refreshUnrealizedPl()
         this.onAccountUpdated?.()
       },
@@ -221,6 +217,9 @@ export class PracticeTradeHandler {
         this.syncAccountBlownState()
         this.checkPassedWhileTrading()
       },
+      onMutationError: (message) => {
+        aurenToast.error(message || 'Position update failed')
+      },
     })
 
     if (client) {
@@ -235,6 +234,8 @@ export class PracticeTradeHandler {
     this.disconnectAccountWs?.()
     this.disconnectAccountWs = null
     this.accountWs = null
+    this.tradeCache?.dispose()
+    this.tradeCache = null
   }
 
   hasAnyOpenPosition(): boolean {

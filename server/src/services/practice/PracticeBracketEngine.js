@@ -17,6 +17,10 @@ const BRACKET_RESOLUTION = '1'
 /** @type {Map<string, { id: string, userId: string, accountId: string, symbol: string, contracts: number, entry: number, stopLoss: number | null, takeProfit: number | null, entryTime: number, type: string }>} */
 const watchesById = new Map()
 
+/** Symbol-indexed buckets keep tick dispatch O(positions for symbol), not O(all positions). */
+/** @type {Map<string, Map<string, object>>} */
+const watchesBySymbol = new Map()
+
 /** Open position count per product root (MNQ, NQ, …) — one Rithmic sub per symbol while count > 0. */
 /** @type {Map<string, number>} */
 const symbolRefCounts = new Map()
@@ -26,6 +30,10 @@ const subscribedSymbols = new Set()
 
 /** @type {Set<string>} */
 const closingIds = new Set()
+
+/** Latest executable mark per normalized product, retained across watch reloads. */
+/** @type {Map<string, { price: number, time: number | string | undefined }>} */
+const latestMarketBySymbol = new Map()
 
 let started = false
 
@@ -39,11 +47,19 @@ function normalizeSymbol(symbol) {
 
 function watchesForSymbol(symbol) {
   const key = normalizeSymbol(symbol)
-  const out = []
-  for (const watch of watchesById.values()) {
-    if (normalizeSymbol(watch.symbol) === key) out.push(watch)
+  return watchesBySymbol.get(key)?.values() ?? []
+}
+
+function setWatch(watch) {
+  const previous = watchesById.get(watch.id)
+  if (previous && previous.symbol !== watch.symbol) removeWatch(watch.id)
+  watchesById.set(watch.id, watch)
+  let bucket = watchesBySymbol.get(watch.symbol)
+  if (!bucket) {
+    bucket = new Map()
+    watchesBySymbol.set(watch.symbol, bucket)
   }
-  return out
+  bucket.set(watch.id, watch)
 }
 
 async function subscribeSymbolKey(key) {
@@ -72,12 +88,31 @@ async function subscribeAllPendingSymbols() {
 /** Rebuild symbol ref counts from DB (server start / ChartLive ready). */
 async function refreshSymbolSubscriptionsFromDb() {
   const counts = await PracticeService.listActivePositionSymbolCounts()
-  symbolRefCounts.clear()
+  const nextCounts = new Map()
   for (const { symbol, count } of counts) {
     const key = normalizeSymbol(symbol)
-    if (!key || count <= 0) continue
-    symbolRefCounts.set(key, count)
+    if (key && count > 0) nextCounts.set(key, count)
   }
+
+  // Reconciliation must also unsubscribe products removed by resets, account
+  // deletion, or status changes; otherwise the shared live feed grows forever.
+  if (isRithmicChartLiveOpen()) {
+    for (const key of subscribedSymbols) {
+      if (nextCounts.has(key)) continue
+      try {
+        await unsubscribeRithmicChartLive(key, BRACKET_EXCHANGE)
+      } catch {
+        /* a disconnected feed will be rebuilt on its next bootstrap */
+      }
+      subscribedSymbols.delete(key)
+    }
+  } else {
+    // Subscription flags belong to the old ChartLive instance. Keeping them
+    // would cause a reopened feed to skip every required resubscription.
+    subscribedSymbols.clear()
+  }
+  symbolRefCounts.clear()
+  for (const [key, count] of nextCounts) symbolRefCounts.set(key, count)
   await subscribeAllPendingSymbols()
 }
 
@@ -111,13 +146,25 @@ async function decrementSymbolRef(symbol) {
 }
 
 function removeWatch(positionId) {
+  const watch = watchesById.get(positionId)
   watchesById.delete(positionId)
+  if (watch) {
+    const bucket = watchesBySymbol.get(watch.symbol)
+    bucket?.delete(positionId)
+    if (bucket?.size === 0) watchesBySymbol.delete(watch.symbol)
+  }
   lastLtpByWatchId.delete(positionId)
 }
 
 function ltpFromPayload(payload) {
   const bar = payload?.bar
-  const close = bar?.close ?? bar?.last ?? bar?.c
+  const close =
+    payload?.last ??
+    payload?.price ??
+    payload?.close ??
+    bar?.last ??
+    bar?.close ??
+    bar?.c
   if (close == null || !Number.isFinite(Number(close))) return null
   return Number(close)
 }
@@ -145,31 +192,38 @@ async function closeByBracket(watch, reason, exitPrice, time) {
   }
 }
 
+function evaluateWatchAtMark(watch, ltp, time) {
+  const prev = lastLtpByWatchId.get(watch.id)
+  const hit = resolveBracketCrossHit(watch, prev, ltp)
+  lastLtpByWatchId.set(watch.id, ltp)
+  if (hit) void closeByBracket(watch, hit.reason, hit.exitPrice, time)
+}
+
 function handleChartMarketEvent(_kind, payload) {
   const symbol = normalizeSymbol(payload?.symbol)
   if (!symbol) return
   const ltp = ltpFromPayload(payload)
   if (ltp == null) return
   const time = payload.marker ?? payload?.bar?.marker ?? payload?.bar?.time
+  latestMarketBySymbol.set(symbol, { price: ltp, time })
 
   for (const watch of watchesForSymbol(symbol)) {
-    const prev = lastLtpByWatchId.get(watch.id)
-    const hit = resolveBracketCrossHit(watch, prev, ltp)
-    lastLtpByWatchId.set(watch.id, ltp)
-    if (!hit) continue
-    void closeByBracket(watch, hit.reason, hit.exitPrice, time)
+    evaluateWatchAtMark(watch, ltp, time)
   }
 }
 
 export async function startPracticeBracketEngine() {
   if (started) {
+    await refreshAllWatches()
     await refreshSymbolSubscriptionsFromDb()
     return
   }
   started = true
   setChartLiveMarketHandler(handleChartMarketEvent)
-  await refreshSymbolSubscriptionsFromDb()
+  // Restore watches before subscribing so the first market event cannot race
+  // ahead of the positions it is supposed to protect.
   await refreshAllWatches()
+  await refreshSymbolSubscriptionsFromDb()
 }
 
 /** Called when a new position row is inserted — subscribe symbol if first open on that product. */
@@ -195,10 +249,12 @@ export async function refreshAllWatches() {
       type: row.type,
     }
     nextIds.add(watch.id)
-    watchesById.set(watch.id, watch)
+    setWatch(watch)
+    const latest = latestMarketBySymbol.get(watch.symbol)
+    if (latest) evaluateWatchAtMark(watch, latest.price, latest.time)
   }
 
-  for (const [id] of [...watchesById.entries()]) {
+  for (const id of watchesById.keys()) {
     if (!nextIds.has(id)) removeWatch(id)
   }
 }
@@ -218,7 +274,7 @@ export async function syncPositionWatch(userId, accountId, position) {
     return
   }
 
-  watchesById.set(position.id, {
+  setWatch({
     id: position.id,
     userId,
     accountId,
@@ -230,10 +286,14 @@ export async function syncPositionWatch(userId, accountId, position) {
     entryTime: position.entryTime,
     type: position.type,
   })
+
+  const watch = watchesById.get(position.id)
+  const latest = latestMarketBySymbol.get(normalizeSymbol(position.symbol))
+  if (watch && latest) evaluateWatchAtMark(watch, latest.price, latest.time)
 }
 
 export async function clearAccountWatches(accountId) {
-  for (const [id, watch] of [...watchesById.entries()]) {
+  for (const [id, watch] of watchesById.entries()) {
     if (watch.accountId === accountId) removeWatch(id)
   }
   await refreshSymbolSubscriptionsFromDb()

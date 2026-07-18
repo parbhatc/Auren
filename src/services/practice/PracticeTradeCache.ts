@@ -33,10 +33,6 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   private closingBracketIds = new Set<string>()
 
-  private bookTickRaf: number | null = null
-
-  private pendingBookStreamIds = new Set<string>()
-
   /** Previous mark per cache key — detect bracket crosses between ticks. */
   private lastBracketMark = new Map<string, number>()
 
@@ -74,6 +70,28 @@ export class PracticeTradeCache extends ChartTradeCache {
       window.visualViewport?.addEventListener('resize', this.onChartLayoutResize, { passive: true })
     }
 
+  }
+
+  /** Release DOM listeners, timers, and chart handles when leaving the terminal. */
+  dispose(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.onChartLayoutResize)
+      window.visualViewport?.removeEventListener('resize', this.onChartLayoutResize)
+    }
+    for (const timer of this.reconcileTimers) clearTimeout(timer)
+    this.reconcileTimers = []
+    if (this.persistTimer) clearTimeout(this.persistTimer)
+    this.persistTimer = null
+    this.pendingPersist = null
+    for (const [, position] of this.cache.entries()) {
+      const line = position?.line as { removeAll?: () => void } | undefined
+      line?.removeAll?.()
+    }
+    this.cache.clear()
+    this.positionIds.clear()
+    this.lastBracketMark.clear()
+    this.pendingBracketCloses.clear()
+    this.closingBracketIds.clear()
   }
 
 
@@ -429,6 +447,16 @@ export class PracticeTradeCache extends ChartTradeCache {
   private async hydratePositionsFromServer(positions: PracticePosition[]): Promise<void> {
     const data: Record<string, unknown> = {}
 
+    // A snapshot is authoritative. Remove old visual handles before replacing the
+    // cache so reconnects cannot leave ghost positions or stale bracket lines.
+    for (const [, existing] of this.cache.entries()) {
+      const line = existing?.line as { removeAll?: () => void } | undefined
+      line?.removeAll?.()
+    }
+    this.positionIds.clear()
+    this.lastBracketMark.clear()
+    this.pendingBracketCloses.clear()
+
     for (const p of positions) {
 
       const cacheKey = this.chartCacheKeyForProduct(p.symbol)
@@ -459,13 +487,19 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     }
 
-    if (Object.keys(data).length) {
-
-      this.load(data, true)
-
-    }
+    this.load(data, true)
 
     this.scheduleReconcilePositionLines()
+
+    // Reconcile immediately against a mark already in memory. This closes a
+    // restored position beyond TP/SL even if no new tick follows the snapshot.
+    for (const p of positions) {
+      const cacheKey = this.chartCacheKeyForProduct(p.symbol)
+      const mark = this.tradeHandler.getMarkPriceForPositionKey(cacheKey)
+      if (mark != null && Number.isFinite(mark)) {
+        this.checkMarkBracketFills(cacheKey, mark, Date.now())
+      }
+    }
   }
 
   private positionChartLinesReady(line: unknown): boolean {
@@ -563,16 +597,9 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   /** MDS LTP tick — fastest bracket path while the chart session is online. */
   onMarketBookTick(streamId: string): void {
-    this.pendingBookStreamIds.add(streamId)
-    if (this.bookTickRaf != null) return
-    this.bookTickRaf = requestAnimationFrame(() => {
-      this.bookTickRaf = null
-      const streams = [...this.pendingBookStreamIds]
-      this.pendingBookStreamIds.clear()
-      for (const id of streams) {
-        this.processMarketBookTick(id)
-      }
-    })
+    // Process every notification. Animation-frame coalescing retained only the
+    // final price and could discard a brief TP/SL touch within one frame.
+    this.processMarketBookTick(streamId)
   }
 
   private processMarketBookTick(streamId: string): void {
@@ -893,7 +920,14 @@ export class PracticeTradeCache extends ChartTradeCache {
   }) {
     const tradeSymbol = this.productSymbol(position.symbol)
     const cacheKey = position.symbol
-    const existingId = this.positionIds.get(cacheKey) || position.positionId || undefined
+    let existingId = this.positionIds.get(cacheKey) || position.positionId || undefined
+    if (!existingId) {
+      existingId =
+        globalThis.crypto?.randomUUID?.() ??
+        `pp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      this.positionIds.set(cacheKey, existingId)
+      position.positionId = existingId
+    }
     const entryTimeSec = Math.floor(entryTimeToMs(position.entryTime) / 1000)
 
     return {
@@ -1019,8 +1053,33 @@ export class PracticeTradeCache extends ChartTradeCache {
   applyServerPositionUpdate(position: PracticePosition): void {
     const cacheKey = this.chartCacheKeyForProduct(position.symbol)
     this.positionIds.set(cacheKey, position.id)
+    let existing = this.cache.get(cacheKey)
+    if (!existing) {
+      this.hydratingFromServer = true
+      try {
+        this.load(
+          {
+            [cacheKey]: {
+              symbol: cacheKey,
+              entry: position.entry,
+              contracts: position.contracts,
+              stopLoss: position.stopLoss,
+              takeProfit: position.takeProfit,
+              entryTime: Math.floor(entryTimeToMs(position.entryTime) / 1000),
+              type: position.type,
+              id: position.id,
+              positionId: position.id,
+            },
+          },
+          false
+        )
+      } finally {
+        this.hydratingFromServer = false
+      }
+      existing = this.cache.get(cacheKey)
+      this.scheduleReconcilePositionLines()
+    }
     this.flushPendingBracketClose(cacheKey)
-    const existing = this.cache.get(cacheKey)
     if (!existing) return
 
     const unchanged =

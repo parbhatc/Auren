@@ -67,14 +67,24 @@ class PracticeAccountWebSocket extends WebSocketBase {
     }
     if (!msg || typeof msg !== 'object') return
 
+    const mutationId = typeof msg.mutationId === 'string' ? msg.mutationId : null
+    const reply = (payload) => {
+      if (clientWs.readyState !== WebSocket.OPEN) return
+      try {
+        clientWs.send(JSON.stringify(payload))
+      } catch {
+        /* connection closed while replying */
+      }
+    }
+
     try {
       switch (msg.type) {
         case 'open_position':
           await PracticeService.openPosition(userId, accountId, msg.position)
-          return
+          break
         case 'modify_position':
           await PracticeService.modifyPosition(userId, accountId, msg.position)
-          return
+          break
         case 'close_position':
           await PracticeService.closePosition(userId, accountId, msg.positionId, {
             exitPrice: msg.exitPrice,
@@ -82,12 +92,32 @@ class PracticeAccountWebSocket extends WebSocketBase {
             fees: msg.fees,
             forcedExit: msg.forcedExit,
           })
-          return
+          break
         default:
           return
       }
+      if (mutationId) reply({ type: 'mutation_ack', mutationId })
     } catch (err) {
-      clientWs.close(1008, err?.message || 'Position update failed')
+      // A rejected order must not tear down the entire account stream. Tell the
+      // client which durable mutation failed so it can discard only that item.
+      if (mutationId) {
+        reply({
+          type: 'mutation_error',
+          mutationId,
+          message: err?.message || 'Position update failed',
+        })
+      } else {
+        reply({ type: 'mutation_error', message: err?.message || 'Position update failed' })
+      }
+      // Restore the client from authoritative state after an optimistic action
+      // is rejected (for example, a close racing a backend TP fill).
+      try {
+        const account = await PracticeService.getAccount(userId, accountId)
+        const positions = await PracticeService.getPositions(userId, accountId)
+        if (account) broadcastAccountSnapshot(clientWs, accountId, account, positions)
+      } catch {
+        /* the reconnect snapshot is the fallback */
+      }
     }
   }
 }

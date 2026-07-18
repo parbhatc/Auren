@@ -443,6 +443,7 @@ class PracticeService {
     await Database.initialize()
     await Database.run('DELETE FROM practice_trades WHERE account_id = ?', [accountId])
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
+    notifyBracketEngine('clearAccountWatches', accountId)
     await Database.run(
       `UPDATE practice_accounts SET
         status = 'active', balance = ?, high_water_mark = ?, day_pnl_json = '[]',
@@ -472,6 +473,7 @@ class PracticeService {
     await Database.initialize()
     await Database.run('DELETE FROM practice_trades WHERE account_id = ?', [accountId])
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
+    notifyBracketEngine('clearAccountWatches', accountId)
     await Database.run('DELETE FROM practice_accounts WHERE id = ? AND user_id = ?', [
       accountId,
       userId,
@@ -519,10 +521,11 @@ class PracticeService {
   async listActivePositionSymbolCounts() {
     await Database.initialize()
     const rows = await Database.query(
-      `SELECT symbol, COUNT(*) AS cnt
-       FROM practice_positions
-       WHERE contracts != 0
-       GROUP BY symbol`
+      `SELECT p.symbol, COUNT(*) AS cnt
+       FROM practice_positions p
+       INNER JOIN practice_accounts a ON a.id = p.account_id
+       WHERE a.status = 'active' AND p.contracts != 0
+       GROUP BY p.symbol`
     )
     return rows.map((row) => ({
       symbol: normalizeTradeSymbol(row.symbol),
@@ -544,6 +547,28 @@ class PracticeService {
   }
 
   async openPosition(userId, accountId, position) {
+    // Client-generated ids make retried websocket mutations idempotent. If the
+    // acknowledgement was lost, replaying the same open must not charge another
+    // commission or disconnect the account stream.
+    if (position?.id) {
+      await Database.initialize()
+      const existing = await Database.get(
+        'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
+        [position.id, accountId]
+      )
+      if (existing) {
+        const saved = rowToPosition(existing)
+        const account = await this.getAccount(userId, accountId)
+        if (!account) {
+          const err = new Error('Practice account not found')
+          err.statusCode = 404
+          throw err
+        }
+        broadcastOpenPosition(userId, accountId, account, saved)
+        notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
+        return saved
+      }
+    }
     const saved = await this._savePosition(userId, accountId, position, { requireNew: true })
     const account = await this.getAccount(userId, accountId)
     if (account) broadcastOpenPosition(userId, accountId, account, saved)
@@ -570,8 +595,10 @@ class PracticeService {
     }
 
     await Database.initialize()
+    // Atomically claim the row. Manual close and backend bracket close can race;
+    // DELETE ... RETURNING guarantees only one path records the fill.
     const row = await Database.get(
-      'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
+      'DELETE FROM practice_positions WHERE id = ? AND account_id = ? RETURNING *',
       [positionId, accountId]
     )
     if (!row) {
@@ -600,10 +627,6 @@ class PracticeService {
       })
     }
 
-    await Database.run(
-      'DELETE FROM practice_positions WHERE id = ? AND account_id = ?',
-      [positionId, accountId]
-    )
     notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
 
     const updatedAccount = await this.getAccount(userId, accountId)
@@ -740,7 +763,7 @@ class PracticeService {
 
     await Database.initialize()
     const row = await Database.get(
-      'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
+      'DELETE FROM practice_positions WHERE id = ? AND account_id = ? RETURNING *',
       [positionId, accountId]
     )
     if (!row) return null
@@ -762,11 +785,6 @@ class PracticeService {
       stopLoss: row.stop_loss,
       takeProfit: row.take_profit,
     })
-
-    await Database.run(
-      'DELETE FROM practice_positions WHERE id = ? AND account_id = ?',
-      [positionId, accountId]
-    )
 
     notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
 

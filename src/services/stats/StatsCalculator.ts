@@ -4,6 +4,8 @@
  */
 
 import { TradeData, CalculatedStats } from '../../types/stats'
+import { calculateDirectionalPnl } from './tradePnl.js'
+import { filterTradesByDateRange } from './tradeDateRange.js'
 
 // Re-export for backward compatibility
 export type { TradeData, CalculatedStats }
@@ -16,8 +18,12 @@ export abstract class StatsCalculator {
    * Calculate P&L for a single trade
    */
   protected calculateTradePnL(trade: TradeData): number {
-    if (!trade.exit_price) return 0
-    return (trade.exit_price - trade.entry_price) * trade.contracts
+    return calculateDirectionalPnl({
+      entryPrice: trade.entry_price,
+      exitPrice: trade.exit_price,
+      contracts: trade.contracts,
+      direction: trade.direction,
+    })
   }
 
   /**
@@ -29,12 +35,6 @@ export abstract class StatsCalculator {
    * Filter trades by date range (optional, can be overridden)
    */
   filterByDateRange(trades: TradeData[], startDate: string, endDate: string): TradeData[] {
-    // Default implementation - can be overridden by subclasses
-    const start = new Date(startDate).getTime()
-    const end = new Date(endDate).getTime()
-    return trades.filter(trade => {
-      const tradeDate = trade.entry_time ? new Date(trade.entry_time).getTime() : 0
-      return tradeDate >= start && tradeDate <= end
-    })
+    return filterTradesByDateRange(trades, startDate, endDate)
   }
 }
