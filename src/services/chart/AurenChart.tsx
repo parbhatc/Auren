@@ -145,10 +145,29 @@ function chartShellHtml(chartId: string): string {
   `
 }
 
-/** BWC's symbol picker requires a string during boot; use MNQ for fresh/empty layouts. */
+/** BWC persists the last chart symbol per pane under this localStorage key. */
+const BWC_PANE_SYMBOLS_KEY = 'tv-pane-symbols'
+
+function loadBwcSavedSymbol(): string | null {
+  try {
+    const raw = localStorage.getItem(BWC_PANE_SYMBOLS_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw) as Record<string, unknown>
+    const sym = data?.['0']
+    return typeof sym === 'string' && sym.trim() ? sym.trim().toUpperCase() : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * BWC's symbol picker requires a string during boot. A non-empty boot symbol
+ * overrides BWC's own saved-symbol restore, so when no symbol prop is given
+ * (practice mode) prefer the saved pane symbol; MNQ only for fresh layouts.
+ */
 function resolveInitialSymbol(symbolProp: string | undefined): string {
   const trimmed = String(symbolProp || '').trim()
-  if (!trimmed) return 'MNQ'
+  if (!trimmed) return loadBwcSavedSymbol() || 'MNQ'
   return chartSymbolToProductRoot(trimmed) || trimmed
 }
 
