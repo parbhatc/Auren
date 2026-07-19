@@ -9,7 +9,7 @@ import BacktesterWsStatusButton from './BacktesterWsStatusButton'
 import { buildBacktesterTradePadProps } from './buildBacktesterTradePadProps'
 import TradePanel from '../../trading/shared/pad/TradePanel'
 import { DetachedTradePanel } from '../../trading/shared/mobile/DetachedTradePanel'
-import { isPadDetached, togglePadDetached } from '../../../utils/tradePanelPopout'
+import { isPadDetached, setPadDetached, togglePadDetached } from '../../../utils/tradePanelPopout'
 import { getMobileTradePrefs, setMobileFloatingPad } from '../../../utils/mobileTradePrefs'
 import { normalizeBacktesterSymbolRoot } from './backtesterSymbolSearch'
 import KeyboardShortcutsHelp from '../../common/KeyboardShortcutsHelp'
@@ -44,6 +44,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   private tradePadPropsCache: ReturnType<typeof buildBacktesterTradePadProps> | null = null
   private pendingUnrealizedPnL: number | null = null
   private unrealizedPnLFlushScheduled = false
+  private websocketSessionId: string | null = null
 
   state = {
     isPlaying: false,
@@ -65,6 +66,10 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     
     ;(window as any).__backtesterDatafeed = this.datafeed
     ;(window as any).__backtesterChartView = this
+
+    // Re-render once symbol config lands so the trade pad picks up real
+    // tick size/value (its props cache keys on them).
+    this.datafeed.onSymbolsLoaded = () => this.forceUpdate()
 
     const savedQuantity = localStorage.getItem('backtester_contract_quantity')
     if (savedQuantity) {
@@ -174,7 +179,8 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleKeyboardShortcut)
-    
+    this.datafeed.onSymbolsLoaded = null
+
     delete (window as any).__backtesterDatafeed
     delete (window as any).__backtesterChartView
     
@@ -184,34 +190,54 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
       this.wsClient.disconnect()
       this.wsClient = null
     }
+    this.websocketSessionId = null
   }
 
   initializeWebSocket = () => {
     const { session } = this.props
     if (!session) return
 
-    this.datafeed.resetSessionState()
+    // Do not replace an in-flight client for the same session. Replacing it
+    // resets the shared datafeed and aborts BWC's pending getBars callback.
+    if (this.wsClient && this.websocketSessionId === session.id) return
+
+    const previousSessionId = this.websocketSessionId
+    if (this.wsClient) {
+      this.wsClient.disconnect()
+      this.wsClient = null
+    }
+
+    this.websocketSessionId = session.id
+    if (previousSessionId && previousSessionId !== session.id) {
+      this.datafeed.resetSessionState()
+    }
     this.setState({ wsState: 'connecting', wsConnected: false })
 
-    this.wsClient = new BacktesterChartClient(
+    let client: BacktesterChartClient
+    client = new BacktesterChartClient(
       {
         onConnected: () => {
+          if (this.wsClient !== client) {
+            client.disconnect()
+            return
+          }
           console.log('[Backtester] WebSocket connected for session:', session?.id)
           if (this.tradeHandler) {
-            this.tradeHandler.updateClient(this.wsClient)
+            this.tradeHandler.updateClient(client)
           }
           if (this.datafeed) {
-            this.datafeed.setWebSocketClient(this.wsClient)
+            this.datafeed.setWebSocketClient(client)
           }
-          if (this.wsClient) {
-            this.wsClient.setDatafeed(this.datafeed)
+          if (this.wsClient === client) {
+            client.setDatafeed(this.datafeed)
             if (this.chartRef.current) {
-              this.wsClient.setChart(this.chartRef.current)
+              client.setChart(this.chartRef.current)
             }
           }
           this.setState({ wsConnected: true, wsState: 'connected' })
         },
         onDisconnected: () => {
+          if (this.wsClient !== client) return
           if (this.tradeHandler) {
             this.tradeHandler.updateClient(null)
           }
@@ -221,10 +247,12 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
           console.log('[Backtester] WebSocket message:', data)
         },
         onError: (error) => {
+          if (this.wsClient !== client) return
           console.error('[Backtester] WebSocket error:', error)
           this.setState({ wsConnected: false, wsState: 'disconnected' })
         },
         onChartReady: () => {
+          if (this.wsClient !== client) return
           console.log('[Backtester] Chart ready - server handshake complete')
           this.setState({ wsConnected: true, wsState: 'connected' })
         },
@@ -234,19 +262,19 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
       }
     )
 
+    this.wsClient = client
+
     if (this.tradeHandler) {
-      this.tradeHandler.updateClient(this.wsClient)
+      this.tradeHandler.updateClient(client)
     }
     
     if (this.datafeed) {
-      this.datafeed.setWebSocketClient(this.wsClient)
+      this.datafeed.setWebSocketClient(client)
     }
 
-    if (this.wsClient) {
-      this.wsClient.setDatafeed(this.datafeed)
-    }
+    client.setDatafeed(this.datafeed)
 
-    this.wsClient.connect()
+    void client.connect()
   }
 
   syncPositionStats = (options?: { refreshSessionStats?: boolean }) => {
@@ -783,8 +811,13 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     // recreating an object + inline closures and re-rendering the trade
     // panel subtree on every bar (during step-spam/auto-play this fires
     // once per rendered candle). Cache on the actual inputs that matter.
+    // Tick size/value load async with the symbol config — key on them so the
+    // pad rebuilds once they arrive (otherwise $-unit math sticks at defaults).
+    const padTickKey = session
+      ? `${this.datafeed?.getTickSize?.(chartSymbol) ?? ''}:${this.datafeed?.getTickValue?.(chartSymbol) ?? ''}`
+      : ''
     const tradePadPropsCacheKey = session
-      ? `${session.id}|${isDark}|${wsConnected}|${contractQuantity}|${chartSymbol}`
+      ? `${session.id}|${isDark}|${wsConnected}|${contractQuantity}|${chartSymbol}|${padTickKey}`
       : null
     let tradePadProps = tradePadPropsCacheKey ? this.tradePadPropsCache : null
     if (session && tradePadPropsCacheKey !== this.tradePadPropsCacheKey) {
@@ -857,7 +890,17 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
       )
     }
 
-    const padDetached = isPadDetached(session.id)
+    let padDetached = isPadDetached(session.id)
+    try {
+      const replayQuickPadDefaultKey = `backtester:quick-pad-default:${session.id}`
+      if (localStorage.getItem(replayQuickPadDefaultKey) !== '1') {
+        setPadDetached(session.id, true)
+        localStorage.setItem(replayQuickPadDefaultKey, '1')
+        padDetached = true
+      }
+    } catch {
+      // Storage can be unavailable in private browsing; retain the current layout.
+    }
     const mobileTradePrefs = getMobileTradePrefs(session.id)
 
     const chartInner = (
@@ -971,7 +1014,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
               localStorage.setItem('trading_show_nav', 'true')
             }}
             showAccountSelector={false}
-            showTradingSettings={false}
+            showTradingSettings
             showStatsBar
             hubPath={`${ROUTES.HOME}?mode=replay`}
             headerLeading={

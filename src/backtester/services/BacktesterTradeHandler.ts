@@ -8,6 +8,8 @@ import type { DomPositionContext } from '../../services/tradesea/tradeseaPnL'
 import { calcTradeseaTickPnL } from '../../services/tradesea/tradeseaPnL'
 import { tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaResolutions'
 import type { ResolutionString } from '../../types/chart'
+import type { BracketOptions } from '../../types/tradePanel'
+import type { OrderSide } from '../../types/order'
 
 /**
  * Backtester Trade Handler
@@ -30,6 +32,10 @@ export class BacktesterTradeHandler {
   private replayPaneSyncRaf: number | null = null
   private nextCandleInFlight: boolean = false
   private nextCandleTimeout: NodeJS.Timeout | null = null
+  /** Assigned by the host view to refresh position/P&L UI after trade actions. */
+  onPositionUpdate?: () => void
+  onUnrealizedPnLUpdate?: (pnl: number) => void
+  onTradeSaved?: () => void
 
   constructor(session: BacktestSession | null, client: BacktesterChartClient | null) {
     this.session = session
@@ -497,7 +503,7 @@ export class BacktesterTradeHandler {
     void backtesterAPI.updateSession(updatedSession).catch(() => {})
 
     try {
-      ;(this as any).onUnrealizedPnLUpdate?.(0)
+      this.onUnrealizedPnLUpdate?.(0)
     } catch {
       // ignore
     }
@@ -584,9 +590,45 @@ export class BacktesterTradeHandler {
     }
 
     try {
-      ;(this as { onPositionUpdate?: () => void }).onPositionUpdate?.()
-      const upl = this.getPositionUplFor(chartSymbol)
-      ;(this as { onUnrealizedPnLUpdate?: (pnl: number) => void }).onUnrealizedPnLUpdate?.(upl ?? 0)
+      this.onPositionUpdate?.()
+      this.onUnrealizedPnLUpdate?.(this.getPositionUplFor(chartSymbol) ?? 0)
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Open a position with attached SL/TP prices (Ticket tab confirm).
+   * Backtester has no resting orders — entries fill at the current replay bar.
+   * SL/TP hits are detected per replay bar by BacktesterTradeCache.handlePriceUpdate.
+   */
+  submitBracketOrder(side: OrderSide, quantity: number, symbol: string, brackets: BracketOptions): void {
+    const chartSymbol = this.resolveChartSymbol(symbol)
+    const lastBar = chartSymbol ? this.resolveLastBar(chartSymbol) : null
+    if (!chartSymbol || !lastBar?.close || !this.tradeCache) {
+      console.warn('[Backtester Trade Handler] Cannot submit bracket order', { chartSymbol, quantity })
+      return
+    }
+    const qty = Number(quantity)
+    if (!Number.isFinite(qty) || qty <= 0) return
+
+    const mark = lastBar.close
+    const signed = qty * (side === 'buy' ? 1 : -1)
+    const validSl =
+      brackets.stopLoss != null && (side === 'buy' ? brackets.stopLoss < mark : brackets.stopLoss > mark)
+    const validTp =
+      brackets.takeProfit != null && (side === 'buy' ? brackets.takeProfit > mark : brackets.takeProfit < mark)
+    this.tradeCache.onOpenPosition(
+      chartSymbol,
+      mark,
+      signed,
+      validSl ? brackets.stopLoss : null,
+      validTp ? brackets.takeProfit : null,
+    )
+
+    try {
+      this.onPositionUpdate?.()
+      this.onUnrealizedPnLUpdate?.(this.getPositionUplFor(chartSymbol) ?? 0)
     } catch {
       // ignore
     }

@@ -13,6 +13,8 @@ export type PadTab = TradePanelTab
 export type PracticeTradePanelTab = TradePanelTab
 
 export type TradePanelSettings = {
+  /** How the chart position line shows running P&L: $0.00 vs 3 ticks vs points. */
+  positionPnlDisplay?: 'dollars' | 'ticks' | 'points'
   hideBuySell: boolean
   hideJoinBidAsk: boolean
   hideClosePosition: boolean
@@ -82,6 +84,8 @@ export type TradePanelProps = {
   onFlatten: () => void
   markPrice?: number | null
   tickSize?: number
+  /** $ per tick per contract — enables the $ bracket unit and risk summary. */
+  tickValue?: number
   getMarketBook?: () => TradeseaMarketBook | null
   subscribeMarketBook?: (
     onUpdate: (streamId: string, kind: MarketBookUpdateKind) => void

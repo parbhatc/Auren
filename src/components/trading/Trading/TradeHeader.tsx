@@ -134,11 +134,12 @@ export function TradeHeader({
       className={`sticky top-0 shrink-0 z-[110] max-lg:pt-[env(safe-area-inset-top,0px)] backdrop-blur-sm ${shell}`}
     >
       <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
+        {/* Mobile-only: desktop always shows the nav rail, so no header toggle there. */}
         {!hideNavToggle && !showNav && !isPwaPinnedNav() && (
           <button
             type="button"
             onClick={onShowNav}
-            className={`self-center p-1.5 rounded shrink-0 ${
+            className={`lg:hidden self-center p-1.5 rounded shrink-0 ${
               isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
             }`}
             title="Show navigation"
@@ -201,19 +202,15 @@ export function TradeHeader({
         )}
 
         {showStatsBar ? (
-          <div className="lg:hidden flex-1 min-w-0 self-stretch py-0.5">
+          <div className="flex-1 min-w-0 self-stretch py-0.5">
             <LiveAccountStats isDark={isDark} inline />
           </div>
         ) : (
           <div className="flex-1 min-w-0" aria-hidden />
         )}
 
-        {showStatsBar ? (
-          <div className="hidden lg:block flex-1 min-w-0" aria-hidden />
-        ) : null}
-
         <div className="flex items-center gap-0.5 shrink-0 self-center">
-          {accountId && !practiceAccountStatus && showTradingSettings ? (
+          {!practiceAccountStatus && showTradingSettings ? (
             <div className="hidden lg:block">
               <HeaderTradingSettings practiceAccountId={accountId} isDark={isDark} />
             </div>
@@ -251,12 +248,6 @@ export function TradeHeader({
           navigate={navigate}
         />
       ) : null}
-
-      {showStatsBar && (
-        <div className="hidden lg:block">
-          <LiveAccountStats isDark={isDark} />
-        </div>
-      )}
 
       {accountId && !practiceAccountStatus ? (
         <LockoutCard practiceAccountId={accountId} isDark={isDark} />

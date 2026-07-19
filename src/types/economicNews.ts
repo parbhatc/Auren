@@ -11,6 +11,7 @@ export interface EconomicNewsWrapperProps {
 }
 
 export interface EconomicEvent {
+  date?: string
   time: string
   currency: string
   impact: 'high' | 'medium' | 'low'

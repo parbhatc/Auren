@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Calendar, Settings, X } from 'lucide-react'
 import { economicNewsAPI } from '../../../../api/economicNews.api'
 import Checkbox from '../../../common/Checkbox'
+import { formatNewsTime } from '../../../../utils/newsTime'
 
 const DEFAULT_FILTERS = {
   currencies: {
@@ -237,7 +238,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       <span className={`text-xs font-semibold ${isDark ? 'text-[#adbac7]' : 'text-slate-800'}`}>
-                        {event.time || '—'}
+                        {event.time ? formatNewsTime(event.date, event.time, timezone) : '—'}
                       </span>
                       <span
                         className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${

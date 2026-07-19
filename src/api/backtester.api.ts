@@ -1,4 +1,4 @@
-import api, { getAuthHeaders } from './api'
+import api, { getApiBaseUrl, getAuthHeaders } from './api'
 import { BacktestSession } from '../types/backtester'
 import { formatBacktesterResolutionForApi } from '../backtester/utils/backtesterResolution'
 
@@ -120,20 +120,35 @@ export const backtesterAPI = {
     message?: string
     code?: string
   }> => {
-    const response = await api.get('/backtester/history', {
-      headers: getAuthHeaders(),
-      params: {
-        symbol: params.symbol,
-        resolution: formatBacktesterResolutionForApi(params.resolution),
-        from: params.from,
-        to: params.to,
-        countback: params.countBack,
-        ...(params.firstDataRequest ? { firstDataRequest: 'true' } : {}),
-        ...(params.requestId ? { requestId: params.requestId } : {}),
+    const query = new URLSearchParams({
+      symbol: params.symbol,
+      resolution: formatBacktesterResolutionForApi(params.resolution),
+    })
+    if (params.from !== undefined) query.set('from', String(params.from))
+    if (params.to !== undefined) query.set('to', String(params.to))
+    if (params.countBack !== undefined) query.set('countback', String(params.countBack))
+    if (params.firstDataRequest) query.set('firstDataRequest', 'true')
+    if (params.requestId) query.set('requestId', params.requestId)
+
+    const configuredBaseUrl = getApiBaseUrl()
+    const historyBaseUrl =
+      import.meta.env.DEV &&
+      window.location.protocol === 'http:' &&
+      configuredBaseUrl === '/api'
+        ? `http://${window.location.hostname}:${import.meta.env.VITE_API_PORT || '3001'}/api`
+        : configuredBaseUrl
+
+    const response = await fetch(`${historyBaseUrl}/backtester/history?${query}`, {
+      headers: {
+        ...getAuthHeaders(),
+        Accept: 'application/json',
       },
       signal: options?.signal,
     })
-    return response.data
+    if (!response.ok) {
+      throw new Error(`Replay history request failed (${response.status})`)
+    }
+    return response.json()
   },
 
   /**

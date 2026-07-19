@@ -14,6 +14,9 @@ import {
   priceFromDistance,
   distanceFromPrice,
   convertDistanceValue,
+  formatDistanceEquivalents,
+  bracketDollarAmount,
+  BRACKET_UNIT_SHORT,
 } from '../bracketUtils'
 import { PadCheckbox, BracketPriceTicksRow, TickPresetChips } from '../PadControls'
 import type {
@@ -28,12 +31,41 @@ import { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../types'
 import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
 
 const ORDER_TYPES: OrderType[] = ['market', 'limit', 'stop']
+
+const BRACKET_PREFS_PREFIX = 'trade_panel_brackets_'
+
+type BracketPrefs = {
+  slTicks?: string
+  tpTicks?: string
+  slUnit?: BracketDistanceUnit
+  tpUnit?: BracketDistanceUnit
+}
+
+function loadBracketPrefs(symbol: string | undefined): BracketPrefs | null {
+  if (!symbol) return null
+  try {
+    const raw = localStorage.getItem(BRACKET_PREFS_PREFIX + symbol)
+    return raw ? (JSON.parse(raw) as BracketPrefs) : null
+  } catch {
+    return null
+  }
+}
+
+function saveBracketPrefs(symbol: string | undefined, prefs: BracketPrefs): void {
+  if (!symbol) return
+  try {
+    localStorage.setItem(BRACKET_PREFS_PREFIX + symbol, JSON.stringify(prefs))
+  } catch {
+    // ignore
+  }
+}
 export function OrderTab({
   props,
   maxQty,
   book,
   marketPrice,
   tickSize,
+  tickValue = 0,
   symbolLabel,
 }: {
   props: TradePanelProps
@@ -41,8 +73,10 @@ export function OrderTab({
   book: TradeseaMarketBook | null
   marketPrice: number | null
   tickSize: number
+  tickValue?: number
   symbolLabel?: string
 }) {
+  const dollarEnabled = tickValue > 0
   const tradeDisabled = !isTradePanelTradingEnabled(props)
   const [orderType, setOrderType] = useState<OrderType>('market')
   const [selectedSide, setSelectedSide] = useState<OrderSide>('buy')
@@ -61,6 +95,42 @@ export function OrderTab({
   const tpBracketSourceRef = useRef<'price' | 'ticks' | null>(null)
   const prevOrderTypeRef = useRef<OrderType>('market')
   const pendingOrderPriceSeedRef = useRef<OrderType | null>(null)
+  const prefsLoadedForRef = useRef<string | null>(null)
+
+  // Restore last-used bracket distances/units for this symbol.
+  useEffect(() => {
+    if (!symbolLabel || prefsLoadedForRef.current === symbolLabel) return
+    prefsLoadedForRef.current = symbolLabel
+    const prefs = loadBracketPrefs(symbolLabel)
+    if (!prefs) return
+    const safeUnit = (u?: BracketDistanceUnit): BracketDistanceUnit | null =>
+      u === 'ticks' || u === 'points' || (u === 'dollars' && dollarEnabled) ? u : null
+    const slUnit = safeUnit(prefs.slUnit)
+    const tpUnit = safeUnit(prefs.tpUnit)
+    if (slUnit) setSlDistanceUnit(slUnit)
+    if (tpUnit) setTpDistanceUnit(tpUnit)
+    if (prefs.slTicks && parseBracketDistanceInput(prefs.slTicks, slUnit ?? 'ticks') != null) {
+      setSlTicks(prefs.slTicks)
+    }
+    if (prefs.tpTicks && parseBracketDistanceInput(prefs.tpTicks, tpUnit ?? 'ticks') != null) {
+      setTpTicks(prefs.tpTicks)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbolLabel, dollarEnabled])
+
+  // Debounced — distance inputs fire per keystroke and price-sync writes.
+  useEffect(() => {
+    if (!symbolLabel || prefsLoadedForRef.current !== symbolLabel) return
+    const timer = setTimeout(() => {
+      saveBracketPrefs(symbolLabel, {
+        slTicks,
+        tpTicks,
+        slUnit: slDistanceUnit,
+        tpUnit: tpDistanceUnit,
+      })
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [symbolLabel, slTicks, tpTicks, slDistanceUnit, tpDistanceUnit])
 
   const bid = book?.bestBid ?? null
   const ask = book?.bestAsk ?? null
@@ -97,63 +167,72 @@ export function OrderTab({
     pendingOrderPriceSeedRef.current = null
   }, [orderType, refPrice])
 
+  const fmtDistance = (amount: number, unit: BracketDistanceUnit) =>
+    unit !== 'ticks' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount)
+
   const syncSlFromDistance = useCallback(
     (distanceStr: string, unit: BracketDistanceUnit = slDistanceUnit) => {
       const amount = parseBracketDistanceInput(distanceStr, unit)
       if (refPrice == null || tickSize <= 0 || amount == null) return
-      setSlPrice(fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'sl', selectedSide)))
+      setSlPrice(
+        fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'sl', selectedSide, tickValue))
+      )
     },
-    [refPrice, tickSize, selectedSide, slDistanceUnit]
+    [refPrice, tickSize, tickValue, selectedSide, slDistanceUnit]
   )
 
   const syncSlFromPrice = useCallback(
     (priceStr: string, unit: BracketDistanceUnit = slDistanceUnit) => {
       const price = parseBracketPriceInput(priceStr)
       if (refPrice == null || tickSize <= 0 || price == null) return
-      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'sl', selectedSide)
-      if (amount != null) {
-        setSlTicks(unit === 'points' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount))
-      }
+      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'sl', selectedSide, tickValue)
+      if (amount != null) setSlTicks(fmtDistance(amount, unit))
     },
-    [refPrice, tickSize, selectedSide, slDistanceUnit]
+    [refPrice, tickSize, tickValue, selectedSide, slDistanceUnit]
   )
 
   const syncTpFromDistance = useCallback(
     (distanceStr: string, unit: BracketDistanceUnit = tpDistanceUnit) => {
       const amount = parseBracketDistanceInput(distanceStr, unit)
       if (refPrice == null || tickSize <= 0 || amount == null) return
-      setTpPrice(fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'tp', selectedSide)))
+      setTpPrice(
+        fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'tp', selectedSide, tickValue))
+      )
     },
-    [refPrice, tickSize, selectedSide, tpDistanceUnit]
+    [refPrice, tickSize, tickValue, selectedSide, tpDistanceUnit]
   )
 
   const syncTpFromPrice = useCallback(
     (priceStr: string, unit: BracketDistanceUnit = tpDistanceUnit) => {
       const price = parseBracketPriceInput(priceStr)
       if (refPrice == null || tickSize <= 0 || price == null) return
-      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'tp', selectedSide)
-      if (amount != null) {
-        setTpTicks(unit === 'points' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount))
-      }
+      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'tp', selectedSide, tickValue)
+      if (amount != null) setTpTicks(fmtDistance(amount, unit))
     },
-    [refPrice, tickSize, selectedSide, tpDistanceUnit]
+    [refPrice, tickSize, tickValue, selectedSide, tpDistanceUnit]
   )
 
-  const toggleSlDistanceUnit = useCallback(() => {
-    setSlDistanceUnit((unit) => {
-      const next: BracketDistanceUnit = unit === 'ticks' ? 'points' : 'ticks'
-      setSlTicks((v) => convertDistanceValue(v, unit, next, tickSize))
-      return next
-    })
-  }, [tickSize])
+  const changeSlDistanceUnit = useCallback(
+    (next: BracketDistanceUnit) => {
+      setSlDistanceUnit((unit) => {
+        if (unit === next) return unit
+        setSlTicks((v) => convertDistanceValue(v, unit, next, tickSize, tickValue))
+        return next
+      })
+    },
+    [tickSize, tickValue]
+  )
 
-  const toggleTpDistanceUnit = useCallback(() => {
-    setTpDistanceUnit((unit) => {
-      const next: BracketDistanceUnit = unit === 'ticks' ? 'points' : 'ticks'
-      setTpTicks((v) => convertDistanceValue(v, unit, next, tickSize))
-      return next
-    })
-  }, [tickSize])
+  const changeTpDistanceUnit = useCallback(
+    (next: BracketDistanceUnit) => {
+      setTpDistanceUnit((unit) => {
+        if (unit === next) return unit
+        setTpTicks((v) => convertDistanceValue(v, unit, next, tickSize, tickValue))
+        return next
+      })
+    },
+    [tickSize, tickValue]
+  )
 
   useEffect(() => {
     if (refPrice == null || tickSize <= 0) return
@@ -208,8 +287,7 @@ export function OrderTab({
   const applySlTicks = useCallback(
     (amount: number) => {
       slBracketSourceRef.current = 'ticks'
-      const s =
-        slDistanceUnit === 'points' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount)
+      const s = fmtDistance(amount, slDistanceUnit)
       setSlTicks(s)
       syncSlFromDistance(s)
     },
@@ -219,8 +297,7 @@ export function OrderTab({
   const applyTpTicks = useCallback(
     (amount: number) => {
       tpBracketSourceRef.current = 'ticks'
-      const s =
-        tpDistanceUnit === 'points' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount)
+      const s = fmtDistance(amount, tpDistanceUnit)
       setTpTicks(s)
       syncTpFromDistance(s)
     },
@@ -285,7 +362,7 @@ export function OrderTab({
     if (Number.isFinite(manual) && manual > 0) return manual
     const amount = parseBracketDistanceInput(ticksStr, unit)
     if (refPrice != null && amount != null && tickSize > 0) {
-      return priceFromDistance(refPrice, amount, unit, tickSize, kind, selectedSide)
+      return priceFromDistance(refPrice, amount, unit, tickSize, kind, selectedSide, tickValue)
     }
     return null
   }
@@ -345,8 +422,8 @@ export function OrderTab({
     const sym = symbolLabel ? ` ${symbolLabel}` : ''
     const typeLabel = orderType.charAt(0).toUpperCase() + orderType.slice(1)
     const bracketParts: string[] = []
-    if (stopLossOn && slTicks) bracketParts.push(`SL ${slTicks}${slDistanceUnit === 'ticks' ? 't' : 'pt'}`)
-    if (takeProfitOn && tpTicks) bracketParts.push(`TP ${tpTicks}${tpDistanceUnit === 'ticks' ? 't' : 'pt'}`)
+    if (stopLossOn && slTicks) bracketParts.push(`SL ${slTicks}${BRACKET_UNIT_SHORT[slDistanceUnit]}`)
+    if (takeProfitOn && tpTicks) bracketParts.push(`TP ${tpTicks}${BRACKET_UNIT_SHORT[tpDistanceUnit]}`)
     const brackets = bracketParts.length ? ` · ${bracketParts.join(' · ')}` : ''
     return `${side} ${qty}${sym} · ${typeLabel}${brackets}`
   }, [
@@ -361,6 +438,32 @@ export function OrderTab({
     tpTicks,
     tpDistanceUnit,
   ])
+
+  const slEquivalents = useMemo(
+    () => (stopLossOn ? formatDistanceEquivalents(slTicks, slDistanceUnit, tickSize, tickValue) : null),
+    [stopLossOn, slTicks, slDistanceUnit, tickSize, tickValue]
+  )
+  const tpEquivalents = useMemo(
+    () => (takeProfitOn ? formatDistanceEquivalents(tpTicks, tpDistanceUnit, tickSize, tickValue) : null),
+    [takeProfitOn, tpTicks, tpDistanceUnit, tickSize, tickValue]
+  )
+
+  /** Total $ risk / reward at the armed brackets, and the resulting R:R ratio. */
+  const riskSummary = useMemo(() => {
+    if (refPrice == null || qtyNum <= 0 || !dollarEnabled) return null
+    const sl = stopLossOn ? parseBracketPriceInput(slPrice) : null
+    const tp = takeProfitOn ? parseBracketPriceInput(tpPrice) : null
+    const risk = sl != null ? bracketDollarAmount(refPrice, sl, qtyNum, tickSize, tickValue) : null
+    const reward = tp != null ? bracketDollarAmount(refPrice, tp, qtyNum, tickSize, tickValue) : null
+    if (risk == null && reward == null) return null
+    const parts: string[] = []
+    if (risk != null) parts.push(`Risk $${risk.toLocaleString()}`)
+    if (reward != null) parts.push(`Reward $${reward.toLocaleString()}`)
+    if (risk != null && reward != null && risk > 0) {
+      parts.push(`1:${(Math.round((reward / risk) * 10) / 10).toLocaleString()}`)
+    }
+    return parts.join(' · ')
+  }, [refPrice, qtyNum, dollarEnabled, stopLossOn, slPrice, takeProfitOn, tpPrice, tickSize, tickValue])
 
   const inputClass =
     'no-spinner font-mono h-11 w-full rounded-xl border border-[#475569] bg-[#020617] px-3.5 text-[#e6edf3] outline-none focus:border-[#a78bfa] focus:ring-1 focus:ring-[#8b5cf6]/30'
@@ -601,10 +704,12 @@ export function OrderTab({
               }}
               onPriceBlur={handleSlPriceBlur}
               distanceUnit={slDistanceUnit}
-              onToggleDistanceUnit={toggleSlDistanceUnit}
+              onDistanceUnitChange={changeSlDistanceUnit}
               priceTabIndex={14}
               ticksTabIndex={15}
               dimmed={!stopLossOn}
+              dollarEnabled={dollarEnabled}
+              equivalents={slEquivalents}
             />
             <TickPresetChips
               disabled={false}
@@ -612,6 +717,7 @@ export function OrderTab({
               activeDistance={slTicks}
               distanceUnit={slDistanceUnit}
               tickSize={tickSize}
+              tickValue={tickValue}
               onSelect={applySlTicks}
             />
           </div>
@@ -657,10 +763,12 @@ export function OrderTab({
               }}
               onPriceBlur={handleTpPriceBlur}
               distanceUnit={tpDistanceUnit}
-              onToggleDistanceUnit={toggleTpDistanceUnit}
+              onDistanceUnitChange={changeTpDistanceUnit}
               priceTabIndex={11}
               ticksTabIndex={12}
               dimmed={!takeProfitOn}
+              dollarEnabled={dollarEnabled}
+              equivalents={tpEquivalents}
             />
             <TickPresetChips
               disabled={false}
@@ -668,6 +776,7 @@ export function OrderTab({
               activeDistance={tpTicks}
               distanceUnit={tpDistanceUnit}
               tickSize={tickSize}
+              tickValue={tickValue}
               onSelect={applyTpTicks}
             />
           </div>
@@ -678,6 +787,11 @@ export function OrderTab({
         <p className="text-[10px] text-[#64748b] px-0.5 mb-2 truncate" title={orderSummary}>
           {orderSummary}
         </p>
+        {riskSummary && (
+          <p className="font-mono text-[10px] text-[#94a3b8] tabular-nums px-0.5 -mt-1 mb-2 truncate" title={riskSummary}>
+            {riskSummary}
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             type="button"

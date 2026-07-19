@@ -1,10 +1,29 @@
-import { useRef } from 'react'
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Calendar, Shuffle, Eye, EyeOff } from 'lucide-react'
 import { SessionDateNavigationProps } from '../../../types/backtester'
+
+const HIDE_DATE_STORAGE_KEY = 'backtester_hide_date'
+
+const fmtLocalYmd = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+/** Random weekday between `minDate` and ~1 week ago — for hindsight-free practice. */
+function pickRandomWeekday(minDate: Date, maxDate: Date): string {
+  const min = minDate.getTime()
+  const max = maxDate.getTime()
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const date = new Date(min + Math.random() * Math.max(0, max - min))
+    const day = date.getDay()
+    if (day === 0 || day === 6) continue
+    return fmtLocalYmd(date)
+  }
+  return fmtLocalYmd(maxDate)
+}
 
 /**
  * Session Date Navigation Component
- * Displays current session date with next/previous navigation buttons and calendar selector
+ * Displays current session date with next/previous navigation buttons and calendar selector.
+ * Also supports jumping to a random date and hiding the date (unbiased replay practice).
  * Logs navigation to BacktesterTradeHandler when buttons are pressed
  */
 const SessionDateNavigation = ({
@@ -14,6 +33,13 @@ const SessionDateNavigation = ({
   compact = false,
 }: SessionDateNavigationProps & { compact?: boolean }) => {
   const dateInputRef = useRef<HTMLInputElement>(null)
+  const [hideDate, setHideDate] = useState(() => {
+    try {
+      return localStorage.getItem(HIDE_DATE_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
 
   if (!session) {
     return null
@@ -64,10 +90,31 @@ const SessionDateNavigation = ({
     }
   }
 
+  const handleRandomDate = () => {
+    const min = new Date()
+    min.setFullYear(min.getFullYear() - 3)
+    const max = new Date()
+    max.setDate(max.getDate() - 7)
+    const randomDate = pickRandomWeekday(min, max)
+    tradeHandler?.logDateNavigation('calendar', randomDate)
+  }
+
+  const toggleHideDate = () => {
+    setHideDate((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(HIDE_DATE_STORAGE_KEY, next ? '1' : '0')
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
   const handleCalendarClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!dateInputRef.current) return
+    if (hideDate || !dateInputRef.current) return
     dateInputRef.current.focus()
     if (typeof dateInputRef.current.showPicker === 'function') {
       try {
@@ -105,6 +152,12 @@ const SessionDateNavigation = ({
       ? 'text-slate-200 hover:bg-slate-700/50'
       : 'text-slate-700 hover:bg-slate-100/50'
 
+  const hiddenLabel = '••• hidden •••'
+  const navBtnCls = `session-date-nav__btn rounded transition-colors flex-shrink-0 ${btn} ${
+    compact ? 'p-0.5' : 'p-1'
+  }`
+  const iconCls = compact ? 'w-3 h-3' : 'w-4 h-4'
+
   return (
     <div className={`session-date-nav ${compact ? 'session-date-nav--compact' : ''} relative min-w-0`}>
       <div
@@ -115,12 +168,10 @@ const SessionDateNavigation = ({
         <button
           type="button"
           onClick={handlePrevious}
-          className={`session-date-nav__btn rounded transition-colors flex-shrink-0 ${btn} ${
-            compact ? 'p-0.5' : 'p-1'
-          }`}
+          className={navBtnCls}
           aria-label="Previous date"
         >
-          <ChevronLeft className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden />
+          <ChevronLeft className={iconCls} aria-hidden />
         </button>
 
         <div className="flex items-center min-w-0 flex-1 justify-center">
@@ -132,27 +183,33 @@ const SessionDateNavigation = ({
                 compact ? 'text-[11px] leading-tight' : 'text-xs sm:text-sm'
               }`}
               aria-label="Select date"
-              title={sessionDate.full}
+              title={hideDate ? 'Date hidden' : sessionDate.full}
             >
-              {compact ? sessionDate.medium : (
+              {hideDate ? (
+                hiddenLabel
+              ) : compact ? (
+                sessionDate.medium
+              ) : (
                 <>
                   <span className="hidden sm:inline">{sessionDate.full}</span>
                   <span className="sm:hidden">{sessionDate.medium}</span>
                 </>
               )}
             </button>
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={formatDateForInput(session.startDate)}
-              onChange={handleDateSelect}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              aria-label="Select date"
-              min="2000-01-01"
-              max={new Date().toISOString().split('T')[0]}
-            />
+            {!hideDate && (
+              <input
+                ref={dateInputRef}
+                type="date"
+                value={formatDateForInput(session.startDate)}
+                onChange={handleDateSelect}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Select date"
+                min="2000-01-01"
+                max={new Date().toISOString().split('T')[0]}
+              />
+            )}
           </div>
-          {!compact && (
+          {!compact && !hideDate && (
             <button
               type="button"
               onClick={handleCalendarClick}
@@ -167,12 +224,34 @@ const SessionDateNavigation = ({
         <button
           type="button"
           onClick={handleNext}
-          className={`session-date-nav__btn rounded transition-colors flex-shrink-0 ${btn} ${
-            compact ? 'p-0.5' : 'p-1'
-          }`}
+          className={navBtnCls}
           aria-label="Next date"
         >
-          <ChevronRight className={compact ? 'w-3 h-3' : 'w-4 h-4'} aria-hidden />
+          <ChevronRight className={iconCls} aria-hidden />
+        </button>
+
+        <button
+          type="button"
+          onClick={handleRandomDate}
+          className={navBtnCls}
+          aria-label="Jump to random date"
+          title="Jump to a random date (hindsight-free practice)"
+        >
+          <Shuffle className={iconCls} aria-hidden />
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleHideDate}
+          className={navBtnCls}
+          aria-label={hideDate ? 'Show date' : 'Hide date'}
+          title={hideDate ? 'Show date' : 'Hide date (unbiased practice)'}
+        >
+          {hideDate ? (
+            <EyeOff className={iconCls} aria-hidden />
+          ) : (
+            <Eye className={iconCls} aria-hidden />
+          )}
         </button>
       </div>
     </div>

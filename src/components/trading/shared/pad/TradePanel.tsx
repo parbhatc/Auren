@@ -124,6 +124,7 @@ export default function TradePanel(props: TradePanelProps) {
     fullWidth = false,
     markPrice,
     tickSize = 0.25,
+    tickValue = 0,
     getMarketBook,
     subscribeMarketBook,
     ensureMarketBook,
@@ -285,6 +286,7 @@ export default function TradePanel(props: TradePanelProps) {
             book={book}
             marketPrice={marketPrice}
             tickSize={tickSize}
+            tickValue={tickValue}
             symbolLabel={rootSymbol}
           />
         )}

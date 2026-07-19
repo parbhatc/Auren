@@ -244,6 +244,19 @@ class EconomicNewsController {
       })
       const page = await browser.newPage()
       
+      // Pin the browser to US Eastern so ForexFactory renders event times in ET
+      // regardless of the host machine's timezone (VPS clocks vary) — the client
+      // converts ET to the viewer's timezone at display time.
+      await page.emulateTimezone('America/New_York')
+      // ForexFactory also honors an explicit timezone cookie — set it so guest
+      // sessions don't fall back to IP-based detection.
+      await page.setCookie({
+        name: 'fftimezone',
+        value: 'America%2FNew_York',
+        domain: '.forexfactory.com',
+        path: '/',
+      })
+
       // Set user agent and viewport
       await page.setViewport({ width: 1920, height: 1080 })
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36')

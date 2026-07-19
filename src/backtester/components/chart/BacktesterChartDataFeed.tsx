@@ -11,6 +11,9 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   private supportedResolutions: ResolutionString[]
   private symbolResolutions: Map<string, ResolutionString[]> = new Map()
   private symbolsCache: Record<string, { tickSize: number; tickValue: number; supportedChartResolutions?: string[] }> | null = null
+  /** Notifies the host view once symbol config (tick size/value) is available. */
+  onSymbolsLoaded: (() => void) | null = null
+  private symbolConfigByRoot = new Map<string, { tickSize: number; tickValue: number }>()
   private resolvedSymbolCache: Map<string, LibrarySymbolInfo> = new Map()
   private wsClient: BacktesterChartClient | null = null
   private subscriptions: Map<string, Subscription> = new Map()
@@ -561,6 +564,12 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
 
   /** Clear cached bars and pending getBars state after reconnect or session change. */
   resetSessionState(opts?: { clearPlaybackAnchor?: boolean }): void {
+    if (this.pendingGetBarsAbort.size > 0) {
+      console.warn(
+        `[BacktesterChartDataFeed] Reset cancelled ${this.pendingGetBarsAbort.size} active history request(s)`,
+        new Error('History reset call site').stack,
+      )
+    }
     for (const [, controller] of this.pendingGetBarsAbort) {
       controller.abort()
     }
@@ -569,6 +578,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       request.onErrorCallback('Session reset')
     }
     this.pendingGetBarsRequests.clear()
+    this.pendingHistoryFetches.clear()
     this.pendingWsMessages = []
     this.lastBarsCache.clear()
     this.replayLtfBars.clear()
@@ -619,6 +629,14 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     for (const message of queue) {
       this.wsClient.send(message)
     }
+
+    const historyQueue = Array.from(this.pendingHistoryFetches.values())
+    this.pendingHistoryFetches.clear()
+    for (const request of historyQueue) {
+      if (this.pendingGetBarsRequests.has(request.requestId)) {
+        void this.fetchBarsHttp(request)
+      }
+    }
   }
 
   onReady(callback: (configuration: any) => void): void {
@@ -658,13 +676,20 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       this.symbolsCache = symbols
       this.symbolResolutions.clear()
       this.resolvedSymbolCache.clear()
+      this.symbolConfigByRoot.clear()
       for (const [sym, info] of Object.entries(symbols)) {
+        this.symbolConfigByRoot.set(this.normalizeSymbol(sym), info)
         const list = (info as { supportedChartResolutions?: string[] }).supportedChartResolutions
         if (list?.length) {
           this.symbolResolutions.set(sym.toUpperCase(), list as ResolutionString[])
         }
       }
       this.refreshSupportedResolutionUnion()
+      try {
+        this.onSymbolsLoaded?.()
+      } catch {
+        // ignore
+      }
       return this.symbolsCache
     } catch (error) {
       console.error('[BacktesterChartDataFeed] Failed to load symbols:', error)
@@ -756,14 +781,19 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     onErrorCallback: (reason: string) => void 
   }> = new Map()
 
+  private pendingHistoryFetches: Map<string, {
+    requestId: string
+    symbol: string
+    resolution: ResolutionString
+    from?: number
+    to?: number
+    countBack?: number
+    firstDataRequest?: boolean
+  }> = new Map()
+
   private pendingGetBarsAbort: Map<string, AbortController> = new Map()
 
   getBars(symbolInfo: LibrarySymbolInfo, resolution: ResolutionString, periodParams: any, onHistoryCallback: (bars: any[], meta: { noData: boolean }) => void, onErrorCallback: (reason: string) => void): void {
-    if (!this.wsClient) {
-      onErrorCallback('WebSocket client not available')
-      return
-    }
-
     this.seedSessionPlaybackAnchor()
 
     const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -782,7 +812,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
 
     const clamped = this.clampPeriodToSessionAnchor(periodParams, resolution)
 
-    void this.fetchBarsHttp({
+    const fetchParams = {
       requestId,
       symbol: symbolInfo.name,
       resolution,
@@ -790,11 +820,14 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       to: clamped.to,
       countBack: clamped.countBack,
       firstDataRequest: clamped.firstDataRequest,
-    })
+    }
+    this.pendingHistoryFetches.set(requestId, fetchParams)
+    this.flushPendingMessages()
 
     window.setTimeout(() => {
       if (this.pendingGetBarsRequests.has(requestId)) {
         this.pendingGetBarsRequests.delete(requestId)
+        this.pendingHistoryFetches.delete(requestId)
         this.pendingGetBarsAbort.get(requestId)?.abort()
         this.pendingGetBarsAbort.delete(requestId)
         onErrorCallback('Request timeout')
@@ -811,6 +844,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     countBack?: number
     firstDataRequest?: boolean
   }): Promise<void> {
+    this.pendingHistoryFetches.delete(params.requestId)
     const pending = this.pendingGetBarsRequests.get(params.requestId)
     if (!pending) return
 
@@ -830,7 +864,6 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
         },
         { signal: controller.signal },
       )
-
       if (!this.pendingGetBarsRequests.has(params.requestId)) return
 
       this.handleGetBarsResponse({
@@ -1052,6 +1085,10 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   }
 
   getLastBarForChart(chart: any): Bar | null {
+    // Chart may still be booting (or failed to boot) when a trade key fires.
+    if (!chart || typeof chart.symbol !== 'function' || typeof chart.resolution !== 'function') {
+      return null
+    }
     let cacheKey = this.getCacheKey(chart.symbol(), chart.resolution())
     let uuid = this.chartSubscriptions.get(cacheKey)
 
@@ -1079,14 +1116,24 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return null
   }
 
+  /** Symbol config lookup by exact key, root, or normalized-root match (O(1) via map). */
+  private resolveSymbolConfig(symbol: string): { tickSize?: number; tickValue?: number } | undefined {
+    const root = this.normalizeSymbol(symbol)
+    return (
+      this.symbolsCache?.[symbol] ??
+      this.symbolsCache?.[root] ??
+      this.symbolConfigByRoot.get(root)
+    )
+  }
+
   getTickSize(symbol: string): number {
-    const symbolInfo = this.symbolsCache?.[symbol] || null
-    return symbolInfo?.tickSize || 1
+    const tickSize = Number(this.resolveSymbolConfig(symbol)?.tickSize)
+    return Number.isFinite(tickSize) && tickSize > 0 ? tickSize : 0.25
   }
 
   getTickValue(symbol: string): number {
-    const symbolInfo = this.symbolsCache?.[symbol] || null
-    return symbolInfo?.tickValue || 1
+    const tickValue = Number(this.resolveSymbolConfig(symbol)?.tickValue)
+    return Number.isFinite(tickValue) && tickValue > 0 ? tickValue : 1
   }
 }
 

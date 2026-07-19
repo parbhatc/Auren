@@ -4,6 +4,7 @@ import { Calendar, Settings, X } from 'lucide-react'
 import { EconomicNewsPanelProps } from '../../types/common'
 import { economicNewsAPI } from '../../api/economicNews.api'
 import Checkbox from './Checkbox'
+import { formatNewsTime } from '../../utils/newsTime'
 
 /**
  * Economic News Panel Component
@@ -405,7 +406,7 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          {event.time}
+                          {formatNewsTime(event.date, event.time, this.state.timezone)}
                         </span>
                         <span className={`text-xs px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>
                           {event.currency}

@@ -1,4 +1,3 @@
-import { ChevronDown } from 'lucide-react'
 import type { BracketDistanceUnit } from './types'
 import { BRACKET_TICK_PRESETS } from './bracketUtils'
 
@@ -54,10 +53,12 @@ export function BracketPriceTicksRow({
   onTicksFocus,
   onPriceBlur,
   distanceUnit,
-  onToggleDistanceUnit,
+  onDistanceUnitChange,
   priceTabIndex,
   ticksTabIndex,
   dimmed = false,
+  dollarEnabled = false,
+  equivalents,
 }: {
   priceDisabled: boolean
   ticksDisabled: boolean
@@ -69,14 +70,18 @@ export function BracketPriceTicksRow({
   onTicksFocus?: () => void
   onPriceBlur?: () => void
   distanceUnit: BracketDistanceUnit
-  onToggleDistanceUnit: () => void
+  onDistanceUnitChange: (unit: BracketDistanceUnit) => void
   priceTabIndex?: number
   ticksTabIndex?: number
   dimmed?: boolean
+  /** Enable the $ distance unit (requires a known tickValue). */
+  dollarEnabled?: boolean
+  /** Live "10t = 2.5pt = $50/ct" line rendered under the row. */
+  equivalents?: string | null
 }) {
   return (
     <div
-      className={`grid grid-cols-2 gap-2 rounded-xl border border-[#334155] bg-[#020617]/80 p-2 transition ${
+      className={`grid grid-cols-2 gap-x-2 gap-y-1 rounded-xl border border-[#334155] bg-[#020617]/80 p-2 transition ${
         dimmed ? 'opacity-55' : ''
       }`}
     >
@@ -107,18 +112,24 @@ export function BracketPriceTicksRow({
             onFocus={onTicksFocus}
             className="no-spinner font-mono text-[#e6edf3] flex-1 min-w-0 text-sm rounded-lg border border-[#475569] bg-[#0f172a] px-2.5 py-2 outline-none focus:border-[#a78bfa] disabled:opacity-50"
           />
-          <button
-            type="button"
+          <select
+            value={distanceUnit}
             disabled={ticksDisabled}
-            onClick={onToggleDistanceUnit}
-            className="shrink-0 flex items-center gap-0.5 h-[38px] px-2 rounded-lg border border-[#475569] bg-[#1e293b] text-[10px] text-[#94a3b8] capitalize hover:border-[#64748b] disabled:opacity-50"
-            title={`Switch to ${distanceUnit === 'ticks' ? 'points' : 'ticks'}`}
+            onChange={(e) => onDistanceUnitChange(e.target.value as BracketDistanceUnit)}
+            aria-label="Distance unit"
+            className="shrink-0 h-[38px] px-1.5 rounded-lg border border-[#475569] bg-[#1e293b] text-[10px] font-semibold text-[#94a3b8] hover:border-[#64748b] focus:border-[#a78bfa] outline-none disabled:opacity-50 cursor-pointer"
           >
-            {distanceUnit}
-            <ChevronDown className="w-3 h-3" aria-hidden />
-          </button>
+            <option value="ticks">Ticks</option>
+            <option value="points">Pts</option>
+            {dollarEnabled && <option value="dollars">$</option>}
+          </select>
         </div>
       </label>
+      {equivalents && (
+        <p className="col-span-2 font-mono text-[9px] text-[#64748b] tabular-nums px-0.5 truncate">
+          {equivalents}
+        </p>
+      )}
     </div>
   )
 }
@@ -129,6 +140,7 @@ export function TickPresetChips({
   activeDistance,
   distanceUnit,
   tickSize,
+  tickValue = 0,
   onSelect,
 }: {
   disabled: boolean
@@ -136,6 +148,7 @@ export function TickPresetChips({
   activeDistance: string
   distanceUnit: BracketDistanceUnit
   tickSize: number
+  tickValue?: number
   onSelect: (amount: number) => void
 }) {
   const color =
@@ -147,7 +160,11 @@ export function TickPresetChips({
     <div className="flex gap-1.5 flex-wrap">
       {BRACKET_TICK_PRESETS.map((n) => {
         const presetValue =
-          distanceUnit === 'ticks' ? n : Math.round(n * tickSize * 100) / 100
+          distanceUnit === 'ticks'
+            ? n
+            : distanceUnit === 'dollars'
+              ? Math.round(n * tickValue * 100) / 100
+              : Math.round(n * tickSize * 100) / 100
         const label =
           distanceUnit === 'ticks'
             ? String(n)

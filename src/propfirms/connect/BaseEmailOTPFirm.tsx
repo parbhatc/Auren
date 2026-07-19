@@ -99,7 +99,7 @@ export default function BaseEmailOTPFirm({
           onKeyDown={(e) => e.key === 'Enter' && onVerifyOtp()}
         />
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-3 mt-3">
         <button
           type="button"
           disabled={verifying}

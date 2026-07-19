@@ -9,6 +9,7 @@ import {
 export type { TradePanelSettings, PracticeTradePanelSettings } from '../types/tradePanel'
 
 const DEFAULT_TRADE_PANEL_SETTINGS: TradePanelSettings = {
+  positionPnlDisplay: 'dollars',
   hideBuySell: false,
   hideJoinBidAsk: false,
   hideClosePosition: false,
@@ -36,6 +37,19 @@ export function saveTradePanelSettings(settings: TradePanelSettings): void {
   localStorage.removeItem(TRADE_PANEL_SETTINGS_LEGACY_KEY)
   window.dispatchEvent(new Event(TRADE_PANEL_SETTINGS_CHANGED_EVENT))
   window.dispatchEvent(new Event(TRADE_PANEL_SETTINGS_LEGACY_EVENT))
+}
+
+export function getPositionPnlDisplay(): NonNullable<TradePanelSettings['positionPnlDisplay']> {
+  const mode = getTradePanelSettings().positionPnlDisplay
+  return mode === 'ticks' || mode === 'points' ? mode : 'dollars'
+}
+
+export function setPositionPnlDisplay(
+  mode: NonNullable<TradePanelSettings['positionPnlDisplay']>
+): void {
+  const settings = getTradePanelSettings()
+  if (settings.positionPnlDisplay === mode) return
+  saveTradePanelSettings({ ...settings, positionPnlDisplay: mode })
 }
 
 /** @deprecated use getTradePanelSettings */

@@ -3,12 +3,18 @@ import { Settings2 } from 'lucide-react'
 import { usePracticeLockout } from '../../../../hooks/usePracticeLockout'
 import { t } from '../../../../utils/translator'
 import { TradingLimitsSettingsPanel } from './TradingLimitsSettingsPanel'
+import PositionPnlDisplaySetting from './PositionPnlDisplaySetting'
 
+/**
+ * Header settings gear. Always offers the global trade-panel settings
+ * (bracket unit); adds trading limits / lockout when an active practice
+ * account is attached (daily loss etc. are practice-account features).
+ */
 export default function HeaderTradingSettings({
   practiceAccountId,
   isDark,
 }: {
-  practiceAccountId: string
+  practiceAccountId?: string
   isDark: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -26,9 +32,8 @@ export default function HeaderTradingSettings({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
 
-  if (!isActiveAccount || !status) return null
-
-  const locked = status.locked
+  const showLimits = Boolean(practiceAccountId && isActiveAccount && status)
+  const locked = showLimits && Boolean(status?.locked)
 
   const btnClass = isDark
     ? 'border-slate-600/80 text-slate-400 hover:border-violet-500/40 hover:bg-violet-950/30 hover:text-violet-200'
@@ -68,11 +73,16 @@ export default function HeaderTradingSettings({
           aria-label={t('practice.lockout.settingsTitle')}
           className={`absolute right-0 top-full mt-1.5 z-[200] w-[min(20rem,calc(100vw-1rem))] rounded-xl border overflow-hidden ${menuClass}`}
         >
-          <TradingLimitsSettingsPanel
-            practiceAccountId={practiceAccountId}
-            isDark={isDark}
-            onDismiss={() => setOpen(false)}
-          />
+          <PositionPnlDisplaySetting isDark={isDark} />
+          {showLimits && practiceAccountId ? (
+            <div className={`border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+              <TradingLimitsSettingsPanel
+                practiceAccountId={practiceAccountId}
+                isDark={isDark}
+                onDismiss={() => setOpen(false)}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

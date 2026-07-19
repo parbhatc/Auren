@@ -61,20 +61,24 @@ export function buildBacktesterTradePadProps({
     onQuantityBlur,
     onBuy: () => runSide('Buy'),
     onSell: () => runSide('Sell'),
+    onSubmitOrder: (side, brackets) => {
+      const qty = Number(contractQuantity) || 1
+      tradeHandler?.submitBracketOrder(side, qty, getChartSymbol(), brackets)
+    },
     onClose: () => tradeHandler?.logButtonPress('Close Position', { symbol: getChartSymbol() }),
     onReverse: () => tradeHandler?.logButtonPress('Reverse Position', { symbol: getChartSymbol() }),
     onFlatten: () => tradeHandler?.logButtonPress('Flatten All Position'),
     searchSymbols: searchBacktesterTradeSymbols,
     onChartSymbolChange,
     onDetach,
-    hideTicketTab: true,
     panelUiOverrides: {
       hideJoinBidAsk: true,
-      hideDomBidAsk: true,
-      hideDomLadder: true,
-      hideDomLtpLock: true,
+      hideDomBidAsk: false,
+      hideDomLadder: false,
+      hideDomLtpLock: false,
     },
     tickSize: datafeed.getTickSize(activeSymbolRoot()),
+    tickValue: datafeed.getTickValue(activeSymbolRoot()),
     getMarketBook: () => datafeed.getMarketBookForSymbol(activeSymbolRoot()),
     subscribeMarketBook: (onUpdate) => datafeed.subscribeMarketBook(onUpdate),
     getChartPositionUpl: () => tradeHandler?.getPositionUplFor(getChartSymbol() || chartSymbol) ?? null,

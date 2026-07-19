@@ -464,6 +464,18 @@ export interface OverviewTabProps {
   parseTradeTimestamp: (timestamp: any) => Date | null
   formatDuration: (seconds: number) => string
   trades?: any[]
+  /** Optional R-multiple / drawdown / streak tiles (backtester stats). */
+  riskStats?: RiskStats | null
+}
+
+export interface RiskStats {
+  avgR: number | null
+  tradesWithR: number
+  maxDrawdown: number
+  maxDrawdownPct: number | null
+  longestWinStreak: number
+  longestLossStreak: number
+  currentStreak: number
 }
 
 export interface DateRangeSelectorProps {
@@ -522,6 +534,8 @@ export interface TradesTableProps {
   parseTradeTimestamp: (timestamp: any) => Date | null
   calculateTradeDuration: (trade: any) => number | null
   formatDuration: (seconds: number) => string
+  /** When provided, an R (risk multiple) column is shown for trades with a stop. */
+  calculateTradeR?: (trade: any) => number | null
 }
 
 export interface StatsHeaderProps {

@@ -38,23 +38,7 @@ export function TradingRendererNav({
 
   return (
     <>
-      <div
-        className={`hidden lg:block transition-all duration-300 ease-in-out ${
-          showNav ? `${navWidth} opacity-100` : 'w-0 opacity-0 overflow-hidden'
-        }`}
-      >
-        {showNav && (
-          <TradingNav
-            compact={terminalShell}
-            isDark={isDark}
-            navigate={navigate}
-            currentPath={window.location.pathname}
-            onToggleNav={onHideNav}
-            showDesktopNav={true}
-            showMobileNav={false}
-          />
-        )}
-      </div>
+      {/* No nav rail on desktop — navigation lives in the header; the bottom bar is mobile-only. */}
 
       <div
         className={`lg:hidden auren-mobile-bottom-bar transition-all duration-300 ease-in-out transform z-50 ${

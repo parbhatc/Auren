@@ -19,19 +19,37 @@ class BacktesterWebSocket extends WebSocketBase {
     
     this.server = server;
     this.csvLoader = this.server.csvLoader;
-    this.subscriptions = new Map()
-    this.symbols = new Map()
-    this.session = null
-    this.barCache = null
-    this.runtimeUserId = null
-    this.runtimeSessionId = null
+    // BacktesterWebSocket is a singleton shared by every connected client.
+    // Replay state must therefore be scoped to the physical WebSocket, not the
+    // authenticated user. A user can briefly have two sockets during React
+    // StrictMode remounts (or intentionally open two replay tabs).
+    this.connections = new Map()
   }
 
-  getClientSubscriptions(clientId) {
-    if (!this.subscriptions.has(clientId)) {
-      this.subscriptions.set(clientId, new Map())
+  getConnectionId(clientInfo) {
+    return clientInfo?.id || clientInfo?.userId || 'unknown'
+  }
+
+  getClientState(clientInfo, create = true) {
+    const connectionId = this.getConnectionId(clientInfo)
+    let state = this.connections.get(connectionId)
+    if (!state && create) {
+      state = {
+        subscriptions: new Map(),
+        symbols: new Map(),
+        session: null,
+        barCache: null,
+        cursor: null,
+        runtimeUserId: null,
+        runtimeSessionId: null,
+      }
+      this.connections.set(connectionId, state)
     }
-    return this.subscriptions.get(clientId)
+    return state ?? null
+  }
+
+  getClientSubscriptions(clientInfo) {
+    return this.getClientState(clientInfo).subscriptions
   }
 
   onMessage(ws, data, clientInfo, serverInfo) {
@@ -71,11 +89,20 @@ class BacktesterWebSocket extends WebSocketBase {
   }
 
   onDateNavigation(ws, data, clientInfo, serverInfo) {
+    const state = this.getClientState(clientInfo, false)
+    if (!state?.session?.startTime) {
+      this.send(ws, {
+        type: 'date_navigation_response',
+        success: false,
+        error: 'Replay session is not initialized',
+      })
+      return true
+    }
     const { direction, currentDate, sessionId, sessionName } = data
     const [year, month, day] = currentDate.split('-').map(Number)
-    const [hours, minutes] = this.session.startTime.split(':').map(Number)
+    const [hours, minutes] = state.session.startTime.split(':').map(Number)
     const targetDate = new Date(year, month - 1, day, hours, minutes, 0, 0)
-    const symbols = this.getNavigationSymbols()
+    const symbols = this.getNavigationSymbols(clientInfo)
 
     switch (direction) {
       case 'calendar':
@@ -119,21 +146,23 @@ class BacktesterWebSocket extends WebSocketBase {
     return `${y}-${m}-${d}`
   }
 
-  clearSymbolBarCache() {
-    this.aggSourceCache?.clear?.()
-    if (this.runtimeUserId && this.runtimeSessionId) {
-      getBacktesterBarsService().clearSymbolBarCache(this.runtimeUserId, this.runtimeSessionId)
+  clearSymbolBarCache(clientInfo) {
+    const state = this.getClientState(clientInfo, false)
+    if (!state) return
+    if (state.runtimeUserId && state.runtimeSessionId) {
+      getBacktesterBarsService().clearSymbolBarCache(state.runtimeUserId, state.runtimeSessionId)
       return
     }
-    this.barCache?.clearAll?.()
+    state.barCache?.clearAll?.()
   }
 
-  getNavigationSymbols() {
-    const fromConfig = Array.from(this.symbols.keys())
+  getNavigationSymbols(clientInfo) {
+    const state = this.getClientState(clientInfo, false)
+    const fromConfig = Array.from(state?.symbols?.keys?.() ?? [])
     if (fromConfig.length > 0) {
       return fromConfig
     }
-    const sessionSymbol = this.session?.symbol
+    const sessionSymbol = state?.session?.symbol
     if (sessionSymbol && sessionSymbol !== 'MULTI') {
       return [sessionSymbol]
     }
@@ -141,22 +170,24 @@ class BacktesterWebSocket extends WebSocketBase {
   }
 
   onSessionData(ws, data, clientInfo, serverInfo) {
-    const { session, symbols } = data
-    this.aggSourceCache?.clear?.()
+    const { session, symbols = {} } = data
+    const state = this.getClientState(clientInfo)
+    state.symbols.clear()
 
     for (const symbol of Object.keys(symbols)) {
-      this.symbols.set(symbol, symbols[symbol])
+      state.symbols.set(symbol, symbols[symbol])
     }
     
     if (session && session.startDate && session.startTime) {
       const userId = clientInfo?.userId || clientInfo?.id || 'unknown'
       const runtime = getBacktesterBarsService().initRuntime(userId, session, symbols)
-      this.runtimeUserId = userId
-      this.runtimeSessionId = session.id
-      this.session = runtime.session
-      this.barCache = runtime.barCache
+      state.runtimeUserId = userId
+      state.runtimeSessionId = session.id
+      state.session = { ...runtime.session }
+      state.barCache = runtime.barCache
 
       const startDate = getBacktesterBarsService().sessionAnchorDate(session)
+      state.cursor = startDate
       console.log(`[backtester WS] Session data received:`, session.id, `Start: ${startDate.toLocaleString()}`)
       this.send(ws, {
         type: 'sessionDataAck',
@@ -169,7 +200,8 @@ class BacktesterWebSocket extends WebSocketBase {
 
   onSymbolChange(ws, data, clientInfo, serverInfo) {
     const { symbol } = data
-    this.session.symbol = symbol;
+    const state = this.getClientState(clientInfo, false)
+    if (state?.session) state.session.symbol = symbol
     this.send(ws, {
       type: "symbol_change_response",
       success: true,
@@ -178,8 +210,8 @@ class BacktesterWebSocket extends WebSocketBase {
 
   onSubscribeBars(ws, data, clientInfo, serverInfo) {
     const { symbol, resolution, subscriberUID } = data
-    const clientId = clientInfo?.userId || clientInfo?.id || 'unknown'
-    const subscriptions = this.getClientSubscriptions(clientId)
+    const clientId = this.getConnectionId(clientInfo)
+    const subscriptions = this.getClientSubscriptions(clientInfo)
     
     subscriptions.set(subscriberUID, {
       symbol,
@@ -193,8 +225,8 @@ class BacktesterWebSocket extends WebSocketBase {
 
   onUnsubscribeBars(ws, data, clientInfo, serverInfo) {
     const { subscriberUID } = data
-    const clientId = clientInfo?.userId || clientInfo?.id || 'unknown'
-    const subscriptions = this.getClientSubscriptions(clientId)
+    const clientId = this.getConnectionId(clientInfo)
+    const subscriptions = this.getClientSubscriptions(clientInfo)
     
     if (subscriptions.has(subscriberUID)) {
       subscriptions.delete(subscriberUID)
@@ -212,10 +244,16 @@ class BacktesterWebSocket extends WebSocketBase {
 
   onReplay(ws, data, clientInfo, serverInfo){
     const { time } = data
+    const state = this.getClientState(clientInfo, false)
+    if (!state?.barCache) {
+      this.send(ws, { type: 'error', message: 'Replay session is not initialized' })
+      return true
+    }
     console.log("onReplay: ", data);
     console.log("Time: " + new Date(time * 1000).toLocaleString());
-    this.clearSymbolBarCache()
-    this.barCache.last = new Date(time * 1000);
+    this.clearSymbolBarCache(clientInfo)
+    state.cursor = new Date(time * 1000)
+    state.barCache.last = state.cursor
     this.send(ws, {
       type: 'replayResponse',
       time: new Date(time * 1000).toLocaleString()
@@ -224,20 +262,26 @@ class BacktesterWebSocket extends WebSocketBase {
   }
   
   onChangeDate(ws, targetDate, clientInfo, serverInfo){
+        const state = this.getClientState(clientInfo, false)
+        if (!state?.barCache) {
+          this.send(ws, {
+            type: 'date_navigation_response',
+            success: false,
+            error: 'Replay session is not initialized',
+          })
+          return true
+        }
         // Get all active symbols from subscriptions
-        // this.subscriptions is a Map of Maps: clientId -> Map<subscriberUID, subscription>
         const activeSymbols = []
-        for (const clientSubscriptions of this.subscriptions.values()) {
-          for (const subscription of clientSubscriptions.values()) {
+        for (const subscription of state.subscriptions.values()) {
             if (subscription.symbol) {
               activeSymbols.push(subscription.symbol)
             }
-          }
         }
         const uniqueSymbols = [...new Set(activeSymbols)]
         
-        // If no subscriptions, check all available symbols from this.symbols Map
-        const symbolsToCheck = uniqueSymbols.length > 0 ? uniqueSymbols : Array.from(this.symbols.keys())
+        // If no subscriptions, check all available symbols from this connection.
+        const symbolsToCheck = uniqueSymbols.length > 0 ? uniqueSymbols : Array.from(state.symbols.keys())
         
         // Check if targetDate exists in the data
         if (!this.csvLoader.hasDateDataForAnySymbol(symbolsToCheck, targetDate)) {
@@ -293,19 +337,20 @@ class BacktesterWebSocket extends WebSocketBase {
         }
         
         // Drop stale symbol bars so the next getBars load is contiguous from the new anchor.
-        this.clearSymbolBarCache()
+        this.clearSymbolBarCache(clientInfo)
         const startDate = this.formatLocalDate(finalDate)
-        if (this.runtimeUserId && this.runtimeSessionId) {
+        if (state.runtimeUserId && state.runtimeSessionId) {
           getBacktesterBarsService().updateSessionAnchor(
-            this.runtimeUserId,
-            this.runtimeSessionId,
+            state.runtimeUserId,
+            state.runtimeSessionId,
             finalDate,
             startDate,
           )
         }
-        this.barCache.last = finalDate;
-        if (this.session) {
-          this.session.startDate = startDate
+        state.cursor = finalDate
+        state.barCache.last = finalDate;
+        if (state.session) {
+          state.session.startDate = startDate
         }
         console.log(`Date changed to: ${finalDate.toLocaleString()}${isExactMatch ? '' : ' (closest match)'}`);
         this.send(ws, {
@@ -322,22 +367,32 @@ class BacktesterWebSocket extends WebSocketBase {
   onSyncReplayCursor(ws, data, clientInfo, serverInfo) {
     const cursorMs = this.toEpochMs(data?.cursorSec)
     if (cursorMs == null || !Number.isFinite(cursorMs)) return true
-    if (!this.barCache?.last) {
-      this.barCache.last = new Date(cursorMs)
+    const state = this.getClientState(clientInfo, false)
+    if (!state?.barCache) return true
+    if (!state.cursor) {
+      state.cursor = new Date(cursorMs)
+      state.barCache.last = state.cursor
       return true
     }
-    if (cursorMs > this.barCache.last.getTime()) {
-      this.barCache.last = new Date(cursorMs)
+    if (cursorMs > state.cursor.getTime()) {
+      state.cursor = new Date(cursorMs)
+      state.barCache.last = state.cursor
     }
     return true
   }
 
   onNextCandle(ws, data, clientInfo, serverInfo) {
       const { playbackTimeframe, cursorSec, stepSec, targetSec } = data
-      const last = this.barCache.last;
+      const state = this.getClientState(clientInfo, false)
+      const last = state?.cursor ?? state?.barCache?.last
 
       if (!last){
           console.log("No cached data for replay next");
+          this.send(ws, {
+            type: 'nextCandleAck',
+            cursorSec: Number.isFinite(Number(cursorSec)) ? Math.floor(Number(cursorSec)) : 0,
+            emitted: 0,
+          })
           return true;
       }
 
@@ -356,14 +411,12 @@ class BacktesterWebSocket extends WebSocketBase {
       const groups = new Map()
       let emittedFrames = 0
 
-      for (const clientSubscriptions of this.subscriptions.values()) {
-        for (const [uid, sub] of clientSubscriptions.entries()) {
+      for (const [uid, sub] of state.subscriptions.entries()) {
           const key = `${sub.symbol}:${sub.resolution}`
           if (!groups.has(key)) {
             groups.set(key, { symbol: sub.symbol, resolution: sub.resolution, uids: [] })
           }
           groups.get(key).uids.push(uid)
-        }
       }
 
       for (const group of groups.values()) {
@@ -415,7 +468,7 @@ class BacktesterWebSocket extends WebSocketBase {
         }
 
         const loadOpts = { csvResolution }
-        const newestMs = this.barCache.getNewest(symbol, loadOpts)
+        const newestMs = state.barCache.getNewest(symbol, loadOpts)
         // Full replay wall for this step; capMs is only the last emitted candle OPEN.
         const loadToMs = Math.max(capMs, targetWallSec * 1000)
         // The client cursor is authoritative when provided. Using the cache's
@@ -442,7 +495,7 @@ class BacktesterWebSocket extends WebSocketBase {
             if (chunk.length < 32) break
           }
           if (bars.length) {
-            this.barCache.addBars(symbol, bars, loadOpts)
+            state.barCache.addBars(symbol, bars, loadOpts)
           }
         } else {
           const minuteOpts = { csvResolution: '1m' }
@@ -452,7 +505,7 @@ class BacktesterWebSocket extends WebSocketBase {
           // 13:29 — loading only to capMs left the new candle with one minute of
           // data (wrong OHLC until a history reload re-fetched it).
           const fetchBars = Math.max(1, Math.ceil((loadToMs - afterMs) / 60000))
-          bars = this.barCache.loadForward(symbol, afterMs, fetchBars, minuteOpts)
+          bars = state.barCache.loadForward(symbol, afterMs, fetchBars, minuteOpts)
           bars = bars.filter((bar) => bar.time <= loadToMs)
         }
 
@@ -474,7 +527,7 @@ class BacktesterWebSocket extends WebSocketBase {
             // it corrupts the candle's open/high/low — and stale cached step bars
             // couldn't complete the previous candle after an unaligned cursor.
             const candleStartMs = alignBarOpenSec(baseSec, resolution) * 1000
-            const windowBars = this.barCache.loadRange(symbol, candleStartMs - 1, loadToMs, { csvResolution: '1m' })
+            const windowBars = state.barCache.loadRange(symbol, candleStartMs - 1, loadToMs, { csvResolution: '1m' })
             barsToAggregate = windowBars.filter(
               (bar) => bar.time >= candleStartMs && bar.time <= loadToMs,
             )
@@ -495,7 +548,8 @@ class BacktesterWebSocket extends WebSocketBase {
         emittedFrames += framesToSend.length
       }
 
-      this.barCache.last = new Date(targetWallSec * 1000)
+      state.cursor = new Date(targetWallSec * 1000)
+      state.barCache.last = state.cursor
       // Always ack — several paths above emit nothing (no fine bars, no forward
       // bars, empty frames, no subscriptions). Without an ack the client's
       // nextCandleInFlight latch waits out its 2s timeout on every such step.
@@ -508,10 +562,11 @@ class BacktesterWebSocket extends WebSocketBase {
     }
 
   handleClose(ws, clientInfo, serverInfo) {
-    const clientId = clientInfo?.userId || clientInfo?.id || 'unknown'
-    if (this.subscriptions.has(clientId)) {
-      const count = this.subscriptions.get(clientId).size
-      this.subscriptions.delete(clientId)
+    const clientId = this.getConnectionId(clientInfo)
+    const state = this.connections.get(clientId)
+    if (state) {
+      const count = state.subscriptions.size
+      this.connections.delete(clientId)
       console.log(`[backtester WS] Cleaned up ${count} subscriptions for client: ${clientId}`)
     }
     super.handleClose(ws, clientInfo, serverInfo)

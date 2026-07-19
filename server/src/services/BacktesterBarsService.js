@@ -183,10 +183,20 @@ class BacktesterBarsService {
       // countBack takes priority over the wall-clock window (TV semantics):
       // session gaps/weekends shrink [from,to], so top up via countback.
       if (bars.length < oneMinCount && anchorMs != null) {
-        const initialOneMin =
-          nativeSubMinute || resolution === '1'
-            ? Math.min(30000, Math.max(oneMinCount, 20000))
-            : oneMinCount
+        // Return the requested chart window. The previous 20,000-bar minimum
+        // produced ~2 MB initial responses for a 4,000-bar request and could
+        // leave BWC's boot pipeline waiting long enough to show a blank chart.
+      // Keep the first chart payload small and deterministic. The chart only
+      // needs enough candles to paint the visible replay window; older bars are
+      // requested lazily as the user scrolls. Large initial JSON responses can
+      // stall in browser/dev proxies even after the server finishes producing
+      // them.
+      const initialBarLimit = 1000
+      const initialOneMin = Math.min(
+        30000,
+        oneMinCount,
+        initialBarLimit * Math.max(1, resolutionMinutes),
+      )
         bars = this.csvLoader.loadCountback(symbol, anchorMs, initialOneMin, true, loadOpts)
       }
     } else if (fromMs != null && toMs != null && toMs > fromMs) {

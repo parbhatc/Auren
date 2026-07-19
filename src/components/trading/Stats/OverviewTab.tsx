@@ -39,7 +39,8 @@ const OverviewTab = ({
   calculateTradePnL,
   parseTradeTimestamp,
   formatDuration,
-  trades
+  trades,
+  riskStats
 }: OverviewTabProps) => {
   // Calculate total lots (sum of all contracts across all trades)
   const totalLots = trades ? trades.reduce((sum: number, trade: any) => sum + Math.abs(trade.contracts || 0), 0) : 0
@@ -516,6 +517,57 @@ const OverviewTab = ({
           </div>
         </div>
       </div>
+
+      {/* Risk row — Avg R, max drawdown, streaks (only when riskStats provided) */}
+      {riskStats && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+          {([
+            {
+              title: 'Avg R',
+              Icon: Target,
+              value: riskStats.avgR == null ? '—' : `${riskStats.avgR > 0 ? '+' : ''}${riskStats.avgR.toFixed(2)}R`,
+              valueClass: riskStats.avgR == null
+                ? (isDark ? 'text-slate-500' : 'text-slate-400')
+                : riskStats.avgR >= 0 ? 'text-emerald-400' : 'text-red-400',
+              sub: riskStats.tradesWithR > 0
+                ? `${riskStats.tradesWithR} trade${riskStats.tradesWithR === 1 ? '' : 's'} with a stop`
+                : 'Set stop losses to track R',
+            },
+            {
+              title: 'Max Drawdown',
+              Icon: TrendingDown,
+              value: `-$${riskStats.maxDrawdown.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              valueClass: 'text-red-400',
+              sub: riskStats.maxDrawdownPct != null ? `${riskStats.maxDrawdownPct.toFixed(2)}% from peak` : null,
+            },
+            {
+              title: 'Longest Win Streak',
+              Icon: TrendingUp,
+              value: String(riskStats.longestWinStreak),
+              valueClass: 'text-emerald-400',
+              sub: riskStats.currentStreak > 0 ? `Current: ${riskStats.currentStreak} wins` : null,
+            },
+            {
+              title: 'Longest Loss Streak',
+              Icon: TrendingDown,
+              value: String(riskStats.longestLossStreak),
+              valueClass: 'text-red-400',
+              sub: riskStats.currentStreak < 0 ? `Current: ${Math.abs(riskStats.currentStreak)} losses` : null,
+            },
+          ] as const).map(({ title, Icon, value, valueClass, sub }) => (
+            <div key={title} className={statCardShell(isDark, practiceMode)}>
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h3 className={`text-xs sm:text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  {title}
+                </h3>
+                <Icon className={statIconClass(isDark, practiceMode)} />
+              </div>
+              <p className={`text-2xl sm:text-3xl font-bold mb-1 ${valueClass}`}>{value}</p>
+              {sub && <p className="text-xs text-slate-500">{sub}</p>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Fourth Row - Equity Curve, Trade Duration Analysis, Win Rate Analysis */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">

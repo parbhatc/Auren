@@ -11,6 +11,7 @@ const TradesTable = ({
   parseTradeTimestamp,
   calculateTradeDuration,
   formatDuration,
+  calculateTradeR,
 }: TradesTableProps) => {
   const rangedTrades =
     dateRange?.startDate && dateRange?.endDate
@@ -23,6 +24,7 @@ const TradesTable = ({
           )
         })
       : trades
+  const colCount = calculateTradeR ? 13 : 12
   return (
     <div className={`min-w-0 rounded-lg sm:rounded-xl shadow-lg border ${
       isDark
@@ -75,18 +77,23 @@ const TradesTable = ({
                 <th className={`text-right py-2 px-2 sm:px-3 text-xs sm:text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   Net P&L
                 </th>
+                {calculateTradeR && (
+                  <th className={`text-right py-2 px-2 sm:px-3 text-xs sm:text-sm font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    R
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={12} className={`text-center py-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <td colSpan={colCount} className={`text-center py-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     Loading trades...
                   </td>
                 </tr>
               ) : rangedTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className={`text-center py-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  <td colSpan={colCount} className={`text-center py-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     No trades found for the selected date range
                   </td>
                 </tr>
@@ -152,6 +159,7 @@ const TradesTable = ({
                     fees: fees.toFixed(2),
                     netPnl: netPnl.toFixed(2),
                     isProfit,
+                    tradeR: calculateTradeR ? calculateTradeR(trade) : null,
                     entryTimestamp: entryDate.getTime(),
                     originalTrade: trade // Store original trade for duration calculation
                   }
@@ -219,6 +227,20 @@ const TradesTable = ({
                     }`}>
                       {parseFloat(trade.netPnl) > 0 ? '+' : ''}${parseFloat(trade.netPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
+                    {calculateTradeR && (
+                      <td className="py-2 px-2 sm:px-3 text-xs sm:text-sm font-medium text-right">
+                        {trade.tradeR == null ? (
+                          <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>—</span>
+                        ) : (
+                          <span className={trade.tradeR >= 0
+                            ? isDark ? 'text-green-400' : 'text-green-600'
+                            : isDark ? 'text-red-400' : 'text-red-600'
+                          }>
+                            {trade.tradeR > 0 ? '+' : ''}{trade.tradeR.toFixed(2)}R
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               })()}

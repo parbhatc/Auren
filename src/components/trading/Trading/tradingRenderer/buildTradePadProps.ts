@@ -181,6 +181,7 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
         ? () => tradeHandler.getDomPositionFor(chartSymbolLabel)
         : undefined,
     tickSize: activeFirm?.chartServices?.datafeed?.getTickSize?.(padRoot) ?? 0.25,
+    tickValue: activeFirm?.chartServices?.datafeed?.getTickValue?.(padRoot) ?? 0,
     onDetach: () => {
       togglePracticePadDetached(padSessionId)
       onForceUpdate()

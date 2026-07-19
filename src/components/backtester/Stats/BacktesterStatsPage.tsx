@@ -13,6 +13,7 @@ import type {
   WeekStatsDialogProps,
 } from '../../../types/common'
 import { BacktesterStats } from '../../../services/stats/BacktesterStats'
+import { calcTradeseaTickPnL } from '../../../services/tradesea/tradeseaPnL'
 import { getTradeCalendarDate } from '../../../utils/tradeCalendarDate'
 import { practiceTradePanelClass } from '../../trading/Practice/practiceTradeTheme'
 import { TradeHeader } from '../../trading/Trading/TradeHeader'
@@ -32,6 +33,8 @@ type BacktestTrade = {
   direction: 'long' | 'short' | string
   entry_price: number
   exit_price: number | null
+  stop_loss?: number | null
+  take_profit?: number | null
   contracts: number
   entry_time: string | number
   exit_time: string | number | null
@@ -261,6 +264,22 @@ export default function BacktesterStatsPage() {
     [symbolData]
   )
 
+  /** R multiple: net result vs the $ risked at the trade's stop. Null without a stop. */
+  const calculateTradeR = useMemo(
+    () => (trade: BacktestTrade): number | null => {
+      if (trade.stop_loss == null || trade.entry_price == null || !trade.contracts) return null
+      const tickSize = symbolData?.[trade.symbol || '']?.tickSize ?? 1
+      const tickValue = symbolData?.[trade.symbol || '']?.tickValue ?? 1
+      const contracts = Math.abs(trade.contracts || 0)
+      const risk = Math.abs(
+        calcTradeseaTickPnL(trade.entry_price, trade.stop_loss, contracts, tickSize, tickValue)
+      )
+      if (!Number.isFinite(risk) || risk <= 0) return null
+      return calculateTradePnL(trade) / risk
+    },
+    [calculateTradePnL, symbolData]
+  )
+
   const rangedTrades = useMemo(() => {
     if (!dateRange.startDate || !dateRange.endDate) return trades
     return trades.filter((trade) => {
@@ -437,6 +456,64 @@ export default function BacktesterStatsPage() {
     return points
   }, [calculateTradePnL, closedTrades, currentSession?.initialBalance, symbolData])
 
+  const riskStats = useMemo(() => {
+    if (closedTrades.length === 0) return null
+    const sorted = [...closedTrades].sort((a, b) => {
+      const timeA = parseTradeTimestamp(a.exit_time ?? a.entry_time)?.getTime() || 0
+      const timeB = parseTradeTimestamp(b.exit_time ?? b.entry_time)?.getTime() || 0
+      return timeA - timeB
+    })
+
+    const rValues: number[] = []
+    let equity = 0
+    let peak = 0
+    let peakBalance = currentSession?.initialBalance || 50000
+    let maxDrawdown = 0
+    let maxDrawdownPct: number | null = null
+    let winStreak = 0
+    let lossStreak = 0
+    let longestWinStreak = 0
+    let longestLossStreak = 0
+    let currentStreak = 0
+
+    sorted.forEach((trade) => {
+      const r = calculateTradeR(trade)
+      if (r != null) rValues.push(r)
+      const netPnl = calculateTradePnL(trade) - feesForTrade(trade, symbolData)
+      equity += netPnl
+      if (equity > peak) {
+        peak = equity
+        peakBalance = (currentSession?.initialBalance || 50000) + peak
+      }
+      const dd = peak - equity
+      if (dd > maxDrawdown) {
+        maxDrawdown = dd
+        maxDrawdownPct = peakBalance > 0 ? (dd / peakBalance) * 100 : null
+      }
+      if (netPnl > 0) {
+        winStreak += 1
+        lossStreak = 0
+        currentStreak = currentStreak >= 0 ? currentStreak + 1 : 1
+      } else if (netPnl < 0) {
+        lossStreak += 1
+        winStreak = 0
+        currentStreak = currentStreak <= 0 ? currentStreak - 1 : -1
+      }
+      longestWinStreak = Math.max(longestWinStreak, winStreak)
+      longestLossStreak = Math.max(longestLossStreak, lossStreak)
+    })
+
+    return {
+      avgR: rValues.length ? rValues.reduce((s, v) => s + v, 0) / rValues.length : null,
+      tradesWithR: rValues.length,
+      maxDrawdown,
+      maxDrawdownPct,
+      longestWinStreak,
+      longestLossStreak,
+      currentStreak,
+    }
+  }, [calculateTradePnL, calculateTradeR, closedTrades, currentSession?.initialBalance, symbolData])
+
   if (loading && !sessions.length && !trades.length) {
     return (
       <div className={`h-screen flex items-center justify-center ${practicePageBg(isDark)}`}>
@@ -568,6 +645,7 @@ export default function BacktesterStatsPage() {
               parseTradeTimestamp={parseTradeTimestamp}
               formatDuration={formatDuration}
               trades={rangedTrades}
+              riskStats={riskStats}
             />
           )}
 
@@ -607,6 +685,7 @@ export default function BacktesterStatsPage() {
               parseTradeTimestamp={parseTradeTimestamp}
               calculateTradeDuration={calculateTradeDuration}
               formatDuration={formatDuration}
+              calculateTradeR={calculateTradeR}
             />
           )}
 
