@@ -36,7 +36,6 @@ import { useTheme } from '../../../hooks/useTheme'
 import { appPageBackground } from '../../../styles/aurenTheme'
 import { authAPI } from '../../../api/auth.api'
 import HubNav, { type HubTab } from './hub/HubNav'
-import HubStatsBar from './hub/HubStatsBar'
 import HubSettingsPanel from './hub/HubSettingsPanel'
 import HubAdminPanel from './hub/HubAdminPanel'
 import { DEFAULT_HUB_ADMIN_SECTION, resolveHubAdminSection } from './hub/hubAdminSections'
@@ -483,7 +482,6 @@ export default function Hub() {
 
             {activeTab === 'accounts' && homeMode === 'practice' && (
               <div className="space-y-6">
-                <HubStatsBar accounts={accounts} isDark={isDark} />
 
                 <PracticeMarketDataPanel
                   isDark={isDark}
