@@ -621,16 +621,13 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     toSec: number,
     countback: number
   ): URLSearchParams {
-    const barSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
-    const alignedFrom = Math.floor(fromSec / barSec) * barSec
-    const alignedTo = Math.ceil(toSec / barSec) * barSec
     const params = new URLSearchParams()
     params.set('connection-user-id', this.userId)
     params.set('connection-group-id', this.connectionGroupId)
     params.set('symbol', symbol)
     params.set('resolution', resolution)
-    params.set('from', String(alignedFrom))
-    params.set('to', String(alignedTo))
+    params.set('from', String(Math.floor(fromSec)))
+    params.set('to', String(Math.floor(toSec)))
     params.set('countback', String(countback))
     params.set('currencyCode', 'USD')
     return params
@@ -896,14 +893,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   /** Prod UDF symbol search — same API as app.tradesea.ai (prod-market-data.tradesea.ai/v1/search). */
-  private udfInstrumentSearch(query: string, limit = 30): Promise<TradeseaInstrumentRow[]> {
+  private udfInstrumentSearch(query: string): Promise<TradeseaInstrumentRow[]> {
     const params = new URLSearchParams()
-    params.set('connection-user-id', this.userId)
-    params.set('connection-group-id', this.connectionGroupId)
     params.set('query', query)
-    params.set('limit', String(limit))
-    params.set('type', '')
-    params.set('exchange', '')
     return this.fetchJson<unknown>(this.proxyUdfUrl('search', params), true).then((data) =>
       parseTradeseaJsonArray<TradeseaInstrumentRow>(data)
     )

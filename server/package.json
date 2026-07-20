@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch server.js",
-    "start": "node server.js",
+    "dev": "node --use-system-ca --watch server.js",
+    "start": "node --use-system-ca server.js",
     "test": "node --test test\\*.test.js",
     "test-topstepx": "node test-topstepx.js",
     "test-account": "cross-env TEST_ACCOUNT_SERVICE=true node test-topstepx.js",

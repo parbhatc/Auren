@@ -10,13 +10,14 @@ import {
 import { normalizeTradeseaTradeInstrument } from '../../utils/tradeseaInstrument.js'
 
 const TRADESEA_APP_ORIGIN = 'https://app.tradesea.ai'
+const IDENTITY_ORIGIN = 'https://prod-identity.tradesea.ai'
 const DISCOVERY_ORIGIN = 'https://prod-discovery.tradesea.ai'
 
 const IDENTITY_HOST = 'prod-identity.tradesea.ai'
 const UM_PREFIX = '/um'
 
 const TRADESEA_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
 
 export function decodeTradeseaResponse(buffer, contentEncoding = '') {
   const encoding = String(contentEncoding || '')
@@ -180,6 +181,11 @@ class TradeseaIdentityService {
     return {
       accessToken,
       refreshToken: refreshToken || '',
+      clientCode: data?.clientCode || data?.client_code || null,
+      accessTokenValidityInMillis:
+        data?.accessTokenValidityInMillis ?? data?.access_token_validity_in_millis ?? null,
+      refreshTokenValidityInMillis:
+        data?.refreshTokenValidityInMillis ?? data?.refresh_token_validity_in_millis ?? null,
     }
   }
 
@@ -244,7 +250,7 @@ class TradeseaIdentityService {
             'Content-Type': 'application/x-www-form-urlencoded',
             Accept: 'application/json, text/plain, */*',
             'Content-Length': '0',
-            cookie: `access_token=; refresh_token=${refreshToken}`,
+            Cookie: `refresh_token=${refreshToken}`,
             Origin: 'https://app.tradesea.ai',
             Referer: 'https://app.tradesea.ai/',
             'X-Request-ID': crypto.randomUUID(),
@@ -386,10 +392,10 @@ class TradeseaIdentityService {
       return []
     }
 
-    const response = await this.proxyDiscoveryRequest(
+    const response = await this.proxyIdentityRequest(
       tokens,
       'GET',
-      '/tradelens/v1/accounts/all'
+      '/eum/v1/accountsWithDetails'
     )
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw new Error(apiErrorMessage(response.body, 'Could not load Tradesea accounts'))
@@ -461,9 +467,11 @@ class TradeseaIdentityService {
             method: 'GET',
             headers: {
               cookie,
-              origin: 'https://app.tradesea.ai',
-              referer: 'https://app.tradesea.ai/',
-              accept: 'application/json',
+              origin: TRADESEA_APP_ORIGIN,
+              referer: `${TRADESEA_APP_ORIGIN}/`,
+              accept: '*/*',
+              'user-agent': TRADESEA_USER_AGENT,
+              'accept-language': 'en-US,en;q=0.9',
               ...(connectionUserId ? { 'connection-user-id': connectionUserId } : {}),
               ...(connectionGroupId ? { 'connection-group-id': connectionGroupId } : {}),
               ...extraHeaders,
@@ -474,11 +482,18 @@ class TradeseaIdentityService {
             const chunks = []
             res.on('data', (c) => chunks.push(c))
             res.on('end', () => {
-              resolve({
-                statusCode: res.statusCode || 500,
-                body: Buffer.concat(chunks).toString('utf8'),
-                headers: res.headers,
-              })
+              try {
+                resolve({
+                  statusCode: res.statusCode || 500,
+                  body: decodeTradeseaResponse(
+                    Buffer.concat(chunks),
+                    res.headers?.['content-encoding']
+                  ),
+                  headers: res.headers,
+                })
+              } catch {
+                reject(invalidResponseError(res))
+              }
             })
           }
         )
@@ -498,7 +513,11 @@ class TradeseaIdentityService {
         throw new Error('Account not found')
       }
       const { udfOrigin } = getStreamEndpoints(account)
-      return this.proxyUpstreamGet(tokens, accountId, udfOrigin, targetPath)
+      const path = String(targetPath || '')
+      const extraHeaders = path.startsWith('/search')
+        ? { accept: 'application/json, text/plain, */*' }
+        : {}
+      return this.proxyUpstreamGet(tokens, accountId, udfOrigin, targetPath, extraHeaders)
     })
   }
 
@@ -811,6 +830,41 @@ class TradeseaIdentityService {
       statusCode: res.status,
       body: parsed,
     }
+  }
+
+  async proxyIdentityRequest(tokens, method, path, body = null) {
+    if (!tokens?.accessToken) {
+      throw new Error('Market data is not connected.')
+    }
+
+    const suffix = path.startsWith('/') ? path : `/${path}`
+    const cookie = buildAuthCookieHeader(tokens)
+    const res = await fetch(`${IDENTITY_ORIGIN}${suffix}`, {
+      method,
+      headers: {
+        cookie,
+        origin: TRADESEA_APP_ORIGIN,
+        referer: `${TRADESEA_APP_ORIGIN}/`,
+        accept: 'application/json, text/plain, */*',
+        'user-agent': TRADESEA_USER_AGENT,
+        'accept-language': 'en-US,en;q=0.9',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15_000),
+    })
+
+    const raw = await res.text()
+    let parsed = {}
+    try {
+      parsed = raw ? JSON.parse(raw) : {}
+    } catch {
+      parsed = { status: 'error', message: raw || `Invalid response (${res.status})` }
+    }
+
+    return { statusCode: res.status, body: parsed }
   }
 
   async fetchTradelensV2(tokens, accountId, endpoint, options = {}) {

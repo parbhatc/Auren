@@ -28,6 +28,41 @@ test('decodes Brotli-compressed Tradesea responses', () => {
   assert.equal(decodeTradeseaResponse(zlib.brotliCompressSync(successJson), 'br'), successJson)
 })
 
+test('parses the current Tradesea refresh response contract', () => {
+  const body = {
+    status: 'success',
+    data: {
+      clientCode: 'NOQBS29746',
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      accessTokenValidityInMillis: 28_785_000,
+      refreshTokenValidityInMillis: 604_785_000,
+    },
+  }
+
+  assert.deepEqual(TradeseaIdentityService.extractTokensFromAuthBody(body), {
+    accessToken: 'new-access-token',
+    refreshToken: 'new-refresh-token',
+    clientCode: 'NOQBS29746',
+    accessTokenValidityInMillis: 28_785_000,
+    refreshTokenValidityInMillis: 604_785_000,
+  })
+})
+
+test('parses refreshed tokens from Tradesea Set-Cookie headers', () => {
+  const headers = {
+    'set-cookie': [
+      'access_token=new-access-token; Path=/; HttpOnly; Secure; SameSite=None',
+      'refresh_token=new-refresh-token; Path=/; HttpOnly; Secure; SameSite=None',
+    ],
+  }
+
+  assert.deepEqual(TradeseaIdentityService.parseTokensFromSetCookie(headers), {
+    accessToken: 'new-access-token',
+    refreshToken: 'new-refresh-token',
+  })
+})
+
 test('parses and normalizes the current Tradesea discovery accounts shape', () => {
   const body = {
     s: 'success',
@@ -82,4 +117,30 @@ test('parses and normalizes the current Tradesea discovery accounts shape', () =
       },
     ]
   )
+})
+
+test('parses the identity accountsWithDetails response shape', () => {
+  const body = {
+    status: 'success',
+    data: [
+      {
+        id: 'account-id',
+        broker: 'LucidTrading',
+        brokerDisplayName: 'Lucid Trading',
+        accountName: 'LFE025-TEST',
+        type: 'live',
+        userId: 'stream-user-id',
+      },
+    ],
+  }
+
+  const accounts = TradeseaIdentityService.parseAccountsBody(body).map((account) =>
+    TradeseaIdentityService.normalizeAccount(account)
+  )
+
+  assert.equal(accounts.length, 1)
+  assert.equal(accounts[0].id, 'account-id')
+  assert.equal(accounts[0].propFirm, 'LucidTrading')
+  assert.equal(accounts[0].name, 'LFE025-TEST')
+  assert.equal(accounts[0].userId, 'stream-user-id')
 })
