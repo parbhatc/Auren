@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { listAllCsvFiles } from '../utils/backtesterCsvPaths.js'
-import TopstepDataHandler from './handlers/TopstepDataHandler.js'
+import TradeseaDataHandler from './handlers/TradeseaDataHandler.js'
 import TradingViewDataHandler from './handlers/TradingViewDataHandler.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -33,7 +33,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
     this.activeOperations = new Set() // Set<operationKey>
     
     // Initialize data handlers
-    this.topstepHandler = new TopstepDataHandler(this)
+    this.tradeseaHandler = new TradeseaDataHandler(this)
     this.tradingViewHandler = new TradingViewDataHandler(this)
   }
 
@@ -68,7 +68,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
       
       // Filter files by config.json and type
       const csvFiles = {
-        topstep: this.filterFilesByConfig(allFiles, 'topstep', config),
+        tradesea: this.filterFilesByConfig(allFiles, 'tradesea', config),
         tradingview: this.filterFilesByConfig(allFiles, 'tradingview', config),
         unknown: this.getUnknownFiles(allFiles, config)
       }
@@ -129,15 +129,15 @@ class BacktesterDataWebSocket extends WebSocketBase {
       const fileSymbol = file.symbol
       
       // Check if symbol exists in config
-      // For Topstep: normalize symbol (remove leading slash for comparison)
-      if (type === 'topstep') {
+      // For Tradesea: normalize symbol (remove leading slash for comparison)
+      if (type === 'tradesea') {
         const normalizedFileSymbol = fileSymbol.startsWith('/') ? fileSymbol.slice(1) : fileSymbol
         
         // Check if symbol exists in config (with or without slash)
         const configEntry = symbols[normalizedFileSymbol] || symbols[`/${normalizedFileSymbol}`]
         
-        // Must exist in config AND match type (or have no type specified, default to topstep)
-        return configEntry && (configEntry.type === 'topstep' || !configEntry.type)
+        // Must exist in config AND match type (or have no type specified, default to tradesea)
+        return configEntry && (configEntry.type === 'tradesea' || !configEntry.type)
       }
       
       // For TradingView: check exact match and double underscore format
@@ -172,7 +172,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
     return allFiles.filter(file => {
       const fileSymbol = file.symbol
       
-      // For Topstep: normalize symbol (remove leading slash for comparison)
+      // For Tradesea: normalize symbol (remove leading slash for comparison)
       const normalizedFileSymbol = fileSymbol.startsWith('/') ? fileSymbol.slice(1) : fileSymbol
       
       // Check if symbol exists in config (with or without slash)
@@ -256,11 +256,11 @@ class BacktesterDataWebSocket extends WebSocketBase {
       }
 
       // Handle search based on current tab
-      if (this.currentTab === 'topstep' && authToken && searchQuery) {
-        // TopstepX search requires token
-        const TopstepXService = (await import('../services/TopstepXService.js')).default
+      if (this.currentTab === 'tradesea' && authToken && searchQuery) {
+        // Tradesea search requires token
+        const TradeseaService = (await import('../services/TradeseaService.js')).default
         
-        const results = await TopstepXService.search(authToken, searchQuery, 30, '', false)
+        const results = await TradeseaService.search(authToken, searchQuery, 30, '', false)
         
         // Normalize type: "Future" or "future" should be "futures"
         const normalizedResults = (results || []).map(result => {
@@ -319,8 +319,8 @@ class BacktesterDataWebSocket extends WebSocketBase {
           symbols_remaining: result?.symbols_remaining || 0,
           formattedResults: formattedResults  // Map with source_id:symbol as keys
         })
-      } else if (this.currentTab === 'topstep' && !authToken) {
-        // Topstep requires token
+      } else if (this.currentTab === 'tradesea' && !authToken) {
+        // Tradesea requires token
         this.send(ws, {
           type: 'search_response',
           success: false,
@@ -407,12 +407,12 @@ class BacktesterDataWebSocket extends WebSocketBase {
         return
       }
 
-      if (source === 'topstep') {
-        // TopStep login should be done via API directly from frontend, not through WebSocket
+      if (source === 'tradesea') {
+        // Tradesea login should be done via API directly from frontend, not through WebSocket
         this.send(ws, {
           type: 'user_login_response',
           success: false,
-          error: 'TopStep login should be done via API directly from the frontend'
+          error: 'Tradesea login should be done via API directly from the frontend'
         })
         return
       } else if (source === 'tradingview') {
@@ -441,7 +441,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         this.send(ws, {
           type: 'user_login_response',
           success: false,
-          error: 'Invalid source. Supported sources: topstep, tradingview'
+          error: 'Invalid source. Supported sources: tradesea, tradingview'
         })
       }
     } catch (error) {
@@ -470,7 +470,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {WebSocket} ws - WebSocket connection (optional, for backward compatibility)
    * @param {string} action - The action ('download', 'update', 'overwrite', 'reset')
    * @param {string} symbol - The symbol
-   * @param {string} source - The source ('topstep' or 'tradingview')
+   * @param {string} source - The source ('tradesea' or 'tradingview')
    * @param {number} progress - Progress percentage (0-100, but not displayed)
    * @param {string} message - Progress message with date/time info
    */
@@ -539,7 +539,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
   /**
    * Save token to config.json file
-   * @param {string} source - The source ('topstep' or 'tradingview')
+   * @param {string} source - The source ('tradesea' or 'tradingview')
    * @param {string} token - The token to save
    */
   saveTokenToConfig(source, token) {
@@ -598,14 +598,14 @@ class BacktesterDataWebSocket extends WebSocketBase {
         return
       }
 
-      if (source === 'topstep') {
+      if (source === 'tradesea') {
         // Get token from config
         let config = {}
         if (fs.existsSync(this.configPath)) {
           const configData = fs.readFileSync(this.configPath, 'utf8')
           config = JSON.parse(configData)
         }
-        const token = config.tokens?.topstep || ''
+        const token = config.tokens?.tradesea || ''
         
         if (!token) {
           this.send(ws, {
@@ -638,7 +638,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start download process using handler
         this.runDataHandlerSafely(
-          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'download'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'download'),
           { action: 'download', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -670,7 +670,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         this.send(ws, {
           type: 'download_response',
           success: false,
-          error: 'Invalid source. Supported sources: topstep, tradingview'
+          error: 'Invalid source. Supported sources: tradesea, tradingview'
         })
       }
     } catch (error) {
@@ -709,14 +709,14 @@ class BacktesterDataWebSocket extends WebSocketBase {
         return
       }
 
-      if (source === 'topstep') {
+      if (source === 'tradesea') {
         // Get token from config
         let config = {}
         if (fs.existsSync(this.configPath)) {
           const configData = fs.readFileSync(this.configPath, 'utf8')
           config = JSON.parse(configData)
         }
-        const token = config.tokens?.topstep || ''
+        const token = config.tokens?.tradesea || ''
         
         if (!token) {
           this.send(ws, {
@@ -750,7 +750,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Update data using handler
         this.runDataHandlerSafely(
-          this.topstepHandler.update(apiSymbol, normalizedSymbol, token),
+          this.tradeseaHandler.update(apiSymbol, normalizedSymbol, token),
           { action: 'update', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -782,7 +782,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         this.send(ws, {
           type: 'update_response',
           success: false,
-          error: 'Invalid source. Supported sources: topstep, tradingview'
+          error: 'Invalid source. Supported sources: tradesea, tradingview'
         })
       }
     } catch (error) {
@@ -819,14 +819,14 @@ class BacktesterDataWebSocket extends WebSocketBase {
         return
       }
 
-      if (source === 'topstep') {
+      if (source === 'tradesea') {
         // Get token from config
         let config = {}
         if (fs.existsSync(this.configPath)) {
           const configData = fs.readFileSync(this.configPath, 'utf8')
           config = JSON.parse(configData)
         }
-        const token = config.tokens?.topstep || ''
+        const token = config.tokens?.tradesea || ''
         
         if (!token) {
           this.send(ws, {
@@ -864,7 +864,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Overwrite data (same as download but doesn't delete folder)
         this.runDataHandlerSafely(
-          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'overwrite'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'overwrite'),
           { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -899,7 +899,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         this.send(ws, {
           type: 'overwrite_response',
           success: false,
-          error: 'Invalid source. Supported sources: topstep, tradingview'
+          error: 'Invalid source. Supported sources: tradesea, tradingview'
         })
       }
     } catch (error) {
@@ -933,14 +933,14 @@ class BacktesterDataWebSocket extends WebSocketBase {
         return
       }
 
-      if (source === 'topstep') {
+      if (source === 'tradesea') {
         // Get token from config
         let config = {}
         if (fs.existsSync(this.configPath)) {
           const configData = fs.readFileSync(this.configPath, 'utf8')
           config = JSON.parse(configData)
         }
-        const token = config.tokens?.topstep || ''
+        const token = config.tokens?.tradesea || ''
         
         if (!token) {
           this.send(ws, {
@@ -977,7 +977,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         })
 
         // Delete folder first
-        this.sendProgress(null, 'reset', normalizedSymbol, 'topstep', 0, 'Deleting existing data...')
+        this.sendProgress(null, 'reset', normalizedSymbol, 'tradesea', 0, 'Deleting existing data...')
         const symbolDir = path.join(this.csvDir, normalizedSymbol)
         if (fs.existsSync(symbolDir)) {
           fs.rmSync(symbolDir, { recursive: true, force: true })
@@ -986,7 +986,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Then download using handler
         this.runDataHandlerSafely(
-          this.topstepHandler.download(apiSymbol, normalizedSymbol, token, 'reset'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'reset'),
           { action: 'reset', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -1040,7 +1040,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         this.send(ws, {
           type: 'reset_response',
           success: false,
-          error: 'Invalid source. Supported sources: topstep, tradingview'
+          error: 'Invalid source. Supported sources: tradesea, tradingview'
         })
       }
     } catch (error) {

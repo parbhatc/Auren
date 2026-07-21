@@ -9,13 +9,11 @@ export const PRACTICE_PROP_FIRM_CONFIGS = [
   },
 ]
 
-const REMOVED_PROP_FIRM_IDS = new Set(['topstep', 'rithmic'])
-
 const CONFIG_BY_ID = new Map(PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c]))
 
 export function normalizePracticePropFirmId(propFirmId) {
   const id = String(propFirmId || '').trim()
-  if (!id || REMOVED_PROP_FIRM_IDS.has(id)) return 'tradesea'
+  if (!id) return 'tradesea'
   return CONFIG_BY_ID.has(id) ? id : 'tradesea'
 }
 

@@ -1,6 +1,6 @@
 /**
- * Topstep Data Handler
- * Handles download, update, overwrite, and reset operations for TopstepX data
+ * Tradesea Data Handler
+ * Handles download, update, overwrite, and reset operations for Tradesea data
  */
 import fs from 'fs'
 import path from 'path'
@@ -12,7 +12,7 @@ import {
   monthNameFromIndex,
 } from '../../utils/backtesterCsvPaths.js'
 
-class TopstepDataHandler {
+class TradeseaDataHandler {
   constructor(websocketInstance) {
     this.ws = websocketInstance
   }
@@ -25,11 +25,11 @@ class TopstepDataHandler {
   }
 
   /**
-   * Download TopstepX data and save to CSV files
+   * Download Tradesea data and save to CSV files
    */
   async download(apiSymbol, normalizedSymbol, token, action = 'download') {
     try {
-      const TopstepXService = (await import('../../services/TopstepXService.js')).default
+      const TradeseaService = (await import('../../services/TradeseaService.js')).default
 
       const resolution = '1'
       let toTime = Math.floor(Date.now() / 1000)
@@ -39,12 +39,12 @@ class TopstepDataHandler {
       let overallFirstBarTime = null
       let overallLastBarTime = null
 
-      this.ws.sendProgress(null, action, normalizedSymbol, 'topstep', 0, `Starting ${action}... Fetching from current date backwards`)
+      this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0, `Starting ${action}... Fetching from current date backwards`)
 
       let isIncomplete = true
       while (isIncomplete) {
         try {
-          const historyResponse = await TopstepXService.getHistory(
+          const historyResponse = await TradeseaService.getHistory(
             token,
             apiSymbol,
             resolution,
@@ -90,13 +90,13 @@ class TopstepDataHandler {
 
           const firstDate = overallFirstBarTime ? new Date(overallFirstBarTime) : new Date(firstBar.t)
           const lastDate = overallLastBarTime ? new Date(overallLastBarTime) : new Date(lastBar.t)
-          this.ws.sendProgress(null, action, normalizedSymbol, 'topstep', 0, 
+          this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0,
             `Fetched ${allBars.length} bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
           toTime = Math.floor(lastBar.t / 1000)
           await new Promise(resolve => setTimeout(resolve, 100))
         } catch (error) {
-          console.error(`[TopstepDataHandler] Error fetching chunk:`, error.message)
+          console.error(`[TradeseaDataHandler] Error fetching chunk:`, error.message)
           isIncomplete = false
           break
         }
@@ -112,7 +112,7 @@ class TopstepDataHandler {
       }
 
       allBars.sort((a, b) => a.time - b.time)
-      this.ws.sendProgress(null, action, normalizedSymbol, 'topstep', 0, 'Writing CSV files...')
+      this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0, 'Writing CSV files...')
 
       const barsByMonth = {}
       for (const bar of allBars) {
@@ -149,21 +149,21 @@ class TopstepDataHandler {
         fs.writeFileSync(filePath, csvLines.join('\n'), 'utf8')
         filesWritten++
 
-        this.ws.sendProgress(null, action, normalizedSymbol, 'topstep', 0, `Written ${filesWritten}/${totalFiles} files...`)
+        this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0, `Written ${filesWritten}/${totalFiles} files...`)
       }
 
       const responseType = action === 'reset' ? 'reset_response' : action === 'overwrite' ? 'overwrite_response' : action === 'update' ? 'update_response' : 'download_response'
       const actionLabel = action === 'reset' ? 'Reset' : action === 'overwrite' ? 'Overwrite' : action === 'update' ? 'Update' : 'Download'
-      this.ws.sendProgress(null, action, normalizedSymbol, 'topstep', 0, `${actionLabel} complete!`)
+      this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0, `${actionLabel} complete!`)
       this.ws.broadcast({
         type: responseType,
         success: true,
         message: `Successfully ${action === 'reset' ? 'reset' : action === 'overwrite' ? 'overwritten' : action === 'update' ? 'updated' : 'downloaded'} ${allBars.length} bars to ${filesWritten} CSV files`
       })
 
-      console.log(`[TopstepDataHandler] ${action.charAt(0).toUpperCase() + action.slice(1)} completed for ${normalizedSymbol}: ${allBars.length} bars in ${filesWritten} files`)
+      console.log(`[TradeseaDataHandler] ${action.charAt(0).toUpperCase() + action.slice(1)} completed for ${normalizedSymbol}: ${allBars.length} bars in ${filesWritten} files`)
     } catch (error) {
-      console.error('[TopstepDataHandler] Error:', error.message)
+      console.error('[TradeseaDataHandler] Error:', error.message)
       this.ws.broadcast({
         type: 'download_response',
         success: false,
@@ -174,16 +174,16 @@ class TopstepDataHandler {
   }
 
   /**
-   * Update TopstepX data (merges with existing)
+   * Update Tradesea data (merges with existing)
    */
   async update(apiSymbol, normalizedSymbol, token) {
     try {
-      const TopstepXService = (await import('../../services/TopstepXService.js')).default
+      const TradeseaService = (await import('../../services/TradeseaService.js')).default
 
       const resolution = '1'
       const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
       
-      this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'Finding latest data...')
+      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Finding latest data...')
 
       const now = new Date()
       const nowTimestamp = Math.floor(now.getTime() / 1000)
@@ -194,13 +194,13 @@ class TopstepDataHandler {
       let fromTime = 0
       if (latestYear && latestMonthIndex !== null) {
         fromTime = Math.floor(new Date(latestYear, latestMonthIndex, 1, 0, 0, 0, 0).getTime() / 1000)
-        this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, `Updating from ${latestMonth} ${latestYear} to now...`)
+        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, `Updating from ${latestMonth} ${latestYear} to now...`)
       } else {
         fromTime = 0
-        this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'No existing data found, starting full download...')
+        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'No existing data found, starting full download...')
       }
 
-      this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'Fetching new data...')
+      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Fetching new data...')
       
       const allNewBars = []
       let toTime = nowTimestamp
@@ -214,7 +214,7 @@ class TopstepDataHandler {
       let isIncomplete = true
       while (isIncomplete) {
         try {
-          const historyResponse = await TopstepXService.getHistory(
+          const historyResponse = await TradeseaService.getHistory(
             token,
             apiSymbol,
             resolution,
@@ -248,7 +248,7 @@ class TopstepDataHandler {
             if (barsInRange.length === 0) {
               // No more bars in range, we're done
               isIncomplete = false
-              console.log(`[TopstepDataHandler] Reached fromTime limit (update mode)`)
+              console.log(`[TradeseaDataHandler] Reached fromTime limit (update mode)`)
               break
             }
             // Continue processing barsInRange below
@@ -286,13 +286,13 @@ class TopstepDataHandler {
 
           const firstDate = overallFirstBarTime ? new Date(overallFirstBarTime) : new Date(firstBar.t)
           const lastDate = overallLastBarTime ? new Date(overallLastBarTime) : new Date(lastBar.t)
-          this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 
+          this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0,
             `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
           toTime = Math.floor(lastBar.t / 1000)
           await new Promise(resolve => setTimeout(resolve, 100))
         } catch (error) {
-          console.error(`[TopstepDataHandler] Error fetching update chunk:`, error.message)
+          console.error(`[TradeseaDataHandler] Error fetching update chunk:`, error.message)
           isIncomplete = false
           break
         }
@@ -317,7 +317,7 @@ class TopstepDataHandler {
       }
 
       // Merge with existing files
-      this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'Merging data...')
+      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Merging data...')
 
       const barsByMonth = {}
       for (const bar of uniqueBars.values()) {
@@ -385,10 +385,10 @@ class TopstepDataHandler {
           filesWithNewCandles++
         }
 
-        this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, `Updated ${Object.keys(barsByMonth).indexOf(key) + 1}/${totalFiles} files... (${totalNewCandles} new candles)`)
+        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, `Updated ${Object.keys(barsByMonth).indexOf(key) + 1}/${totalFiles} files... (${totalNewCandles} new candles)`)
       }
 
-      this.ws.sendProgress(null, 'update', normalizedSymbol, 'topstep', 0, 'Update complete!')
+      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Update complete!')
       
       // Create appropriate message based on whether any new bars were added
       let successMessage = ''
@@ -406,9 +406,9 @@ class TopstepDataHandler {
         message: successMessage
       })
 
-      console.log(`[TopstepDataHandler] Update completed for ${normalizedSymbol}: ${totalNewCandles} new bars in ${filesWithNewCandles} files`)
+      console.log(`[TradeseaDataHandler] Update completed for ${normalizedSymbol}: ${totalNewCandles} new bars in ${filesWithNewCandles} files`)
     } catch (error) {
-      console.error('[TopstepDataHandler] Error updating:', error.message)
+      console.error('[TradeseaDataHandler] Error updating:', error.message)
       this.ws.broadcast({
         type: 'update_response',
         success: false,
@@ -419,5 +419,5 @@ class TopstepDataHandler {
   }
 }
 
-export default TopstepDataHandler
+export default TradeseaDataHandler
 

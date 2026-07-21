@@ -33,14 +33,12 @@ const CONFIG_BY_ID = new Map(
   PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c] as const)
 )
 
-const REMOVED_PROP_FIRM_IDS = new Set(['topstep', 'rithmic'])
-
 /** Map legacy/unknown prop firm ids to a supported firm. */
 export function normalizePracticePropFirmId(
   propFirmId?: string | null
 ): PracticePropFirmConfigId {
   const id = String(propFirmId || '').trim()
-  if (!id || REMOVED_PROP_FIRM_IDS.has(id)) return 'tradesea'
+  if (!id) return 'tradesea'
   return (CONFIG_BY_ID.has(id) ? id : 'tradesea') as PracticePropFirmConfigId
 }
 

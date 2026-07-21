@@ -203,7 +203,7 @@ const SymbolConfigDialog = ({
                 {t('backtesterDataManagement.symbolConfig.type')}
               </label>
               <div className={`px-3 py-2 rounded-lg ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-900'}`}>
-                {type === 'topstep' ? t('backtesterDataManagement.symbolConfig.topstepx') : t('backtesterDataManagement.symbolConfig.tradingview')}
+                {type === 'tradesea' ? t('backtesterDataManagement.symbolConfig.tradesea') : t('backtesterDataManagement.symbolConfig.tradingview')}
               </div>
             </div>
 

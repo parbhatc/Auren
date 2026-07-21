@@ -31,13 +31,13 @@ export function wsSourceFromCsvDataSource(source: CsvDataSourcePreference): CsvD
 
 export type CsvDataWsSource = 'tradesea' | 'tradingview'
 
-/** Backtester data WS still uses legacy `topstep` for Tradesea CSV downloads. */
-export function toServerWsSource(source: CsvDataWsSource): 'topstep' | 'tradingview' {
-  return source === 'tradesea' ? 'topstep' : 'tradingview'
+/** Backtester data WS still uses legacy `tradesea` for Tradesea CSV downloads. */
+export function toServerWsSource(source: CsvDataWsSource): 'tradesea' | 'tradingview' {
+  return source === 'tradesea' ? 'tradesea' : 'tradingview'
 }
 
 export function fromServerWsSource(source: string): CsvDataWsSource {
-  return source === 'topstep' ? 'tradesea' : 'tradingview'
+  return source === 'tradesea' ? 'tradesea' : 'tradingview'
 }
 
 export function resolveDataManagementTab(

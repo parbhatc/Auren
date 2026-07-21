@@ -27,17 +27,6 @@ import {
   broadcastClosePosition,
 } from './practice/PracticeAccountHub.js'
 
-function notifyBracketEngine(method, ...args) {
-  void import('./practice/PracticeBracketEngine.js')
-    .then((mod) => {
-      const fn = mod[method]
-      if (typeof fn === 'function') return fn(...args)
-    })
-    .catch((err) => {
-      console.warn('[Practice] bracket engine notify failed', err?.message || err)
-    })
-}
-
 function normalizeTradeSymbol(symbol) {
   let s = String(symbol || '').trim()
   if (!s) return ''
@@ -443,7 +432,6 @@ class PracticeService {
     await Database.initialize()
     await Database.run('DELETE FROM practice_trades WHERE account_id = ?', [accountId])
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
-    notifyBracketEngine('clearAccountWatches', accountId)
     await Database.run(
       `UPDATE practice_accounts SET
         status = 'active', balance = ?, high_water_mark = ?, day_pnl_json = '[]',
@@ -473,7 +461,6 @@ class PracticeService {
     await Database.initialize()
     await Database.run('DELETE FROM practice_trades WHERE account_id = ?', [accountId])
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
-    notifyBracketEngine('clearAccountWatches', accountId)
     await Database.run('DELETE FROM practice_accounts WHERE id = ? AND user_id = ?', [
       accountId,
       userId,
@@ -498,39 +485,6 @@ class PracticeService {
       [accountId]
     )
     return rows.map(rowToPosition)
-  }
-
-  /** All open practice positions with brackets (for server-side Rithmic monitoring). */
-  async listBracketPositions() {
-    await Database.initialize()
-    const rows = await Database.query(
-      `SELECT p.*, a.user_id
-       FROM practice_positions p
-       INNER JOIN practice_accounts a ON a.id = p.account_id
-       WHERE a.status = 'active'
-         AND p.contracts != 0
-         AND (p.stop_loss IS NOT NULL OR p.take_profit IS NOT NULL)`
-    )
-    return rows.map((row) => ({
-      ...rowToPosition(row),
-      userId: row.user_id,
-    }))
-  }
-
-  /** Open position counts per symbol — drives Rithmic ChartLive subscriptions (offline monitoring). */
-  async listActivePositionSymbolCounts() {
-    await Database.initialize()
-    const rows = await Database.query(
-      `SELECT p.symbol, COUNT(*) AS cnt
-       FROM practice_positions p
-       INNER JOIN practice_accounts a ON a.id = p.account_id
-       WHERE a.status = 'active' AND p.contracts != 0
-       GROUP BY p.symbol`
-    )
-    return rows.map((row) => ({
-      symbol: normalizeTradeSymbol(row.symbol),
-      count: Number(row.cnt) || 0,
-    }))
   }
 
   async chargeFillCommission(userId, accountId, fillContracts, symbol) {
@@ -565,15 +519,12 @@ class PracticeService {
           throw err
         }
         broadcastOpenPosition(userId, accountId, account, saved)
-        notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
         return saved
       }
     }
     const saved = await this._savePosition(userId, accountId, position, { requireNew: true })
     const account = await this.getAccount(userId, accountId)
     if (account) broadcastOpenPosition(userId, accountId, account, saved)
-    notifyBracketEngine('trackOpenPositionSymbol', saved.symbol)
-    notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
     return saved
   }
 
@@ -581,7 +532,6 @@ class PracticeService {
     const saved = await this._savePosition(userId, accountId, position, { requireExisting: true })
     const account = await this.getAccount(userId, accountId)
     if (account) broadcastModifyPosition(userId, accountId, account, saved)
-    notifyBracketEngine('syncPositionWatch', userId, accountId, saved)
     return saved
   }
 
@@ -626,8 +576,6 @@ class PracticeService {
         forcedExit: Boolean(forcedExit),
       })
     }
-
-    notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
 
     const updatedAccount = await this.getAccount(userId, accountId)
     broadcastClosePosition(userId, accountId, {
@@ -753,54 +701,6 @@ class PracticeService {
     return saved
   }
 
-  /**
-   * Close an open position when backend Rithmic detects SL/TP fill.
-   * Records trade, deletes row, returns updated account.
-   */
-  async closePositionByBracket(userId, accountId, positionId, { exitPrice, exitTime, reason }) {
-    const account = await this.getAccount(userId, accountId)
-    if (!account || account.status !== 'active') return null
-
-    await Database.initialize()
-    const row = await Database.get(
-      'DELETE FROM practice_positions WHERE id = ? AND account_id = ? RETURNING *',
-      [positionId, accountId]
-    )
-    if (!row) return null
-
-    const symbol = normalizeTradeSymbol(row.symbol)
-    const contracts = Math.abs(Number(row.contracts) || 0)
-    if (!contracts) return null
-
-    const pnl = calcPracticePnL(Number(row.entry), Number(exitPrice), Number(row.contracts), symbol)
-    const trade = await this.recordTrade(userId, accountId, {
-      symbol,
-      direction: row.type,
-      entryPrice: row.entry,
-      exitPrice,
-      contracts,
-      pnl,
-      entryTime: row.entry_time,
-      exitTime,
-      stopLoss: row.stop_loss,
-      takeProfit: row.take_profit,
-    })
-
-    notifyBracketEngine('notifyPositionRemoved', userId, accountId, positionId, symbol)
-
-    const updatedAccount = await this.getAccount(userId, accountId)
-    broadcastClosePosition(userId, accountId, {
-      account: updatedAccount,
-      positionId,
-      symbol,
-      exitPrice: Number(exitPrice),
-      exitTime,
-      reason,
-      trade,
-    })
-    return { trade, account: updatedAccount, reason }
-  }
-
   async deletePosition(userId, accountId, positionId) {
     return this.closePosition(userId, accountId, positionId)
   }
@@ -808,7 +708,6 @@ class PracticeService {
   async clearPositions(userId, accountId) {
     await Database.initialize()
     await Database.run('DELETE FROM practice_positions WHERE account_id = ?', [accountId])
-    notifyBracketEngine('clearAccountWatches', accountId)
     return true
   }
 

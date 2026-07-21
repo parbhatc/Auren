@@ -93,13 +93,13 @@ const DataSourceSection = ({
   
   // Filter symbols to only include those in config.json that match the current type
   const filteredSymbols = Object.keys(organized).filter(symbol => {
-    // For Topstep, normalize symbol (remove leading slash for comparison)
-    if (type === 'topstep') {
+    // For Tradesea, normalize symbol (remove leading slash for comparison)
+    if (type === 'tradesea') {
       const normalizedSymbol = symbol.startsWith('/') ? symbol.slice(1) : symbol
       // Check if symbol exists in config (with or without slash)
       const configEntry = symbolsConfig[normalizedSymbol] || symbolsConfig[`/${normalizedSymbol}`]
-      // Must exist in config AND match type (or have no type specified, default to topstep)
-      return configEntry && (configEntry.type === 'topstep' || !configEntry.type)
+      // Must exist in config AND match type (or have no type specified, default to tradesea)
+      return configEntry && (configEntry.type === 'tradesea' || !configEntry.type)
     }
     
     // For TradingView, check exact match and also check double underscore format
@@ -169,10 +169,10 @@ const DataSourceSection = ({
               {activeProgress.map((progress) => {
                 const progressKey = `${progress.source}_${progress.symbol}_${progress.action}`
                 const actionLabels: Record<string, string> = {
-                  download: t('backtesterDataManagement.topstep.downloading'),
-                  update: t('backtesterDataManagement.topstep.updating'),
-                  overwrite: t('backtesterDataManagement.topstep.overwriting'),
-                  reset: t('backtesterDataManagement.topstep.resetting'),
+                  download: t('backtesterDataManagement.tradesea.downloading'),
+                  update: t('backtesterDataManagement.tradesea.updating'),
+                  overwrite: t('backtesterDataManagement.tradesea.overwriting'),
+                  reset: t('backtesterDataManagement.tradesea.resetting'),
                 }
                 const actionLabel = actionLabels[progress.action] || progress.action
 
@@ -298,7 +298,7 @@ const DataSourceSection = ({
                               {description}
                             </div>
                           )}
-                          {!description && type === 'topstep' && (
+                          {!description && type === 'tradesea' && (
                             <div className={`text-xs mt-1.5 italic ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                               {t('backtesterDataManagement.dataSource.noDescription')}
                             </div>
@@ -327,7 +327,7 @@ const DataSourceSection = ({
                         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                           {resultType && (
                             <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${
-                              type === 'topstep'
+                              type === 'tradesea'
                                 ? isDark ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50' : 'bg-blue-100 text-blue-700 border border-blue-200'
                                 : isDark ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'bg-purple-100 text-purple-700 border border-purple-200'
                             }`}>

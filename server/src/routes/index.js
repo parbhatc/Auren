@@ -60,8 +60,6 @@ class Routes {
     // Props routes
     const propsRoutes = new PropsRoutes()
     this.router.use('/props', propsRoutes.getRouter())
-
-
     // Economic News routes
     const economicNewsRoutes = new EconomicNewsRoutes()
     this.router.use('/economic-news', economicNewsRoutes.getRouter())

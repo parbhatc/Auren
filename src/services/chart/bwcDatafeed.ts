@@ -1,6 +1,5 @@
 import type { Bar, IDatafeedChartApi, LibrarySymbolInfo, ResolutionString } from '../../types/chart'
 import { tradeseaResolutionToSeconds } from '../tradesea/tradeseaResolutions'
-import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
 import { candleDebug } from '../tradesea/candleDebug'
 import { librarySymbolDisplayName } from '../tradesea/tradeseaSymbolInfo'
 
@@ -51,8 +50,8 @@ function normalizeBarForBwc(bar: Bar): Bar {
   return { ...bar, time: barTimeToSec(bar.time) }
 }
 
-/** Bridge Tradesea TV-style datafeed to BetterweightChart createCustomDatafeed. */
-export function createBwcDatafeed(source: TradeseaDatafeed) {
+/** Bridge a TradingView-style datafeed to BetterweightChart createCustomDatafeed. */
+export function createBwcDatafeed(source: IDatafeedChartApi) {
   let cachedConfig: {
     resolutions: BwcResolution[]
     supported_resolutions: string[]

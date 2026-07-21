@@ -225,7 +225,7 @@ const BacktesterDataManagementWrapper = () => {
         
         // Create unique key for this operation
         const clientSource: CsvDataWsSource =
-          data.source === 'topstep' ? 'tradesea' : 'tradingview'
+          data.source === 'tradesea' ? 'tradesea' : 'tradingview'
         const progressKey = `${clientSource}_${data.symbol}_${data.action}`
         
         // Check if this is a completion message

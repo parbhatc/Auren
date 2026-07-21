@@ -301,7 +301,7 @@ export const backtesterAPI = {
     commissionFee?: number;
     totalFees?: number;
     description?: string;
-    type?: 'topstep' | 'tradingview';
+    type?: 'tradesea' | 'tradingview';
     ticker_type?: string;
     tickers?: {
       tradesea?: string;
@@ -334,7 +334,7 @@ export const backtesterAPI = {
   /**
    * Get CSV files by type (admin only)
    */
-  getCSVFilesByType: async (type: 'topstep' | 'tradingview'): Promise<{
+  getCSVFilesByType: async (type: 'tradesea' | 'tradingview'): Promise<{
     success: boolean;
     files: Array<{
       symbol: string;
@@ -407,7 +407,7 @@ export const backtesterAPI = {
   getTokens: async (): Promise<{
     success: boolean;
     tokens: {
-      topstep?: string;
+      tradesea?: string;
       tradingview?: string;
     };
   }> => {

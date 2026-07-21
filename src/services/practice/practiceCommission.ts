@@ -1,21 +1,17 @@
 import type { PracticeAccountRules } from './practicePlans'
 import { isMicroPracticeSymbol } from './practiceLimits'
 
-/**
- * Topstep simulated commission (per contract, per fill / one side).
- * Published round-turn: micro $0.50, mini $1.00 → half per fill.
- * @see https://help.topstep.com/en/articles/8284213
- */
-export const TOPSTEP_COMMISSION_MICRO_PER_FILL = 0.25
-export const TOPSTEP_COMMISSION_MINI_PER_FILL = 0.5
+/** Default simulated commission per contract, per fill (one side). */
+export const PRACTICE_COMMISSION_MICRO_PER_FILL = 0.25
+export const PRACTICE_COMMISSION_MINI_PER_FILL = 0.5
 
-/** @deprecated Legacy default; use symbol-aware Topstep rates when rules omit override. */
-export const DEFAULT_PRACTICE_COMMISSION_PER_CONTRACT = TOPSTEP_COMMISSION_MINI_PER_FILL
+/** @deprecated Use the symbol-aware rate when rules omit an override. */
+export const DEFAULT_PRACTICE_COMMISSION_PER_CONTRACT = PRACTICE_COMMISSION_MINI_PER_FILL
 
-export function getTopstepStyleCommissionPerFill(symbol: string): number {
+export function getDefaultCommissionPerFill(symbol: string): number {
   return isMicroPracticeSymbol(symbol)
-    ? TOPSTEP_COMMISSION_MICRO_PER_FILL
-    : TOPSTEP_COMMISSION_MINI_PER_FILL
+    ? PRACTICE_COMMISSION_MICRO_PER_FILL
+    : PRACTICE_COMMISSION_MINI_PER_FILL
 }
 
 export function getPracticeCommissionPerContract(
@@ -25,12 +21,11 @@ export function getPracticeCommissionPerContract(
   const override = rules?.commissionPerContract
   if (override != null && Number.isFinite(Number(override)) && Number(override) >= 0) {
     const legacy = Number(override)
-    // Treat old $2 default as "use Topstep" for existing saved accounts.
-    if (legacy === 2 && symbol) return getTopstepStyleCommissionPerFill(symbol)
+    if (legacy === 2 && symbol) return getDefaultCommissionPerFill(symbol)
     return legacy
   }
-  if (symbol) return getTopstepStyleCommissionPerFill(symbol)
-  return TOPSTEP_COMMISSION_MINI_PER_FILL
+  if (symbol) return getDefaultCommissionPerFill(symbol)
+  return PRACTICE_COMMISSION_MINI_PER_FILL
 }
 
 export function practiceFillCommission(
@@ -48,12 +43,8 @@ export function resolvePracticeTradeFees(trade: {
   symbol?: string
   originalTrade?: { fees?: number }
 }): number {
-  if (trade.fees != null && Number.isFinite(Number(trade.fees))) {
-    return Number(trade.fees)
-  }
+  if (trade.fees != null && Number.isFinite(Number(trade.fees))) return Number(trade.fees)
   const fromOriginal = trade.originalTrade?.fees
-  if (fromOriginal != null && Number.isFinite(Number(fromOriginal))) {
-    return Number(fromOriginal)
-  }
+  if (fromOriginal != null && Number.isFinite(Number(fromOriginal))) return Number(fromOriginal)
   return 0
 }

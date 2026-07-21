@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -8,7 +8,7 @@ import { useTheme } from '../../../hooks/useTheme'
 
 import { propFirmRegistry } from '../../../propfirms'
 
-import { TradeseaPropFirm } from '../../../propfirms'
+import { firmUsesBrokerAccounts } from '../../../propfirms/MarketDataConnection'
 
 import {
 
@@ -17,6 +17,8 @@ import {
   getPracticeAccountDisplayTitle,
 
   getPracticeMarketDataSettings,
+
+  normalizePracticePropFirmId,
 
   refreshPracticeFromApi,
 
@@ -56,7 +58,7 @@ export default function StatsPage() {
 
 
 
-  const tradeseaFirm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
+  const marketFirmRef = useRef<any>(null)
 
 
 
@@ -78,7 +80,11 @@ export default function StatsPage() {
 
     const md = getPracticeMarketDataSettings()
 
-    if (!md.accountId) {
+    const selectedFirmId = normalizePracticePropFirmId(md.propFirmId)
+
+    const marketFirm = propFirmRegistry.find((firm) => firm.id === selectedFirmId) as any
+
+    if (firmUsesBrokerAccounts(selectedFirmId) && !md.accountId) {
 
       setValidationError(t('practice.page.noAccountSelected'))
 
@@ -88,7 +94,7 @@ export default function StatsPage() {
 
 
 
-    if (!tradeseaFirm) {
+    if (!marketFirm) {
 
       setValidationError(t('practice.page.loadFailed'))
 
@@ -106,11 +112,13 @@ export default function StatsPage() {
 
     try {
 
-      localStorage.setItem('activePropFirm', 'tradesea')
+      marketFirmRef.current = marketFirm
 
-      tradeseaFirm.setPracticeMode(true, md.accountId, md.accountLabel, id)
+      localStorage.setItem('activePropFirm', selectedFirmId)
 
-      const validationResult = await tradeseaFirm.validate()
+      marketFirm.setPracticeMode(true, md.accountId, md.accountLabel, id)
+
+      const validationResult = await marketFirm.validate()
 
       if (!validationResult.success) {
 
@@ -120,7 +128,7 @@ export default function StatsPage() {
 
       }
 
-      await tradeseaFirm.onValidateSuccess({ skipStreams: true })
+      await marketFirm.onValidateSuccess({ skipStreams: true })
 
     } catch (error: unknown) {
 
@@ -128,7 +136,7 @@ export default function StatsPage() {
 
     }
 
-  }, [practiceAccountId, tradeseaFirm])
+  }, [practiceAccountId])
 
 
 
@@ -140,11 +148,17 @@ export default function StatsPage() {
 
       setIsValidating(true)
 
-      await refreshPracticeFromApi()
+      try {
 
-      await runValidation()
+        await refreshPracticeFromApi()
 
-      if (!cancelled) setIsValidating(false)
+        await runValidation()
+
+      } finally {
+
+        if (!cancelled) setIsValidating(false)
+
+      }
 
     })()
 
@@ -152,11 +166,11 @@ export default function StatsPage() {
 
       cancelled = true
 
-      tradeseaFirm?.cleanup()
+      marketFirmRef.current?.cleanup()
 
     }
 
-  }, [runValidation, tradeseaFirm])
+  }, [runValidation])
 
 
 

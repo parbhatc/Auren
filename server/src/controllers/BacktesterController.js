@@ -1873,10 +1873,10 @@ class BacktesterController {
     try {
       const { type } = req.query
 
-      if (!type || (type !== 'topstep' && type !== 'tradingview' && type !== 'unknown')) {
+      if (!type || (type !== 'tradesea' && type !== 'tradingview' && type !== 'unknown')) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
-          message: 'Type must be either "topstep", "tradingview", or "unknown"',
+          message: 'Type must be either "tradesea", "tradingview", or "unknown"',
         })
       }
 
@@ -1909,7 +1909,7 @@ class BacktesterController {
       } else {
         const symbolsByType = Object.keys(symbols).filter((symbol) => {
           const symbolData = symbols[symbol]
-          return (symbolData.type || 'topstep') === type
+          return (symbolData.type || 'tradesea') === type
         })
 
         for (const symbol of symbolsByType) {

@@ -1,6 +1,6 @@
 /**
  * Base interface for trading statistics calculators
- * This allows easy swapping between different providers (Backtester, TopstepX, etc.)
+ * This allows easy swapping between live and backtester providers.
  */
 
 import { TradeData, CalculatedStats } from '../../types/stats'

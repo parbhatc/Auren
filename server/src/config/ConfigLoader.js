@@ -83,18 +83,6 @@ class ConfigLoader {
       resetToken: {
         expiryHours: 1,
       },
-      live_data: {
-        type: 'rithmic',
-        rithmic: {
-          enabled: false,
-          connectOnStartup: true,
-          subscribeOnStartup: false,
-          username: '',
-          password: '',
-          systemName: 'LucidTrading',
-          gatewayName: 'Chicago Area',
-        },
-      },
     }
   }
 

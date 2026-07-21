@@ -1,8 +1,8 @@
-import { Component, useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
 import { getThemeColors } from '../../../constants/theme'
-import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
+import { propFirmRegistry } from '../../../propfirms'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import { RefreshCw } from 'lucide-react'
 import TradingRenderer from '../Trading/TradingRenderer'
@@ -44,7 +44,8 @@ function TradePageInner() {
   const [showPassedModal, setShowPassedModal] = useState(false)
   const [, setUpdateTrigger] = useState(0)
 
-  const tradeseaFirm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
+  const marketFirmRef = useRef<any>(null)
+  const marketFirm = marketFirmRef.current
 
   const runValidation = useCallback(async () => {
     const id = practiceAccountId || ''
@@ -72,12 +73,13 @@ function TradePageInner() {
 
     const md = getPracticeMarketDataSettings()
     const marketFirmId = normalizePracticePropFirmId(md.propFirmId)
+    const activeMarketFirm = propFirmRegistry.find((firm) => firm.id === marketFirmId) as any
     if (firmUsesBrokerAccounts(marketFirmId) && !md.accountId) {
       setValidationError(t('practice.page.noAccountSelected'))
       return
     }
 
-    if (!tradeseaFirm) {
+    if (!activeMarketFirm) {
       setValidationError(t('practice.page.loadFailed'))
       return
     }
@@ -86,23 +88,28 @@ function TradePageInner() {
     setValidationError(null)
 
     try {
+      marketFirmRef.current = activeMarketFirm
       const firmId = marketFirmId
       localStorage.setItem('activePropFirm', firmId)
 
       let marketAccountId = md.accountId
       let marketAccountLabel = md.accountLabel
 
-      const validationResult = await tradeseaFirm.validate()
+      const validationResult = await activeMarketFirm.validate()
       if (!validationResult.success) {
         setValidationError(validationResult.message || t('practice.page.loadFailed'))
         return
       }
 
-      tradeseaFirm.setPracticeMode(true, marketAccountId, marketAccountLabel, id)
+      activeMarketFirm.setPracticeMode(true, marketAccountId, marketAccountLabel, id)
 
-      await tradeseaFirm.onValidateSuccess()
-      if (tradeseaFirm.practiceTradeHandler) {
-        tradeseaFirm.practiceTradeHandler.onAccountUpdated = () => {
+      activeMarketFirm.setOnDataReady(() => {
+        setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
+        setUpdateTrigger((n) => n + 1)
+      })
+      await activeMarketFirm.onValidateSuccess()
+      if (activeMarketFirm.practiceTradeHandler) {
+        activeMarketFirm.practiceTradeHandler.onAccountUpdated = () => {
           void refreshPracticeFromApi().then(() => {
             const acc = getPracticeAccountById(practiceAccountId || '') || null
             setPracticeAccount(acc)
@@ -111,8 +118,8 @@ function TradePageInner() {
             setUpdateTrigger((n) => n + 1)
           })
         }
-        tradeseaFirm.practiceTradeHandler.onUnrealizedPnLUpdate = () => {
-          const h = tradeseaFirm.practiceTradeHandler
+        activeMarketFirm.practiceTradeHandler.onUnrealizedPnLUpdate = () => {
+          const h = activeMarketFirm.practiceTradeHandler
           if (!h) return
           const info = h.getAccountInfo()
           publishAccountStats({
@@ -122,14 +129,14 @@ function TradePageInner() {
             hasOpenPosition: h.hasAnyOpenPosition?.() ?? false,
           })
         }
-        tradeseaFirm.practiceTradeHandler.onAccountBlown = () => {
+        activeMarketFirm.practiceTradeHandler.onAccountBlown = () => {
           setShowBlownModal(true)
           void refreshPracticeFromApi().then(() => {
             setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
             setUpdateTrigger((n) => n + 1)
           })
         }
-        tradeseaFirm.practiceTradeHandler.onAccountPassed = () => {
+        activeMarketFirm.practiceTradeHandler.onAccountPassed = () => {
           setShowPassedModal(true)
           void refreshPracticeFromApi().then(() => {
             setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
@@ -140,20 +147,27 @@ function TradePageInner() {
     } catch (error: unknown) {
       setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
     }
-  }, [practiceAccountId, tradeseaFirm])
+  }, [practiceAccountId])
 
   useEffect(() => {
     let cancelled = false
 
     const bootstrap = async () => {
       setIsValidating(true)
-      await refreshPracticeFromApi()
-      await runValidation()
-      if (!cancelled) {
-        setIsValidating(false)
-        setRefreshing(false)
-        setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
-        setUpdateTrigger((n) => n + 1)
+      try {
+        await refreshPracticeFromApi()
+        await runValidation()
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
+        }
+      } finally {
+        if (!cancelled) {
+          setIsValidating(false)
+          setRefreshing(false)
+          setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
+          setUpdateTrigger((n) => n + 1)
+        }
       }
     }
 
@@ -172,29 +186,26 @@ function TradePageInner() {
     }
     window.addEventListener('practiceAccountsChanged', onAccountsChanged)
 
-    if (tradeseaFirm) {
-      tradeseaFirm.setOnDataReady(() => {
-        setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
-        setUpdateTrigger((n) => n + 1)
-      })
-    }
-
     return () => {
       cancelled = true
       window.removeEventListener('practiceAccountsChanged', onAccountsChanged)
-      tradeseaFirm?.cleanup()
+      marketFirmRef.current?.cleanup()
     }
-  }, [runValidation, tradeseaFirm, practiceAccountId])
+  }, [runValidation, practiceAccountId])
 
   const handleRefresh = () => {
-    if (!tradeseaFirm) return
+    const activeMarketFirm = marketFirmRef.current
+    if (!activeMarketFirm) return
     setRefreshing(true)
-    tradeseaFirm.accountsFetched = false
+    if ('accountsFetched' in activeMarketFirm) activeMarketFirm.accountsFetched = false
     void (async () => {
       setIsValidating(true)
-      await runValidation()
-      setIsValidating(false)
-      setRefreshing(false)
+      try {
+        await runValidation()
+      } finally {
+        setIsValidating(false)
+        setRefreshing(false)
+      }
     })()
   }
 
@@ -259,7 +270,7 @@ function TradePageInner() {
   const plan = getPracticePlanFromAccount(practiceAccount)
   const rules = evaluatePracticeRules(practiceAccount)
   const goToStats = () => {
-    tradeseaFirm?.cleanup()
+    marketFirm?.cleanup()
     navigate(practiceTradeStatsPath(practiceAccount.id))
   }
   const pageBg = isDark
@@ -276,7 +287,7 @@ function TradePageInner() {
           balance={practiceAccount.balance}
           onGoToHub={() => {
             setShowBlownModal(false)
-            tradeseaFirm?.cleanup()
+            marketFirm?.cleanup()
             navigate(ROUTES.PRACTICE)
           }}
           onGoToStats={goToStats}
@@ -296,7 +307,7 @@ function TradePageInner() {
           totalProfit={rules.totalProfit}
           onGoToHub={() => {
             setShowPassedModal(false)
-            tradeseaFirm?.cleanup()
+            marketFirm?.cleanup()
             navigate(ROUTES.PRACTICE)
           }}
           onGoToStats={goToStats}
@@ -337,7 +348,7 @@ function TradePageInner() {
         balance={practiceAccount.balance}
         onGoToHub={() => {
           setShowBlownModal(false)
-          tradeseaFirm?.cleanup()
+          marketFirm?.cleanup()
           navigate(ROUTES.PRACTICE)
         }}
         onGoToStats={goToStats}
@@ -350,7 +361,7 @@ function TradePageInner() {
         totalProfit={rules.totalProfit}
         onGoToHub={() => {
           setShowPassedModal(false)
-          tradeseaFirm?.cleanup()
+          marketFirm?.cleanup()
           navigate(ROUTES.PRACTICE)
         }}
         onGoToStats={goToStats}

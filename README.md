@@ -316,7 +316,7 @@ Use this page to manage historical bar data for the backtester:
 
 **Data sources**
 
-- **Tradesea** — 1-minute bars via Topstep-compatible API (token in config)
+- **Broker feed** — 1-minute bars through the configured authenticated data source
 - **TradingView** — bars via TradingView chart replay; optional auth token saved to `server/data/backtester/config.json` (`tokens.tradingview`). Leave empty or clear the field to use unauthorized access. Tokens shorter than 8 characters are ignored.
 
 **Timeframes**

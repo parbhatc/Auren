@@ -1,6 +1,5 @@
 import { CSSProperties, useEffect, useId, useRef } from 'react'
-import type { AurenChartProps } from '../../types/chart'
-import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
+import type { AurenChartProps, IDatafeedChartApi } from '../../types/chart'
 import { TradeseaMdsClient } from '../tradesea/TradeseaMdsClient'
 import type { TradeseaStreamConfig } from '../../api/tradesea.api'
 import {
@@ -26,7 +25,12 @@ type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
   mds?: TradeseaMdsClient
   trades?: unknown
-  datafeed: TradeseaDatafeed
+  datafeed: IDatafeedChartApi & {
+    refreshMdsSubscriptions?(): void
+    clearHistoryCache?(): void
+    teardownCandleStreams?(): void
+    setChartSymbolChangeRequest?(callback: ((symbol: string) => void) | null): void
+  }
   streamConfig: TradeseaStreamConfig | { delayed: boolean }
   accountId: string
 }
@@ -270,8 +274,8 @@ export default function AurenChart(props: AurenChartProps) {
       }
       chartReloadInFlightRef.current = true
       try {
-        datafeedSource.refreshMdsSubscriptions()
-        datafeedSource.clearHistoryCache()
+        datafeedSource.refreshMdsSubscriptions?.()
+        datafeedSource.clearHistoryCache?.()
         candleDebug.chartReload()
         await widget.reset({ data: true })
         candleDebug.chartReloadDone()
@@ -427,7 +431,7 @@ export default function AurenChart(props: AurenChartProps) {
       widgetRef.current?.destroy?.()
       widgetRef.current = null
       purgeOrphanedBwcFloatingToolbars()
-      datafeedSource.teardownCandleStreams()
+      datafeedSource.teardownCandleStreams?.()
       datafeedSource.setChartSymbolChangeRequest?.(null)
       schedulePageScrollReset()
     }

@@ -135,7 +135,7 @@
         "loginFailed": "Login failed",
         "invalidCredentials": "Invalid username or password",
         "connectionError": "Failed to connect to TradingView API",
-        "invalidSource": "Invalid source. Supported sources: topstep, tradingview"
+        "invalidSource": "Invalid source. Supported sources: tradesea, tradingview"
       }
     }
   },

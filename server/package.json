@@ -3,14 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --use-system-ca --watch server.js",
+    "dev": "node --use-system-ca --watch-path=server.js --watch-path=src server.js",
     "start": "node --use-system-ca server.js",
     "test": "node --test test\\*.test.js",
-    "test-topstepx": "node test-topstepx.js",
-    "test-account": "cross-env TEST_ACCOUNT_SERVICE=true node test-topstepx.js",
-    "test-account-local": "cross-env TEST_ACCOUNT_SERVICE=true USE_TEST_SERVER=true node test-topstepx.js",
     "test-signalr-server": "node test-signalr-server.js",
-    "test-signalr": "cross-env USE_TEST_SERVER=true node test-topstepx.js",
     "test-ws": "node test-ws.js",
     "test-tv": "node test-tv.js",
     "test:practice-positions": "node --test test\\*.test.js"
@@ -25,7 +21,6 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",
     "puppeteer": "^24.33.0",
-    "rithmic-api": "github:parbhatc/RithmicAPI#8500f7a7d212bc30f21f52c09ab8ef5b2d8bf7a5",
     "sqlite3": "^5.1.7",
     "ws": "^8.18.3"
   },

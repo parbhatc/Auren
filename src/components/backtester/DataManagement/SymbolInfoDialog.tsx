@@ -12,9 +12,9 @@ const SymbolInfoDialog = ({
   symbol,
   type,
   symbolData,
-  topstepData,
+  tradeseaData,
   tradingViewData,
-  topstepFiles,
+  tradeseaFiles,
   tradingviewFiles,
   unknownFiles,
   symbols = {},
@@ -41,19 +41,19 @@ const SymbolInfoDialog = ({
   const [configDialog, setConfigDialog] = useState<{
     isOpen: boolean
     symbol: string
-    type: 'topstep' | 'tradingview'
+    type: 'tradesea' | 'tradingview'
     tickerType?: string
   }>({
     isOpen: false,
     symbol: '',
-    type: 'topstep',
+    type: 'tradesea',
     tickerType: undefined
   })
 
   // Get current progress for this symbol
-  const getCurrentProgress = (checkSymbol?: string, checkType?: 'topstep' | 'tradingview'): {
+  const getCurrentProgress = (checkSymbol?: string, checkType?: 'tradesea' | 'tradingview'): {
     symbol: string
-    source: 'topstep' | 'tradingview'
+    source: 'tradesea' | 'tradingview'
     action: 'download' | 'update' | 'overwrite' | 'reset'
     progress: number
     message: string
@@ -65,8 +65,8 @@ const SymbolInfoDialog = ({
     const symbolToCheck = checkSymbol || symbol
     const typeToCheck = checkType || type
     
-    // For Topstep, normalize symbol (remove leading slash)
-    const normalizedSymbol = typeToCheck === 'topstep' && symbolToCheck.startsWith('/') 
+    // For Tradesea, normalize symbol (remove leading slash)
+    const normalizedSymbol = typeToCheck === 'tradesea' && symbolToCheck.startsWith('/')
       ? symbolToCheck.slice(1) 
       : symbolToCheck
     
@@ -101,11 +101,11 @@ const SymbolInfoDialog = ({
     const { base: baseSymbol, full: fullSymbol, fullConfig: fullSymbolConfig } = symbolInfo
     
     // First try to get files from the main file lists
-    let files = type === 'topstep' ? (topstepFiles || []) : (tradingviewFiles || [])
+    let files = type === 'tradesea' ? (tradeseaFiles || []) : (tradingviewFiles || [])
     
     // Check if files exist in main lists
     const hasFilesInMain = files.some(item => {
-      if (type === 'topstep') {
+      if (type === 'tradesea') {
         const fileSymbol = item.symbol.startsWith('/') ? item.symbol.slice(1) : item.symbol
         const normalizedBase = baseSymbol.startsWith('/') ? baseSymbol.slice(1) : baseSymbol
         return fileSymbol === normalizedBase
@@ -117,7 +117,7 @@ const SymbolInfoDialog = ({
     // If no files found in main lists, check unknownFiles
     if (!hasFilesInMain && unknownFiles && unknownFiles.length > 0) {
       const unknownMatches = unknownFiles.filter(file => {
-        if (type === 'topstep') {
+        if (type === 'tradesea') {
           const fileSymbol = file.symbol.startsWith('/') ? file.symbol.slice(1) : file.symbol
           const normalizedBase = baseSymbol.startsWith('/') ? baseSymbol.slice(1) : baseSymbol
           return fileSymbol === normalizedBase
@@ -134,8 +134,8 @@ const SymbolInfoDialog = ({
     if (files.length === 0) return []
     
     return files.filter(file => {
-      if (type === 'topstep') {
-        // For Topstep: CSV files are stored without leading slash (e.g., "NQ" folder)
+      if (type === 'tradesea') {
+        // For Tradesea: CSV files are stored without leading slash (e.g., "NQ" folder)
         // Normalize both the symbol and file.symbol for comparison
         const normalizedBase = baseSymbol.startsWith('/') ? baseSymbol.slice(1) : baseSymbol
         const normalizedFileSymbol = file.symbol.startsWith('/') ? file.symbol.slice(1) : file.symbol
@@ -191,20 +191,20 @@ const SymbolInfoDialog = ({
       const fullSymbolConfig = convertToConfigFormat(tradingViewData.formattedSymbol)
       return { base: baseSymbol, full: tradingViewData.formattedSymbol, fullConfig: fullSymbolConfig }
     }
-    // For Topstep, return as-is (will be normalized in getFilesForSymbol)
+    // For Tradesea, return as-is (will be normalized in getFilesForSymbol)
     return { base: symbol, full: symbol, fullConfig: symbol }
   }, [selectedContractIndex, tradingViewData, symbol])
 
-  const filesForCurrentSymbol = useMemo(() => getFilesForSymbol(currentSymbol), [currentSymbol, type, topstepFiles, tradingviewFiles, unknownFiles])
+  const filesForCurrentSymbol = useMemo(() => getFilesForSymbol(currentSymbol), [currentSymbol, type, tradeseaFiles, tradingviewFiles, unknownFiles])
   const hasFiles = filesForCurrentSymbol.length > 0
   const dateRange = useMemo(() => getDateRange(filesForCurrentSymbol), [filesForCurrentSymbol])
 
-  // Check if symbol exists in config (for Topstep, check without leading slash; for TradingView, check multiple variations)
+  // Check if symbol exists in config (for Tradesea, check without leading slash; for TradingView, check multiple variations)
   const symbolsToCheckInConfig = useMemo(() => {
     const checks: string[] = []
     
-    if (type === 'topstep') {
-      // For Topstep, check with and without leading slash
+    if (type === 'tradesea') {
+      // For Tradesea, check with and without leading slash
       if (symbol.startsWith('/')) {
         checks.push(symbol.slice(1))
       }
@@ -242,7 +242,7 @@ const SymbolInfoDialog = ({
 
   if (!isOpen) return null
 
-  const isTopstep = type === 'topstep'
+  const isTradesea = type === 'tradesea'
 
   const selectContract = (index: number) => {
     setSelectedContractIndex(index === selectedContractIndex ? null : index)
@@ -363,7 +363,7 @@ const SymbolInfoDialog = ({
     >
       <div
         className={`rounded-2xl shadow-2xl border ${
-          (isTopstep && topstepData) || (!isTopstep && tradingViewData) ? 'max-w-4xl' : 'max-w-2xl'
+          (isTradesea && tradeseaData) || (!isTradesea && tradingViewData) ? 'max-w-4xl' : 'max-w-2xl'
         } w-full max-h-[90vh] overflow-y-auto ${
           isDark
             ? 'bg-slate-800 border-slate-700'
@@ -380,7 +380,7 @@ const SymbolInfoDialog = ({
               {symbol}
             </h2>
             <p className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              {isTopstep ? t('backtesterDataManagement.symbolInfoDialog.topstepxSymbol') : t('backtesterDataManagement.symbolInfoDialog.tradingviewSymbol')}
+              {isTradesea ? t('backtesterDataManagement.symbolInfoDialog.tradeseaSymbol') : t('backtesterDataManagement.symbolInfoDialog.tradingviewSymbol')}
             </p>
           </div>
           <button
@@ -397,72 +397,72 @@ const SymbolInfoDialog = ({
 
         {/* Content */}
         <div className="p-6">
-          {/* Topstep Search Result Information */}
-          {isTopstep && topstepData && (
+          {/* Tradesea Search Result Information */}
+          {isTradesea && tradeseaData && (
             <div className="space-y-4 mb-6">
               <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {t('backtesterDataManagement.symbolInfoDialog.topstepxSearchResult')}
+                {t('backtesterDataManagement.symbolInfoDialog.tradeseaSearchResult')}
               </h3>
               <div className={`grid grid-cols-2 gap-4 p-4 rounded-lg ${
                 isDark ? 'bg-slate-900/50' : 'bg-slate-50'
               }`}>
-                {topstepData.symbol && (
+                {tradeseaData.symbol && (
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Symbol
                     </label>
                     <p className={`font-mono text-sm ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
-                      {topstepData.symbol}
+                      {tradeseaData.symbol}
                     </p>
                   </div>
                 )}
-                {topstepData.full_name && (
+                {tradeseaData.full_name && (
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Full Name
                     </label>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                      {topstepData.full_name}
+                      {tradeseaData.full_name}
                     </p>
                   </div>
                 )}
-                {topstepData.description && (
+                {tradeseaData.description && (
                   <div className="col-span-2">
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Description
                     </label>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                      {topstepData.description}
+                      {tradeseaData.description}
                     </p>
                   </div>
                 )}
-                {topstepData.type && (
+                {tradeseaData.type && (
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Type
                     </label>
                     <p className={`capitalize ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {topstepData.type}
+                      {tradeseaData.type}
                     </p>
                   </div>
                 )}
-                {topstepData.exchange && (
+                {tradeseaData.exchange && (
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Exchange
                     </label>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                      {topstepData.exchange}
+                      {tradeseaData.exchange}
                     </p>
                   </div>
                 )}
-                {topstepData.ticker && (
+                {tradeseaData.ticker && (
                   <div>
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Ticker
                     </label>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                      {topstepData.ticker}
+                      {tradeseaData.ticker}
                     </p>
                   </div>
                 )}
@@ -471,8 +471,8 @@ const SymbolInfoDialog = ({
           )}
 
 
-          {/* File Information and Actions for Topstep */}
-          {isTopstep && (
+          {/* File Information and Actions for Tradesea */}
+          {isTradesea && (
             <div className="space-y-4">
               {renderFileInfo()}
               <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -565,17 +565,17 @@ const SymbolInfoDialog = ({
                     <button
                       onClick={() => {
                         if (!symbolExistsInConfig) {
-                          // Map TopstepX type to ticker_type: 'futures' -> 'futures', etc.
-                          const tickerType = topstepData?.type?.toLowerCase() === 'futures' ? 'futures' : 
-                                            topstepData?.type?.toLowerCase() === 'stocks' ? 'stocks' :
-                                            topstepData?.type?.toLowerCase() === 'forex' ? 'forex' :
-                                            topstepData?.type?.toLowerCase() === 'crypto' ? 'crypto' :
-                                            topstepData?.type?.toLowerCase() === 'indices' ? 'indices' :
-                                            topstepData?.type?.toLowerCase() === 'commodities' ? 'commodities' :
+                          // Map Tradesea type to ticker_type: 'futures' -> 'futures', etc.
+                          const tickerType = tradeseaData?.type?.toLowerCase() === 'futures' ? 'futures' :
+                                            tradeseaData?.type?.toLowerCase() === 'stocks' ? 'stocks' :
+                                            tradeseaData?.type?.toLowerCase() === 'forex' ? 'forex' :
+                                            tradeseaData?.type?.toLowerCase() === 'crypto' ? 'crypto' :
+                                            tradeseaData?.type?.toLowerCase() === 'indices' ? 'indices' :
+                                            tradeseaData?.type?.toLowerCase() === 'commodities' ? 'commodities' :
                                             undefined
-                          setConfigDialog({ isOpen: true, symbol, type: 'topstep', tickerType })
+                          setConfigDialog({ isOpen: true, symbol, type: 'tradesea', tickerType })
                         } else {
-                          onDownload(symbol, 'topstep')
+                          onDownload(symbol, 'tradesea')
                         }
                       }}
                       className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all duration-300 w-full ${
@@ -594,7 +594,7 @@ const SymbolInfoDialog = ({
           )}
 
           {/* TradingView Information */}
-          {!isTopstep && tradingViewData && (
+          {!isTradesea && tradingViewData && (
             <div className="space-y-4">
               <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 TradingView Information
@@ -1085,7 +1085,7 @@ const SymbolInfoDialog = ({
           )}
 
           {/* Info message for TradingView when no data */}
-          {!isTopstep && !tradingViewData && (
+          {!isTradesea && !tradingViewData && (
             <div className={`p-4 rounded-lg ${
               isDark ? 'bg-slate-900/50' : 'bg-slate-50'
             }`}>
@@ -1119,11 +1119,11 @@ const SymbolInfoDialog = ({
         isOpen={configDialog.isOpen}
         symbol={configDialog.symbol}
         type={configDialog.type}
-        description={tradingViewData?.description || topstepData?.description}
+        description={tradingViewData?.description || tradeseaData?.description}
         tickerType={configDialog.tickerType}
         symbols={symbols}
         isDark={isDark}
-        onClose={() => setConfigDialog({ isOpen: false, symbol: '', type: 'topstep', tickerType: undefined })}
+        onClose={() => setConfigDialog({ isOpen: false, symbol: '', type: 'tradesea', tickerType: undefined })}
         onSaveAndDownload={async (config: any) => {
           try {
             // Save symbol to config
@@ -1143,13 +1143,13 @@ const SymbolInfoDialog = ({
             if (response.success) {
               toast.success('Symbol configuration saved')
               // Close config dialog
-              setConfigDialog({ isOpen: false, symbol: '', type: 'topstep', tickerType: undefined })
+              setConfigDialog({ isOpen: false, symbol: '', type: 'tradesea', tickerType: undefined })
               // Proceed with download - use the original symbol format (not normalized)
               if (onDownload) {
                 // For TradingView, convert back from double underscore to colon format
                 const downloadSymbol = config.type === 'tradingview' 
                   ? config.symbol.replace(/__/g, ':')
-                  : (config.type === 'topstep' && !config.symbol.startsWith('/') 
+                  : (config.type === 'tradesea' && !config.symbol.startsWith('/')
                     ? `/${config.symbol}` 
                     : config.symbol)
                 await onDownload(downloadSymbol, config.type)

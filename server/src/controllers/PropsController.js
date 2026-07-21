@@ -7,6 +7,8 @@ import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
 import Translator from '../utils/Translator.js'
 
+const SUPPORTED_PROP_FIRM_TYPES = ['tradesea', 'custom']
+
 class PropsController {
   /**
    * Initialize database table if it doesn't exist
@@ -85,7 +87,7 @@ class PropsController {
         [userId]
       )
 
-      const result = propFirms.map(firm => ({
+      const result = propFirms.filter(firm => SUPPORTED_PROP_FIRM_TYPES.includes(firm.type)).map(firm => ({
         id: firm.id.toString(),
         type: firm.type,
         name: firm.name,
@@ -111,6 +113,14 @@ class PropsController {
       await this.initializeTable()
       const userId = req.user.id
       const type = req.params.type
+
+      if (!SUPPORTED_PROP_FIRM_TYPES.includes(type)) {
+        return res.status(HTTP_STATUS.OK).json({
+          success: true,
+          propFirm: null,
+          message: Translator.t('props.firmNotFound')
+        })
+      }
 
       const firm = await Database.get(
         'SELECT * FROM prop_firms WHERE user_id = ? AND type = ?',
@@ -173,8 +183,7 @@ class PropsController {
       }
 
       // Validate prop firm type
-      const validTypes = ['tradesea', 'rithmic', 'custom']
-      if (!validTypes.includes(type)) {
+      if (!SUPPORTED_PROP_FIRM_TYPES.includes(type)) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
           message: Translator.t('props.invalidType')
@@ -184,7 +193,6 @@ class PropsController {
       // Get display name
       const displayNames = {
         tradesea: 'Tradesea',
-        rithmic: 'Rithmic',
         custom: 'Custom',
       }
 

@@ -14,7 +14,7 @@ A generic base class for SignalR WebSocket connections that supports:
 
 ### Usage Examples
 
-#### Example 1: Query Parameter Authentication (TopstepX style)
+#### Example 1: Query Parameter Authentication
 ```javascript
 import SignalRBase from './websocket/SignalRBase.js'
 

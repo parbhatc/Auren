@@ -72,8 +72,6 @@ export function getPracticeCommissionPerFill(symbol) {
   return isMicroPracticeSymbol(symbol) ? 0.25 : 0.5
 }
 
-export const getTopstepCommissionPerFill = getPracticeCommissionPerFill
-
 export function getCommissionPerContract(rules, symbol) {
   const override = rules?.commissionPerContract
   if (override != null && Number.isFinite(Number(override)) && Number(override) >= 0) {

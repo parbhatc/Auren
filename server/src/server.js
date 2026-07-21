@@ -2,8 +2,6 @@ import App from './app.js'
 import Database from './config/Database.js'
 import RoleLoader from './config/RoleLoader.js'
 import EconomicNewsScheduler from './services/EconomicNewsScheduler.js'
-import { bootstrapLiveDataOnStartup } from './services/liveData/StartupService.js'
-import { closeRithmicChartLive } from './services/liveData/rithmicChartLive.js'
 import tradeseaTradesWebSocket from './websocket/TradeseaTradesWebSocket.js'
 import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
 import practiceAccountWebSocket from './websocket/PracticeAccountWebSocket.js'
@@ -114,8 +112,6 @@ class Server {
         this.backtesterDataWS,
       ])
 
-      void bootstrapLiveDataOnStartup()
-
       // Start server on all interfaces (0.0.0.0) to allow network access
       this.server.listen(this.port, '0.0.0.0', () => {
         console.log(`🚀 Server running on http://localhost:${this.port}`)
@@ -139,7 +135,6 @@ class Server {
       process.on('SIGINT', async () => {
         console.log('\n🛑 Shutting down server...')
         economicNewsScheduler.stop()
-        await closeRithmicChartLive()
         webSocketManager.closeAll()
         await Database.close()
         if (this.server) {

@@ -742,30 +742,6 @@
       "saveTokens": "Save tokens",
       "savingTokens": "Saving…",
       "tokensSaved": "Tradesea tokens saved."
-    },
-    "rithmic": {
-      "title": "Rithmic",
-      "description": "Save your Rithmic username and password for market data.",
-      "usernamePlaceholder": "Rithmic username",
-      "passwordPlaceholder": "Enter your Rithmic password",
-      "connectedAs": "Saved for {username}",
-      "saved": "Rithmic credentials saved.",
-      "systemLabel": "System",
-      "systemPlaceholder": "Select a system",
-      "systemsLoading": "Loading Rithmic systems…",
-      "systemsLoadFailed": "Could not load Rithmic systems. Check your connection and try again.",
-      "systemRequired": "Please select a Rithmic system.",
-      "gatewayLabel": "Gateway",
-      "gatewaysLoading": "Loading gateways…",
-      "gatewaysLoadFailed": "Could not load gateways for this system.",
-      "gatewayRequired": "Please select a gateway.",
-      "loginChecking": "Verifying Rithmic login…",
-      "loginPassed": "Login successful",
-      "loginFailed": "Login failed: {message}",
-      "loginStatusPassed": "Rithmic login: passed",
-      "loginStatusFailed": "Rithmic login: failed",
-      "accountPlaceholder": "Rithmic account ID (optional)",
-      "hubAccountHint": "Add your Rithmic login under Market data settings, then enter the account ID to use for practice charts."
     }
   },
   "tradingJournal": {
@@ -849,7 +825,7 @@
     "tabs": {
       "symbolInfo": "Symbol Info",
       "csvData": "CSV Data",
-      "topstep": "Topstep",
+      "tradesea": "Tradesea",
       "tradingview": "TradingView"
     },
     "csvData": {
@@ -900,17 +876,17 @@
       "tradingviewTicker": "TradingView Ticker",
       "tradeseaTickerPlaceholder": "e.g., CME:NQ",
       "tradingviewTickerPlaceholder": "e.g., CME_MINI:NQ1!",
-      "typeTopstep": "Topstep",
+      "typeTradesea": "Tradesea",
       "typeTradingview": "TradingView"
     },
-    "topstep": {
-      "title": "TopstepX",
-      "csvFiles": "TopstepX CSV Files",
-      "searchPlaceholder": "Search TopstepX...",
+    "tradesea": {
+      "title": "Tradesea",
+      "csvFiles": "Tradesea CSV Files",
+      "searchPlaceholder": "Search Tradesea...",
       "noResults": "No results found",
       "searchResults": "Search Results:",
       "loadingFiles": "Loading CSV files...",
-      "noFiles": "No TopstepX CSV files found. Add symbols with type \"topstep\" to see their CSV files here.",
+      "noFiles": "No Tradesea CSV files found. Add symbols with type \"tradesea\" to see their CSV files here.",
       "filesCount": "{count} file(s) across {symbols} symbol(s)",
       "files": "file(s)",
       "years": "years",
@@ -981,9 +957,9 @@
       "readOnly": "TradingView symbols are read-only. Use the search to find and select symbols."
     },
     "symbolInfoDialog": {
-      "topstepxSymbol": "TopstepX Symbol",
+      "tradeseaSymbol": "Tradesea Symbol",
       "tradingviewSymbol": "TradingView Symbol",
-      "topstepxSearchResult": "TopstepX Search Result",
+      "tradeseaSearchResult": "Tradesea Search Result",
       "tradingviewInformation": "TradingView Information",
       "symbol": "Symbol",
       "fullName": "Full Name",
@@ -1052,7 +1028,7 @@
       "crypto": "Crypto",
       "indices": "Indices",
       "commodities": "Commodities",
-      "topstepx": "TopstepX",
+      "tradesea": "Tradesea",
       "tradingview": "TradingView",
       "descriptionPlaceholder": "Enter description"
     },

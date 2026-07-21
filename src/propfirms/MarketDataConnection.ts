@@ -103,7 +103,8 @@ export async function loadCredentialLoginCredentials(): Promise<
     ids.map(async (id) => {
       try {
         const response = await propsAPI.getPropFirm(id)
-        return [id, response.propFirm?.credentials ?? null] as const
+        const credentials = response.propFirm?.credentials ?? null
+        return [id, credentials] as const
       } catch {
         return [id, null] as const
       }

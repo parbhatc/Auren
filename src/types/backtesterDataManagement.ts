@@ -94,14 +94,14 @@ export interface TokenSelectorProps {
   onCurrentTokenChange: (token: string) => void
   savedToken?: string
   onTokenObtained?: (token: string) => void
-  onSaveToken?: (token: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; message?: string; error?: string }>
-  onUserLogin?: (username: string, password: string, source: 'topstep' | 'tradingview') => Promise<{ success: boolean; token?: string; error?: string }>
+  onSaveToken?: (token: string, source: 'tradesea' | 'tradingview') => Promise<{ success: boolean; message?: string; error?: string }>
+  onUserLogin?: (username: string, password: string, source: 'tradesea' | 'tradingview') => Promise<{ success: boolean; token?: string; error?: string }>
   colorScheme: 'blue' | 'purple'
   isDark: boolean
-  source: 'topstep' | 'tradingview'
+  source: 'tradesea' | 'tradingview'
 }
 
-export interface TopstepSearchResult {
+export interface TradeseaSearchResult {
   symbol?: string
   full_name?: string
   description?: string
@@ -132,11 +132,11 @@ export interface TradingViewSearchResult {
 export interface SymbolInfoDialogProps {
   isOpen: boolean
   symbol: string
-  type: 'topstep' | 'tradingview'
+  type: 'tradesea' | 'tradingview'
   symbolData?: SymbolData
-  topstepData?: TopstepSearchResult
+  tradeseaData?: TradeseaSearchResult
   tradingViewData?: TradingViewSearchResult
-  topstepFiles?: FileData[]
+  tradeseaFiles?: FileData[]
   tradingviewFiles?: FileData[]
   unknownFiles?: FileData[]
   symbols?: Record<string, SymbolData>
@@ -145,10 +145,10 @@ export interface SymbolInfoDialogProps {
   onUpdate?: (symbol: string) => Promise<void>
   onOverwrite?: (symbol: string) => Promise<void>
   onReset?: (symbol: string) => Promise<void>
-  onDownload?: (symbol: string, type: 'topstep' | 'tradingview') => Promise<void>
+  onDownload?: (symbol: string, type: 'tradesea' | 'tradingview') => Promise<void>
   progressState?: Record<string, {
     symbol: string
-    source: 'topstep' | 'tradingview'
+    source: 'tradesea' | 'tradingview'
     action: 'download' | 'update' | 'overwrite' | 'reset'
     progress: number
     message: string
@@ -195,17 +195,17 @@ export interface DataSourceSectionProps {
   onSearchChange: (value: string) => void
   files: FileData[]
   loadingFiles: boolean
-  type: 'topstep' | 'tradingview'
+  type: 'tradesea' | 'tradingview'
   colorScheme: 'blue' | 'purple'
   isDark: boolean
   expandedSymbols: Set<string>
   expandedYears: Set<string>
   onToggleSymbol: (symbol: string) => void
   onToggleYear: (yearKey: string) => void
-  onSymbolClick?: (symbol: string, type: 'topstep' | 'tradingview') => void
+  onSymbolClick?: (symbol: string, type: 'tradesea' | 'tradingview') => void
   progressState?: Record<string, {
     symbol: string
-    source: 'topstep' | 'tradingview'
+    source: 'tradesea' | 'tradingview'
     action: 'download' | 'update' | 'overwrite' | 'reset'
     progress: number
     message: string
@@ -220,7 +220,7 @@ export interface DataSourceSectionProps {
     commissionFee: number
     totalFees: number
     description: string
-    type?: 'topstep' | 'tradingview'
+    type?: 'tradesea' | 'tradingview'
     ticker_type?: string
   }>
 }
@@ -228,7 +228,7 @@ export interface DataSourceSectionProps {
 export interface SymbolConfigDialogProps {
   isOpen: boolean
   symbol: string
-  type: 'topstep' | 'tradingview'
+  type: 'tradesea' | 'tradingview'
   description?: string
   tickerType?: string // Optional initial ticker type (e.g., 'futures', 'stocks', etc.)
   symbols?: Record<string, {
@@ -239,7 +239,7 @@ export interface SymbolConfigDialogProps {
     commissionFee?: number
     totalFees?: number
     description?: string
-    type?: 'topstep' | 'tradingview'
+    type?: 'tradesea' | 'tradingview'
     ticker_type?: string
   }>
   isDark: boolean
@@ -250,7 +250,7 @@ export interface SymbolConfigDialogProps {
     tickValue: number
     ticker_type: string
     description: string
-    type: 'topstep' | 'tradingview'
+    type: 'tradesea' | 'tradingview'
     exchangeFee?: number
     regulatoryFee?: number
     commissionFee?: number
@@ -268,10 +268,10 @@ export interface BacktesterDataClientCallbacks extends WebSocketClientCallbacks 
     type: string
     success: boolean
     data: {
-      tokens: { topstep?: string; tradingview?: string }
+      tokens: { tradesea?: string; tradingview?: string }
       symbols: Record<string, any>
       csvFiles: {
-        topstep: Array<{
+        tradesea: Array<{
           symbol: string
           year: number
           month: string
@@ -311,7 +311,7 @@ export interface BacktesterDataClientCallbacks extends WebSocketClientCallbacks 
     type: string
     action: 'download' | 'update' | 'overwrite' | 'reset'
     symbol: string
-    source: 'topstep' | 'tradingview'
+    source: 'tradesea' | 'tradingview'
     progress: number
     message?: string
     completed?: boolean

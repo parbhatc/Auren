@@ -14,7 +14,7 @@ export type PracticePendingOrder = {
 }
 
 /**
- * Fill when price trades through the limit (Topstep-style), not when the limit is merely marketable.
+ * Fill when price trades through the limit, not when the limit is merely marketable.
  */
 export function isPracticeLimitFillable(
   side: 'buy' | 'sell',

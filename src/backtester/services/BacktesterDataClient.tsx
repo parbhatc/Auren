@@ -164,9 +164,9 @@ export class BacktesterDataClient extends WebSocketClientBase {
   /**
    * Send save token message
    * @param token - The token to save
-   * @param source - The source ('topstep' or 'tradingview')
+   * @param source - The source ('tradesea' or 'tradingview')
    */
-  sendSaveToken(token: string, source: 'topstep' | 'tradingview'): void {
+  sendSaveToken(token: string, source: 'tradesea' | 'tradingview'): void {
     this.send({
       type: 'save-token',
       token: token,
@@ -178,9 +178,9 @@ export class BacktesterDataClient extends WebSocketClientBase {
    * Send user login message
    * @param username - The username
    * @param password - The password
-   * @param source - The source ('topstep' or 'tradingview')
+   * @param source - The source ('tradesea' or 'tradingview')
    */
-  sendUserLogin(username: string, password: string, source: 'topstep' | 'tradingview'): void {
+  sendUserLogin(username: string, password: string, source: 'tradesea' | 'tradingview'): void {
     this.send({
       type: 'user_login',
       username: username,
@@ -196,7 +196,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
    * @param ticker - API ticker (e.g. CME_MINI:NQ1!)
    */
   sendDownload(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
-    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
+    const serverSource = source === 'tradesea' ? 'tradesea' : 'tradingview'
     this.send({
       type: 'download',
       symbol: ticker || storageSymbol,
@@ -209,10 +209,10 @@ export class BacktesterDataClient extends WebSocketClientBase {
   /**
    * Send update message
    * @param symbol - The symbol to update
-   * @param source - The source ('topstep' or 'tradingview')
+   * @param source - The source ('tradesea' or 'tradingview')
    */
   sendUpdate(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
-    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
+    const serverSource = source === 'tradesea' ? 'tradesea' : 'tradingview'
     this.send({
       type: 'update',
       symbol: ticker || storageSymbol,
@@ -223,7 +223,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
   }
 
   sendOverwrite(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1'): void {
-    const serverSource = source === 'tradesea' ? 'topstep' : 'tradingview'
+    const serverSource = source === 'tradesea' ? 'tradesea' : 'tradingview'
     this.send({
       type: 'overwrite',
       symbol: ticker || storageSymbol,
@@ -236,9 +236,9 @@ export class BacktesterDataClient extends WebSocketClientBase {
   /**
    * Send reset message
    * @param symbol - The symbol to reset
-   * @param source - The source ('topstep' or 'tradingview')
+   * @param source - The source ('tradesea' or 'tradingview')
    */
-  sendReset(symbol: string, source: 'topstep' | 'tradingview'): void {
+  sendReset(symbol: string, source: 'tradesea' | 'tradingview'): void {
     this.send({
       type: 'reset',
       symbol: symbol,

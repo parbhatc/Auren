@@ -56,12 +56,10 @@ export function formatAccounts(accounts: any[], templates: any[]): FormattedAcco
 }
 
 const SELECTED_ACCOUNT_KEY = 'market_data_selected_account_id'
-const LEGACY_SELECTED_ACCOUNT_KEY = 'topstepx_selected_account_id'
 
 export function getSelectedAccountId(): number | null {
   try {
-    const stored =
-      localStorage.getItem(SELECTED_ACCOUNT_KEY) ?? localStorage.getItem(LEGACY_SELECTED_ACCOUNT_KEY)
+    const stored = localStorage.getItem(SELECTED_ACCOUNT_KEY)
     return stored ? parseInt(stored, 10) : null
   } catch {
     return null
@@ -71,7 +69,6 @@ export function getSelectedAccountId(): number | null {
 export function saveSelectedAccountId(accountId: number): void {
   try {
     localStorage.setItem(SELECTED_ACCOUNT_KEY, accountId.toString())
-    localStorage.removeItem(LEGACY_SELECTED_ACCOUNT_KEY)
   } catch {
     /* ignore */
   }

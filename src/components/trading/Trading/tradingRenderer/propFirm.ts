@@ -16,10 +16,7 @@ export function findPropFirmWithAccount(accountId: number): any {
   return null
 }
 
-export function getActivePropFirm(practiceMode?: boolean): any {
-  if (practiceMode) {
-    return propFirmRegistry.find((f) => f.id === 'tradesea') as any
-  }
+export function getActivePropFirm(_practiceMode?: boolean): any {
   const activePropFirmId = localStorage.getItem('activePropFirm') || propFirmRegistry[0]?.id
   const activePropFirm = propFirmRegistry.find((f) => f.id === activePropFirmId)
 

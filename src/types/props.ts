@@ -27,12 +27,6 @@ export interface PropFirmCredentials {
   creditcal?: string
   sessionId?: string
   sessionIdAuth?: string
-  /** Rithmic — last successful login session metadata */
-  systemName?: string
-  gatewayName?: string
-  gatewayUri?: string | null
-  loginPassed?: boolean
-  uniqueUserId?: string
   fcmId?: string
   ibId?: string
   infraType?: number
