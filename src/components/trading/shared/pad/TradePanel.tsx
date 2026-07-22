@@ -78,7 +78,7 @@ function TradePanelTabBar({
     [
       { id: 'quick', label: 'Quick' },
       { id: 'dom', label: 'DOM' },
-      { id: 'ticket', label: 'Ticket' },
+      { id: 'ticket', label: 'Order' },
     ] as const
   )
     .filter((t) => !(hideQuickTab && t.id === 'quick'))

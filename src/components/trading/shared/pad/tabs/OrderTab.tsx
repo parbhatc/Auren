@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Minus, Plus, RotateCcw } from 'lucide-react'
 import { TradeSideButton } from '../../../../common/TradeSideButton'
-import { tradeSideMeta } from '../../../../../constants/tradingSide'
 import {
   PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
   PRACTICE_CONTRACT_QTY_PRESETS,
@@ -143,9 +142,6 @@ export function OrderTab({
   const refPrice = marketPrice ?? (selectedSide === 'buy' ? ask : bid) ?? book?.last ?? null
   const spread =
     bid != null && ask != null && ask >= bid ? Math.round((ask - bid) * 100) / 100 : null
-  const mid =
-    bid != null && ask != null ? Math.round(((bid + ask) / 2) * 100) / 100 : marketPrice
-
   const qtyPresets = useMemo(
     () =>
       PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(
@@ -485,73 +481,87 @@ export function OrderTab({
         className="flex flex-col flex-1 min-h-0 overflow-hidden border-0 m-0 p-0 min-w-0"
       >
       <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto py-1 pb-32 sm:gap-3">
-        {(spread != null || mid != null) && (
-          <div className={`flex items-center justify-between rounded-xl border px-3 py-2 text-[10px] ${surface}`}>
-            <span className={mutedText}>
-              Spread{' '}
-              <span className={`font-mono tabular-nums ${isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}>
+        <div className={`rounded-xl border ${surface}`}>
+          <div className={`flex items-center justify-between border-b px-3 py-2.5 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+            <div className="min-w-0">
+              <p className={`truncate text-[10px] font-semibold uppercase tracking-[0.12em] ${mutedText}`}>
+                {symbolLabel || 'Instrument'}
+              </p>
+              <p className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${strongText}`}>
+                {marketPrice != null ? fmtPrice(marketPrice) : '—'}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className={`text-[9px] uppercase tracking-wide ${mutedText}`}>Spread</p>
+              <p className={`mt-0.5 font-mono text-xs tabular-nums ${strongText}`}>
                 {spread != null ? fmtPrice(spread) : '—'}
-              </span>
-            </span>
-            <span className={mutedText}>
-              Mid{' '}
-              <span className={`font-mono tabular-nums ${strongText}`}>
-                {mid != null ? fmtPrice(mid) : '—'}
-              </span>
-            </span>
+              </p>
+            </div>
           </div>
-        )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <TradeSideButton
-            side="buy"
-            variant="select"
-            active={selectedSide === 'buy'}
-            tabIndex={1}
-            onClick={() => setSelectedSide('buy')}
-          >
-            <span className={`text-xs font-bold uppercase tracking-wide ${tradeSideMeta('buy').textClass}`}>
-              Buy
-            </span>
-            <span className={`text-[11px] ${mutedText}`}>
-              Bid{' '}
-              <span className={`font-mono text-sm tabular-nums ${strongText}`}>
-                {bid != null ? fmtPrice(bid) : '—'}
+          <div className="grid grid-cols-2 gap-1 p-1.5">
+            <button
+              type="button"
+              tabIndex={1}
+              aria-pressed={selectedSide === 'buy'}
+              onClick={() => setSelectedSide('buy')}
+              className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                selectedSide === 'buy'
+                  ? isDark
+                    ? 'border-emerald-500/40 bg-emerald-500/10'
+                    : 'border-emerald-300 bg-emerald-50'
+                  : isDark
+                    ? 'border-transparent hover:bg-[#27272A]'
+                    : 'border-transparent hover:bg-white'
+              }`}
+            >
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={1.75} aria-hidden />
+              <span className="min-w-0">
+                <span className={`block text-xs font-semibold ${strongText}`}>Long</span>
+                <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
+                  Bid {bid != null ? fmtPrice(bid) : '—'}
+                </span>
               </span>
-            </span>
-          </TradeSideButton>
-          <TradeSideButton
-            side="sell"
-            variant="select"
-            active={selectedSide === 'sell'}
-            tabIndex={2}
-            onClick={() => setSelectedSide('sell')}
-          >
-            <span className={`text-xs font-bold uppercase tracking-wide ${tradeSideMeta('sell').textClass}`}>
-              Sell
-            </span>
-            <span className={`text-[11px] ${mutedText}`}>
-              Ask{' '}
-              <span className={`font-mono text-sm tabular-nums ${strongText}`}>
-                {ask != null ? fmtPrice(ask) : '—'}
+            </button>
+            <button
+              type="button"
+              tabIndex={2}
+              aria-pressed={selectedSide === 'sell'}
+              onClick={() => setSelectedSide('sell')}
+              className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                selectedSide === 'sell'
+                  ? isDark
+                    ? 'border-red-500/40 bg-red-500/10'
+                    : 'border-red-300 bg-red-50'
+                  : isDark
+                    ? 'border-transparent hover:bg-[#27272A]'
+                    : 'border-transparent hover:bg-white'
+              }`}
+            >
+              <ArrowDownRight className="h-4 w-4 shrink-0 text-red-500" strokeWidth={1.75} aria-hidden />
+              <span className="min-w-0">
+                <span className={`block text-xs font-semibold ${strongText}`}>Short</span>
+                <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
+                  Ask {ask != null ? fmtPrice(ask) : '—'}
+                </span>
               </span>
-            </span>
-          </TradeSideButton>
+            </button>
+          </div>
         </div>
 
-        <div className={`flex rounded-xl border p-0.5 ${surface}`}>
+        <div className={`grid grid-cols-3 border-b ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
           {ORDER_TYPES.map((t, i) => (
             <button
               key={t}
               type="button"
               tabIndex={3 + i}
               onClick={() => setOrderType(t)}
-              className={`flex flex-1 h-9 items-center justify-center rounded-[10px] text-xs font-semibold capitalize transition ${
+              className={`flex h-9 items-center justify-center border-b-2 text-xs font-semibold capitalize transition-colors ${
                 orderType === t
-                  ? 'bg-[#3b82f6] text-white'
+                  ? 'border-blue-500 text-blue-500'
                   : isDark
-                    ? 'text-[#71717A] hover:text-[#D4D4D8]'
-                    : 'text-[#52525B] hover:text-[#09090B]'
+                    ? 'border-transparent text-[#71717A] hover:text-[#D4D4D8]'
+                    : 'border-transparent text-[#52525B] hover:text-[#09090B]'
               }`}
             >
               {t}
@@ -678,7 +688,7 @@ export function OrderTab({
 
         <section className="flex flex-col gap-3">
           <div
-            className={`rounded-2xl border p-3 flex flex-col gap-3 transition ${
+            className={`rounded-xl border p-3 flex flex-col gap-3 transition ${
               stopLossOn
                 ? 'border-[#f85149]/40 bg-[#f85149]/5'
                 : surface
@@ -702,7 +712,7 @@ export function OrderTab({
                 <span className="font-mono text-[10px] text-[#f85149] tabular-nums">{slPrice}</span>
               )}
             </div>
-            <BracketPriceTicksRow
+            {stopLossOn ? <><BracketPriceTicksRow
               priceDisabled={false}
               ticksDisabled={false}
               priceValue={slPrice}
@@ -722,7 +732,7 @@ export function OrderTab({
               onDistanceUnitChange={changeSlDistanceUnit}
               priceTabIndex={14}
               ticksTabIndex={15}
-              dimmed={!stopLossOn}
+              dimmed={false}
               dollarEnabled={dollarEnabled}
               equivalents={slEquivalents}
               isDark={isDark}
@@ -736,11 +746,11 @@ export function OrderTab({
               tickValue={tickValue}
               onSelect={applySlTicks}
               isDark={isDark}
-            />
+            /></> : <p className={`text-[10px] leading-4 ${mutedText}`}>Optional protection below your entry.</p>}
           </div>
 
           <div
-            className={`rounded-2xl border p-3 flex flex-col gap-3 transition ${
+            className={`rounded-xl border p-3 flex flex-col gap-3 transition ${
               takeProfitOn
                 ? 'border-[#3fb950]/40 bg-[#3fb950]/5'
                 : surface
@@ -764,7 +774,7 @@ export function OrderTab({
                 <span className="font-mono text-[10px] text-[#3fb950] tabular-nums">{tpPrice}</span>
               )}
             </div>
-            <BracketPriceTicksRow
+            {takeProfitOn ? <><BracketPriceTicksRow
               priceDisabled={false}
               ticksDisabled={false}
               priceValue={tpPrice}
@@ -784,7 +794,7 @@ export function OrderTab({
               onDistanceUnitChange={changeTpDistanceUnit}
               priceTabIndex={11}
               ticksTabIndex={12}
-              dimmed={!takeProfitOn}
+              dimmed={false}
               dollarEnabled={dollarEnabled}
               equivalents={tpEquivalents}
               isDark={isDark}
@@ -798,7 +808,7 @@ export function OrderTab({
               tickValue={tickValue}
               onSelect={applyTpTicks}
               isDark={isDark}
-            />
+            /></> : <p className={`text-[10px] leading-4 ${mutedText}`}>Optional target above your entry.</p>}
           </div>
         </section>
       </div>
@@ -817,9 +827,11 @@ export function OrderTab({
             type="button"
             tabIndex={17}
             onClick={resetBrackets}
-            className={`flex-1 rounded-xl border px-3 py-2.5 transition ${isDark ? 'border-[#3F3F46] bg-[#27272A] hover:bg-[#3F3F46]' : 'border-[#D4D4D8] bg-white hover:bg-[#F4F4F5]'}`}
+            aria-label="Reset order protection"
+            title="Reset order protection"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${isDark ? 'border-[#3F3F46] bg-[#27272A] text-[#A1A1AA] hover:bg-[#3F3F46] hover:text-white' : 'border-[#D4D4D8] bg-white text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'}`}
           >
-            <span className={`text-sm font-semibold ${isDark ? 'text-[#D4D4D8]' : 'text-[#27272A]'}`}>Reset</span>
+            <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
           </button>
           <TradeSideButton
             side={selectedSide}
@@ -827,9 +839,9 @@ export function OrderTab({
             tabIndex={16}
             disabled={parseOrderEntry() == null || tradeDisabled}
             onClick={handleConfirm}
-            className="disabled:opacity-50"
+            className="!h-11 flex-1 !rounded-xl disabled:opacity-50"
           >
-            Confirm {selectedSide === 'buy' ? 'buy' : 'sell'}
+            Place {selectedSide === 'buy' ? 'long' : 'short'} order
           </TradeSideButton>
         </div>
       </div>
