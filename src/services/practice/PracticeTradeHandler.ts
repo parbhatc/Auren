@@ -134,7 +134,7 @@ export class PracticeTradeHandler {
     }
     if (typeof (chart as { createOrderLine?: unknown }).createOrderLine !== 'function') {
       console.warn(
-        '[PracticeTradeHandler] widget.chart().createOrderLine missing — update betterweightchart (github:parbhatc/BetterweightChart)'
+        '[PracticeTradeHandler] widget.chart().createOrderLine missing — update betterweightchartpro (github:parbhatc/BetterweightChartPro)'
       )
     }
 

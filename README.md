@@ -4,11 +4,14 @@
 
 Create simulated **eval** and **funded** accounts, trade on live charts with real market data, and let rules, drawdowns, and lockouts play out on Auren. If you overtrade, revenge trade, or blow the account, your real prop firm balance stays untouched.
 
+![Auren desktop trading workspace](images/chart.png)
+
 ## Features
 
 ### Auren (home)
 
 - Simulated **25K / 50K / 100K** eval and funded accounts: create, reset, delete
+- Editable, unique Auren account IDs such as `AUR-E025-XXXXXXXX-TEST###`
 - **Custom rules** when opening an account: profit target, max loss, drawdown type, consistency, commissions, contract caps
 - **Tradesea** market data for practice charts
 - Account states: **active**, **passed**, **blown** with dashboard stats
@@ -16,8 +19,9 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 
 ### Trading terminal
 
-- **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** charts (lightweight-charts v5, drawings, indicators) with Tradesea market data
-- **Practice simulation** and **live Tradesea** trading (Lucid / sandbox) on the same chart stack
+- **[BetterweightChartPro](https://github.com/parbhatc/BetterweightChartPro)** charts (ProChart engine, drawings, indicators) with Tradesea market data
+- **Practice simulation** and **live Tradesea** trading on the same chart stack
+- Collapsible desktop sidebar and order ticket for a chart-focused workspace
 - **DOM ladder** and order ticket: market, limit, join bid/ask, close, reverse, flatten, cancel-all
 - **Draggable SL/TP** on the chart; bracket tracking when offline (where supported)
 - **Detachable** trade panel and **resizable** layout regions
@@ -45,7 +49,7 @@ Create simulated **eval** and **funded** accounts, trade on live charts with rea
 ### Mobile
 
 - Bottom nav: chart, stats, news, order entry
-- **Quick trade** card with minimize / expand and optional **floating** scalp pad
+- Compact-by-default **Quick trade** strip with expand and optional **floating** scalp pad
 - Mobile order sheet and touch-friendly qty chips
 
 ### Platform
@@ -61,64 +65,26 @@ There is **no third-party prop-firm order routing** beyond Tradesea accounts you
 ### Historical backtester
 
 - **CSV replay** on local historical bars (NQ, ES, GC, etc.) — no live market data required during replay
-- **BetterWeightChart replay mode** — step forward, play/pause, speed control, jump to bar, future candles dimmed
+- **BetterweightChartPro replay mode** — step forward, play/pause, speed control, jump to bar, future candles dimmed
 - **Session date navigation** — calendar pick, previous/next trading day with data
 - **Simulated DOM trading** on replayed bars with eval rules (balance, drawdown, consistency)
 - **Admin CSV pipeline** — download/update historical data from Tradesea or TradingView ([data management](#backtester-csv-data-admin))
 
-## Screenshots
+## Product preview
 
-### Auren
-
-Create and manage simulated accounts, connect market data, and pick eval or funded rules.
-
-![Auren home](images/dashboard.png)
-
-### Create account
-
-Set profit target, drawdown, consistency, and contract limits when opening a new practice eval.
-
-![Create practice account](images/create_practice_account_modal.png)
-
-### Trading terminal
-
-Chart, trade panel, DOM ladder, and simulated fills with position lines on the chart.
-
-![Trading terminal](images/chart.png)
-
-### Order panel
-
-Quick trade, DOM, and order entry in the docked trade panel.
-
-![Order panel](images/order_panel.png)
-
-### Mobile chart
-
-Practice on a phone-sized layout with chart and scalp controls.
-
-![Mobile chart](images/mobile_chart.png)
-
-### Mobile stats
-
-Evaluation progress and session stats on mobile.
-
-![Mobile stats](images/mobile_stats.png)
-
-### Economic news
-
-Session calendar and headlines while you practice.
-
-![Economic news](images/news.png)
+The desktop terminal combines the shared Auren navigation rail, live account metrics, BetterweightChartPro charting, and a docked order ticket. Both the sidebar and ticket collapse independently when maximum chart space is needed. On mobile, the chart remains primary while Quick Trade and the full ticket move into compact touch-friendly controls.
 
 ## Routes
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Auren home: accounts, market data, settings |
-| `/trade/:id` | Practice trading terminal (chart + trade panel) |
-| `/live/trade` | Live Tradesea trading terminal |
-| `/trade/:id/stats` | Session statistics and eval progress |
-| `/trade/:id/news` | Economic news calendar |
+| `/` or `/dashboard` | Evaluation dashboard and account performance |
+| `/practice` | Create and manage simulated eval/funded accounts |
+| `/practice/trade/:id` | Practice trading terminal (chart + trade panel) |
+| `/trade` | Live Tradesea trading terminal |
+| `/journal` | Journal and trade log |
+| `/analytics` | Playbooks and trading analytics |
+| `/news` | Economic news calendar |
 | `/backtester` | Historical backtester — session list |
 | `/backtester/chart` | Replay chart + simulated trading |
 | `/backtester/stats` | Backtester session statistics |
@@ -131,12 +97,12 @@ Session calendar and headlines while you practice.
 
 ## Backtester replay system
 
-The historical backtester replays **local CSV candles** through [BetterWeightChart](https://github.com/parbhatc/BetterweightChart) replay mode. The chart UI and Auren server stay in sync so you only see bars up to the current replay time — future data is hidden and the DOM fills against replayed prices.
+The historical backtester replays **local CSV candles** through [BetterweightChartPro](https://github.com/parbhatc/BetterweightChartPro) replay mode. The chart UI and Auren server stay in sync so you only see bars up to the current replay time — future data is hidden and the DOM fills against replayed prices.
 
 ### Architecture
 
 ```text
-BetterWeightChart (replay toolbar)
+BetterweightChartPro (replay toolbar)
         │  onReplayHostAction: play | pause | stepForward | selectBar | stepInterval
         ▼
 BacktesterTradeHandler  ──WebSocket──▶  BacktesterWebSocket (/backtester-ws)
@@ -196,35 +162,31 @@ CSV **download/update** uses a separate TradingView WebSocket **replay session**
 git clone <repository-url>
 cd Auren
 npm install
-npm run sync-bwc-vendor
 cd server && npm install && cd ..
 ```
 
-`npm install` pulls **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** from GitHub (`betterweightchart` dependency). Then `npm run sync-bwc-vendor` copies `lightweight-charts` into the chart package’s `public/vendor/` (required because dependency postinstall scripts are skipped via `.npmrc`). No local sibling checkout is required.
+`npm install` pulls **[BetterweightChartPro](https://github.com/parbhatc/BetterweightChartPro)** from GitHub (`betterweightchartpro` dependency). No local sibling checkout is required.
 
 `package-lock.json` is not committed. Run `npm install` in the repo root and in `server/` to generate lockfiles locally.
 
-### 2. Chart engine (BetterweightChart)
+### 2. Chart engine (BetterweightChartPro)
 
-Charts are powered by the open-source **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)** package, installed automatically from GitHub:
+Charts are powered by the open-source **[BetterweightChartPro](https://github.com/parbhatc/BetterweightChartPro)** package, installed automatically from GitHub:
 
 ```json
-"betterweightchart": "github:parbhatc/BetterweightChart"
+"betterweightchartpro": "git+https://github.com/parbhatc/BetterweightChartPro.git"
 ```
 
-Vite serves `/chart/*`, `/js/*`, `/css/*`, `/vendor/*`, and `/testing/js/*` from `node_modules/betterweightchart/` during dev and copies them into `dist/` on production build.
+Vite serves `/chart/*`, `/js/*`, `/css/*`, `/vendor/*`, and `/testing/js/*` from `node_modules/betterweightchartpro/` during dev and copies them into `dist/` on production build.
 
 To update to the latest chart release:
 
 ```bash
-npm update betterweightchart
-npm run sync-bwc-vendor
+npm update betterweightchartpro
 npm run build
 ```
 
-Do **not** clone BetterweightChart next to Auren — the app no longer uses `../BetterweightChart`.
-
-`.npmrc` sets `ignore-scripts=true` so the chart package’s postinstall does not fail when dependencies are hoisted; run `npm run sync-bwc-vendor` after every `npm install` or `npm update betterweightchart`.
+Do **not** clone BetterweightChartPro next to Auren unless you intentionally set `BWC_ROOT`; the default installation uses `node_modules/betterweightchartpro`.
 
 ### 3. Environment
 
@@ -345,7 +307,7 @@ Data operations use `/backtester/data-management-ws` (see [docs/RESTART_GUIDE.md
 npm run build
 ```
 
-Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN` on the server). BetterweightChart static assets are bundled into `dist/chart`, `dist/js`, etc. automatically during `npm run build`.
+Output is in `dist/`. Serve it behind your API (same origin or set `CORS_ORIGIN` on the server). BetterweightChartPro static assets are bundled into `dist/chart`, `dist/js`, etc. automatically during `npm run build`.
 
 ## Project structure
 
@@ -356,14 +318,14 @@ Auren/
 ├── public/                 # Static assets (favicon, etc.)
 ├── images/                 # README screenshots
 ├── node_modules/
-│   └── betterweightchart/  # Chart SDK (from github:parbhatc/BetterweightChart)
+│   └── betterweightchartpro/  # Chart SDK (from github:parbhatc/BetterweightChartPro)
 └── package.json
 ```
 
 ## License and third-party notices
 
 - **Auren** application code: see repository license (if provided).
-- **[BetterweightChart](https://github.com/parbhatc/BetterweightChart)**: MIT — chart widget, drawings, and indicators (installed via npm from GitHub).
+- **[BetterweightChartPro](https://github.com/parbhatc/BetterweightChartPro)**: MIT — chart widget, drawings, and indicators (installed via npm from GitHub).
 - **Market data**: subject to your provider’s terms (e.g. Tradesea).
 
 ## Contributing

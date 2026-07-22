@@ -17,8 +17,8 @@ class LoginCard extends Component<LoginCardProps> {
           <div
             className={`pointer-events-none absolute inset-0 lg:hidden ${
               isDark
-                ? 'bg-[radial-gradient(ellipse_at_top,rgba(124,58,237,0.12)_0%,transparent_55%)]'
-                : 'bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.08)_0%,transparent_55%)]'
+                ? 'bg-transparent'
+                : 'bg-transparent'
             }`}
             aria-hidden
           />

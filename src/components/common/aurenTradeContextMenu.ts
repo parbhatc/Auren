@@ -12,7 +12,7 @@ type BwcHostHooks = {
 
 let hostHooks: BwcHostHooks | null = null
 
-/** Called from AurenChart after loading BetterweightChart sdk (src/chart/aurenChartBoot.ts). */
+/** Called from AurenChart after loading BetterweightChartPro sdk (src/chart/aurenChartBoot.ts). */
 export function bindBwcTradeContextHooks(hooks: BwcHostHooks): void {
   hostHooks = hooks
 }

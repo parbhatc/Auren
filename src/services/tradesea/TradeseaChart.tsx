@@ -1,5 +1,5 @@
 /**
- * Practice chart services (MDS + datafeed). Chart UI is AurenChart (BetterweightChart).
+ * Practice chart services (MDS + datafeed). Chart UI is AurenChart (BetterweightChartPro).
  */
 import { TradeseaDatafeed } from './TradeseaDatafeed'
 import { TradeseaMdsClient } from './TradeseaMdsClient'

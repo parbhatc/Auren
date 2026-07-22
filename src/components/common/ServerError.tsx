@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { Moon, RefreshCw, ServerOff, Sun } from 'lucide-react'
 import { t } from '../../utils/translator'
 import { getApiPort } from '../../api'
 import { ServerErrorProps } from '../../types/common'
@@ -26,86 +26,136 @@ class ServerError extends Component<ServerErrorProps> {
   }
 
   render() {
-    const { isDark } = this.props
+    const { isDark, onToggleTheme } = this.props
     const port = getApiPort()
 
     return (
       <div
-        className={`min-h-screen flex items-center justify-center p-4 transition-all duration-700 ease-in-out ${
-          isDark
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950'
-            : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+        className={`min-h-screen flex items-center justify-center px-4 py-10 transition-colors duration-200 ${
+          isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'
         }`}
       >
-        <div
-          className={`max-w-md w-full p-8 rounded-2xl shadow-2xl border ${
-            isDark
-              ? 'bg-slate-800/90 border-red-800/50 backdrop-blur-sm'
-              : 'bg-white/90 border-red-300 backdrop-blur-sm'
-          }`}
-        >
-          <div className="flex items-center gap-4 mb-6">
-            <div
-              className={`p-3 rounded-full ${
-                isDark ? 'bg-red-950/50' : 'bg-red-100'
-              }`}
-            >
-              <AlertTriangle
-                className={`w-8 h-8 ${
-                  isDark ? 'text-red-400' : 'text-red-600'
+        <main className="w-full max-w-lg" aria-labelledby="server-error-title">
+          <div className="mb-4 flex items-center justify-between px-1">
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                  isDark
+                    ? 'border-[#27272A] bg-[#18181B] text-[#FAFAFA]'
+                    : 'border-[#E4E4E7] bg-white text-[#09090B]'
                 }`}
-              />
+              >
+                <ServerOff className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span
+                className={`text-sm font-semibold tracking-tight ${
+                  isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
+                }`}
+              >
+                Auren
+              </span>
             </div>
-            <div>
+
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-offset-2 ${
+                isDark
+                  ? 'border-[#27272A] bg-[#18181B] text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA] focus:ring-offset-[#09090B]'
+                  : 'border-[#E4E4E7] bg-white text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B] focus:ring-offset-[#FAFAFA]'
+              }`}
+              aria-label={isDark ? t('serverError.useLightMode') : t('serverError.useDarkMode')}
+              title={isDark ? t('serverError.useLightMode') : t('serverError.useDarkMode')}
+            >
+              {isDark ? (
+                <Sun className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Moon className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+
+          <div
+            className={`overflow-hidden rounded-xl border ${
+              isDark
+                ? 'border-[#27272A] bg-[#18181B]'
+                : 'border-[#E4E4E7] bg-white'
+            }`}
+          >
+            <section className="px-6 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-9">
+              <div
+                className={`mb-5 flex h-11 w-11 items-center justify-center rounded-lg border ${
+                  isDark
+                    ? 'border-[#3B82F6]/35 bg-[#3B82F6]/10 text-[#3B82F6]'
+                    : 'border-[#2563EB]/25 bg-[#2563EB]/[0.07] text-[#2563EB]'
+                }`}
+              >
+                <ServerOff className="h-5 w-5" aria-hidden="true" />
+              </div>
+
               <h1
-                className={`text-2xl font-bold ${
-                  isDark ? 'text-white' : 'text-slate-900'
+                id="server-error-title"
+                className={`text-xl font-semibold tracking-[-0.02em] sm:text-2xl ${
+                  isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
                 }`}
               >
                 {t('serverError.title')}
               </h1>
-            </div>
-          </div>
+              <p
+                className={`mt-2 text-sm leading-6 ${
+                  isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
+                }`}
+              >
+                {t('serverError.message')}
+              </p>
 
-          <div
-            className={`p-4 rounded-lg mb-6 ${
-              isDark
-                ? 'bg-red-950/40 border border-red-800/50'
-                : 'bg-red-50 border border-red-200'
-            }`}
-          >
-            <p
-              className={`text-sm leading-relaxed ${
-                isDark ? 'text-red-200' : 'text-red-800'
-              }`}
-            >
-              <strong className="font-semibold">{t('serverError.message')}</strong>
-            </p>
-          </div>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className={`mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:ring-offset-2 ${
+                  isDark
+                    ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7] focus:ring-offset-[#18181B]'
+                    : 'bg-[#18181B] text-white hover:bg-[#27272A] focus:ring-offset-white'
+                }`}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                {t('serverError.tryAgain')}
+              </button>
+            </section>
 
-          <div
-            className={`p-4 rounded-lg ${
-              isDark ? 'bg-slate-700/50' : 'bg-slate-50'
-            }`}
-          >
-            <h2
-              className={`text-sm font-semibold mb-2 ${
-                isDark ? 'text-slate-300' : 'text-slate-700'
+            <section
+              className={`border-t px-6 py-5 sm:px-8 ${
+                isDark ? 'border-[#27272A] bg-[#121215]' : 'border-[#E4E4E7] bg-[#FAFAFA]'
               }`}
             >
-              {t('serverError.howToFix')}
-            </h2>
-            <ol
-              className={`text-sm space-y-2 list-decimal list-inside ${
-                isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}
-            >
-              <li>{t('serverError.step1')}</li>
-              <li>{t('serverError.step2', { port })}</li>
-              <li>{t('serverError.step3')}</li>
-            </ol>
+              <h2
+                className={`text-xs font-semibold uppercase tracking-[0.08em] ${
+                  isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
+                }`}
+              >
+                {t('serverError.howToFix')}
+              </h2>
+              <ol className="mt-4 space-y-3">
+                {[t('serverError.step1'), t('serverError.step2', { port }), t('serverError.step3')].map(
+                  (step, index) => (
+                    <li key={step} className="flex gap-3 text-sm leading-5">
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
+                          isDark
+                            ? 'border-[#3F3F46] text-[#A1A1AA]'
+                            : 'border-[#D4D4D8] text-[#52525B]'
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <span className={isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}>{step}</span>
+                    </li>
+                  )
+                )}
+              </ol>
+            </section>
           </div>
-        </div>
+        </main>
       </div>
     )
   }

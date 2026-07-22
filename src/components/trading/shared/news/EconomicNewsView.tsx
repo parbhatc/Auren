@@ -65,10 +65,10 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
   const settingsRef = useRef<HTMLDivElement>(null)
 
   const shell = isDark
-    ? 'bg-[#0f172a] border-[#475569] text-slate-200'
-    : 'bg-white border-slate-200 text-slate-800'
-  const muted = isDark ? 'text-[#7d8590]' : 'text-slate-600'
-  const row = isDark ? 'bg-[#020617] border-[#475569]' : 'bg-slate-50 border-slate-200'
+    ? 'bg-[#18181B] border-[#27272A] text-[#FAFAFA]'
+    : 'bg-white border-[#E4E4E7] text-[#09090B]'
+  const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
+  const row = isDark ? 'bg-[#121215] border-[#27272A]' : 'bg-[#FAFAFA] border-[#E4E4E7]'
 
   const loadFilters = useCallback(() => {
     try {
@@ -199,11 +199,11 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
 
   return (
     <div className={`rounded-2xl border flex flex-col min-h-0 max-h-full ${shell}`}>
-      <div className={`flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0 ${isDark ? 'border-[#475569]' : 'border-slate-200'}`}>
+      <div className={`flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
         <div className="flex items-center gap-2 min-w-0">
-          <Calendar className={`w-4 h-4 shrink-0 ${isDark ? 'text-[#8b5cf6]' : 'text-blue-600'}`} />
+          <Calendar className={`w-4 h-4 shrink-0 ${isDark ? 'text-[#3b82f6]' : 'text-blue-600'}`} />
           <div className="min-w-0">
-            <h2 className={`text-sm font-semibold truncate ${isDark ? 'text-[#adbac7]' : 'text-slate-900'}`}>
+            <h2 className={`text-sm font-semibold truncate ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
               Economic News
             </h2>
             <p className={`text-xs truncate ${muted}`}>{todayLabel}</p>
@@ -213,7 +213,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
           type="button"
           onClick={() => setShowSettings((v) => !v)}
           className={`p-1.5 rounded-lg shrink-0 transition-colors ${
-            isDark ? 'text-[#7d8590] hover:bg-[#020617] hover:text-[#adbac7]' : 'text-slate-500 hover:bg-slate-100'
+            isDark ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]' : 'text-[#52525B] hover:bg-[#F4F4F5]'
           }`}
           title="Filter settings"
           aria-label="Filter settings"
@@ -237,12 +237,12 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                   <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${impactDotClass(event.impact)}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className={`text-xs font-semibold ${isDark ? 'text-[#adbac7]' : 'text-slate-800'}`}>
+                      <span className={`text-xs font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
                         {event.time ? formatNewsTime(event.date, event.time, timezone) : '—'}
                       </span>
                       <span
                         className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          isDark ? 'bg-[#475569] text-[#7d8590]' : 'bg-slate-200 text-slate-600'
+                          isDark ? 'bg-[#27272A] text-[#A1A1AA]' : 'bg-[#F4F4F5] text-[#52525B]'
                         }`}
                       >
                         {event.currency}
@@ -251,7 +251,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                         <span className={`text-[10px] font-medium capitalize ${muted}`}>{event.impact}</span>
                       )}
                     </div>
-                    <p className={`text-sm leading-snug ${isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}`}>
+                    <p className={`text-sm leading-snug ${isDark ? 'text-[#FAFAFA]' : 'text-[#52525B]'}`}>
                       {event.event}
                     </p>
                     {(event.actual || event.forecast || event.previous) && (
@@ -259,19 +259,19 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                         {event.actual != null && event.actual !== '' && (
                           <span>
                             Actual:{' '}
-                            <span className={isDark ? 'text-[#adbac7]' : 'text-slate-800'}>{event.actual}</span>
+                            <span className={isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}>{event.actual}</span>
                           </span>
                         )}
                         {event.forecast != null && event.forecast !== '' && (
                           <span>
                             Forecast:{' '}
-                            <span className={isDark ? 'text-[#adbac7]' : 'text-slate-800'}>{event.forecast}</span>
+                            <span className={isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}>{event.forecast}</span>
                           </span>
                         )}
                         {event.previous != null && event.previous !== '' && (
                           <span>
                             Previous:{' '}
-                            <span className={isDark ? 'text-[#adbac7]' : 'text-slate-800'}>{event.previous}</span>
+                            <span className={isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}>{event.previous}</span>
                           </span>
                         )}
                       </div>
@@ -293,19 +293,19 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
           >
             <div
               ref={settingsRef}
-              className={`max-w-md w-full max-h-[85vh] overflow-y-auto rounded-2xl shadow-xl p-4 border ${
-                isDark ? 'bg-[#0f172a] border-[#475569]' : 'bg-white border-slate-200'
+              className={`max-w-md w-full max-h-[85vh] overflow-y-auto rounded-xl p-4 border ${
+                isDark ? 'bg-[#18181B] border-[#27272A]' : 'bg-white border-[#E4E4E7]'
               }`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-3">
-                <h4 className={`text-sm font-bold ${isDark ? 'text-[#adbac7]' : 'text-slate-900'}`}>
+                <h4 className={`text-sm font-bold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
                   Filter settings
                 </h4>
                 <button
                   type="button"
                   onClick={() => setShowSettings(false)}
-                  className={`p-1 rounded ${isDark ? 'hover:bg-[#020617] text-[#7d8590]' : 'hover:bg-slate-100 text-slate-600'}`}
+                  className={`p-1 rounded ${isDark ? 'hover:bg-[#27272A] text-[#A1A1AA]' : 'hover:bg-[#F4F4F5] text-[#52525B]'}`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -314,7 +314,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
               {(['currencies', 'impact'] as const).map((category) => (
                 <div key={category} className="mb-4 last:mb-0">
                   <div className="flex items-center justify-between mb-2">
-                    <label className={`text-xs font-medium capitalize ${isDark ? 'text-[#adbac7]' : 'text-slate-700'}`}>
+                    <label className={`text-xs font-medium capitalize ${isDark ? 'text-[#FAFAFA]' : 'text-[#52525B]'}`}>
                       {category}
                     </label>
                     <div className="flex gap-2">
@@ -322,7 +322,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                         type="button"
                         onClick={() => selectAllFilters(category, true)}
                         className={`text-xs px-2 py-0.5 rounded ${
-                          isDark ? 'bg-[#475569] text-[#adbac7]' : 'bg-slate-200 text-slate-700'
+                          isDark ? 'bg-[#27272A] text-[#FAFAFA]' : 'bg-[#F4F4F5] text-[#52525B]'
                         }`}
                       >
                         All
@@ -331,7 +331,7 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
                         type="button"
                         onClick={() => selectAllFilters(category, false)}
                         className={`text-xs px-2 py-0.5 rounded ${
-                          isDark ? 'bg-[#475569] text-[#adbac7]' : 'bg-slate-200 text-slate-700'
+                          isDark ? 'bg-[#27272A] text-[#FAFAFA]' : 'bg-[#F4F4F5] text-[#52525B]'
                         }`}
                       >
                         None

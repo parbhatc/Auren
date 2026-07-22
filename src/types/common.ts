@@ -138,6 +138,7 @@ export interface RoleErrorProps {
 
 export interface ServerErrorProps {
   isDark: boolean
+  onToggleTheme: () => void
 }
 
 export interface InputFieldProps {

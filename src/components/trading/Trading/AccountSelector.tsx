@@ -126,11 +126,11 @@ export function AccountSelector({
         } ${
           open
             ? isDark
-              ? 'bg-slate-800 ring-1 ring-violet-500/30'
-              : 'bg-white ring-1 ring-violet-400/40'
+              ? 'bg-[#18181B] ring-1 ring-blue-500/40'
+              : 'bg-white ring-1 ring-blue-600/35'
             : isDark
-              ? 'bg-[#0f172a] text-slate-200 hover:border-slate-500'
-              : 'bg-white text-slate-800 hover:border-violet-400 shadow-sm'
+              ? 'bg-[#18181B] text-[#FAFAFA] hover:border-[#52525B]'
+              : 'bg-white text-[#09090B] hover:border-blue-500'
         } ${practiceAccountTriggerBorderClass(current, isDark)}`}
       >
         <div className="flex-1 min-w-0">
@@ -174,12 +174,12 @@ export function AccountSelector({
           className={`absolute top-full left-0 mt-1 z-[200] rounded-lg border shadow-xl overflow-hidden ${
             compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'right-0 sm:left-0 sm:right-auto sm:min-w-[320px]'
           } ${
-            isDark ? 'bg-[#0f172a] border-[#475569]' : 'bg-white border-slate-200'
+            isDark ? 'border-[#3F3F46] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
           }`}
         >
           <div
             className={`flex items-center justify-between px-3 py-2 border-b ${
-              isDark ? 'border-[#475569]' : 'border-slate-200'
+              isDark ? 'border-[#3F3F46]' : 'border-[#E4E4E7]'
             }`}
           >
             <span className={`text-xs font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -190,7 +190,7 @@ export function AccountSelector({
               onClick={handleRefresh}
               disabled={refreshing}
               className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md ${
-                isDark ? 'text-violet-400 hover:bg-slate-800' : 'text-violet-600 hover:bg-violet-100'
+                isDark ? 'text-blue-400 hover:bg-[#27272A]' : 'text-blue-700 hover:bg-blue-50'
               }`}
             >
               <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
@@ -248,7 +248,7 @@ export function AccountSelector({
             )}
           </ul>
 
-          <div className={`border-t p-1.5 ${isDark ? 'border-[#475569]' : 'border-slate-200'}`}>
+          <div className={`border-t p-1.5 ${isDark ? 'border-[#3F3F46]' : 'border-[#E4E4E7]'}`}>
             <button
               type="button"
               onClick={() => {
@@ -256,7 +256,7 @@ export function AccountSelector({
                 navigate(ROUTES.PRACTICE)
               }}
               className={`w-full text-center px-3 py-2 text-xs font-medium rounded-md ${
-                isDark ? 'text-violet-400 hover:bg-slate-800' : 'text-violet-600 hover:bg-violet-50'
+                isDark ? 'text-blue-400 hover:bg-[#27272A]' : 'text-blue-700 hover:bg-blue-50'
               }`}
             >
               {t('practice.hub.manageAccounts')}

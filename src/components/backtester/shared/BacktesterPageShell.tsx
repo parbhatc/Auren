@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { appPageBackground } from '../../../styles/aurenTheme'
 import BacktesterNav, { type BacktesterTab } from './BacktesterNav'
+import ProductHeader from '../../layout/ProductHeader'
 
 export default function BacktesterPageShell({
   isDark,
@@ -20,16 +21,19 @@ export default function BacktesterPageShell({
   children: ReactNode
 }) {
   return (
-    <div className={appPageBackground(isDark)}>
-      <BacktesterNav
-        isDark={isDark}
-        toggleTheme={toggleTheme}
-        navigate={navigate}
-        activeTab={activeTab}
-        showAdmin={showAdmin}
-        onLogout={onLogout}
-      />
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">{children}</main>
+    <div className={`auren-shell-offset ${appPageBackground(isDark)}`}>
+      <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <BacktesterNav
+          isDark={isDark}
+          toggleTheme={toggleTheme}
+          navigate={navigate}
+          activeTab={activeTab}
+          showAdmin={showAdmin}
+          onLogout={onLogout}
+        />
+        {children}
+      </main>
     </div>
   )
 }

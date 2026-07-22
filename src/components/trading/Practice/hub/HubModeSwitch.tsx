@@ -2,19 +2,10 @@ import { t } from '../../../../utils/translator'
 import type { HubHomeMode } from '../../../../types/practiceHub'
 
 function activeTabClass(id: HubHomeMode, isDark: boolean): string {
-  if (id === 'live') {
-    return isDark
-      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-      : 'bg-emerald-600 text-white shadow-sm'
-  }
-  if (id === 'replay') {
-    return isDark
-      ? 'bg-sky-600 text-white shadow-md shadow-sky-900/40'
-      : 'bg-sky-600 text-white shadow-sm'
-  }
+  void id
   return isDark
-    ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
-    : 'bg-white text-violet-700 shadow-sm'
+    ? 'bg-blue-500 text-white'
+    : 'bg-white text-blue-700'
 }
 
 function tabLabel(labelKey: string, fallback: string): string {
@@ -32,8 +23,8 @@ export default function HubModeSwitch({
   isDark: boolean
 }) {
   const shell = isDark
-    ? 'bg-slate-900/90 ring-1 ring-slate-800'
-    : 'bg-slate-100/90 ring-1 ring-slate-200/80'
+    ? 'bg-[#18181B] ring-1 ring-[#27272A]'
+    : 'bg-[#F4F4F5] ring-1 ring-[#E4E4E7]'
 
   const items: { id: HubHomeMode; labelKey: string; fallback: string }[] = [
     { id: 'practice', labelKey: 'live.hub.modePractice', fallback: 'Practice' },

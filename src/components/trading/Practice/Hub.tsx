@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { RefreshCw, Sparkles, Zap, Plus, History } from 'lucide-react'
+import { RefreshCw, ShieldCheck, Zap, Plus, History } from 'lucide-react'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import {
   createPracticeAccount,
@@ -433,18 +433,18 @@ export default function Hub() {
 
         {loadingHub ? (
           <div className="flex justify-center py-24">
-            <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+            <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
           </div>
         ) : (
           <>
             {activeTab === 'accounts' && homeMode === 'practice' && (
               <HubHeroSection
                 isDark={isDark}
-                icon={Sparkles}
+                icon={ShieldCheck}
                 badge={t('practice.hub.badge')}
                 headline={t('practice.hub.headline')}
                 subtitle={t('practice.hub.subtitle')}
-                accent="violet"
+                accent="blue"
               />
             )}
 
@@ -509,7 +509,11 @@ export default function Hub() {
                   <button
                     type="button"
                     onClick={() => setCreateOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ${
+                      isDark
+                        ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                        : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+                    }`}
                   >
                     <Plus className="w-4 h-4" aria-hidden />
                     {t('practice.hub.create')}

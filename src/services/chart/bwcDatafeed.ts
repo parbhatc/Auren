@@ -50,7 +50,7 @@ function normalizeBarForBwc(bar: Bar): Bar {
   return { ...bar, time: barTimeToSec(bar.time) }
 }
 
-/** Bridge a TradingView-style datafeed to BetterweightChart createCustomDatafeed. */
+/** Bridge a TradingView-style datafeed to BetterweightChartPro createCustomDatafeed. */
 export function createBwcDatafeed(source: IDatafeedChartApi) {
   let cachedConfig: {
     resolutions: BwcResolution[]
@@ -245,7 +245,7 @@ export type BwcWidget = {
   [key: string]: unknown
 }
 
-/** Requires recent betterweightchart (trade overlays + host hooks). */
+/** Requires recent betterweightchartpro (trade overlays + host hooks). */
 export function getBwcChartApi(widget: BwcWidget | null | undefined): BwcChartApi | null {
   if (!widget || typeof widget.chart !== 'function') return null
   try {

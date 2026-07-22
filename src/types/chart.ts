@@ -1,5 +1,5 @@
 /**
- * Chart types for Auren (BetterweightChart + practice datafeeds).
+ * Chart types for Auren (BetterweightChartPro + practice datafeeds).
  */
 
 import type { CSSProperties } from 'react'
@@ -83,7 +83,7 @@ export interface IDatafeedChartApi {
     listenerGuid: string
   ): void
   unsubscribeBars(listenerGuid: string): void
-  /** Optional — enables BetterweightChart bid/ask price lines. */
+  /** Optional — enables BetterweightChartPro bid/ask price lines. */
   getQuotes?(
     symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[]
   ): Promise<Array<{ s: string; n: string; v: { bid: number; ask: number; lp?: number } }>>

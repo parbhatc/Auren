@@ -1,14 +1,14 @@
 import type { LucideIcon } from 'lucide-react'
 
-type HubHeroAccent = 'violet' | 'emerald' | 'sky' | 'amber'
+type HubHeroAccent = 'blue' | 'emerald' | 'sky' | 'amber'
 
 const accentStyles: Record<
   HubHeroAccent,
   { icon: string; badge: string }
 > = {
-  violet: {
-    icon: 'text-violet-400',
-    badge: 'text-violet-400/90',
+  blue: {
+    icon: 'text-blue-400',
+    badge: 'text-blue-400/90',
   },
   emerald: {
     icon: 'text-emerald-400',
@@ -25,7 +25,7 @@ const accentStyles: Record<
 }
 
 const accentStylesLight: Record<HubHeroAccent, { icon: string; badge: string }> = {
-  violet: { icon: 'text-violet-600', badge: 'text-violet-600' },
+  blue: { icon: 'text-blue-600', badge: 'text-blue-600' },
   emerald: { icon: 'text-emerald-600', badge: 'text-emerald-600' },
   sky: { icon: 'text-sky-600', badge: 'text-sky-600' },
   amber: { icon: 'text-amber-600', badge: 'text-amber-600' },
@@ -37,7 +37,7 @@ export default function HubHeroSection({
   badge,
   headline,
   subtitle,
-  accent = 'violet',
+  accent = 'blue',
 }: {
   isDark: boolean
   icon: LucideIcon
@@ -57,15 +57,15 @@ export default function HubHeroSection({
         </span>
       </div>
       <h1
-        className={`text-2xl sm:text-3xl font-bold tracking-tight ${
-          isDark ? 'text-white' : 'text-slate-900'
+        className={`text-2xl sm:text-3xl font-semibold tracking-[-0.025em] ${
+          isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
         }`}
       >
         {headline}
       </h1>
       <p
         className={`mt-2 max-w-2xl text-sm sm:text-base leading-relaxed ${
-          isDark ? 'text-slate-400' : 'text-slate-600'
+          isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
         }`}
       >
         {subtitle}

@@ -1,5 +1,9 @@
 export const ROUTES = {
   HOME: '/',
+  DASHBOARD: '/dashboard',
+  ANALYTICS: '/analytics',
+  JOURNAL: '/journal',
+  NEWS: '/news',
   LOGIN: '/login',
   REGISTER: '/register',
   VERIFY_EMAIL: '/verify-email',
@@ -13,8 +17,8 @@ export const ROUTES = {
   UTILS_SETTINGS: '/settings/utils',
   KEYBOARD_SHORTCUTS_SETTINGS: '/settings/keyboard-shortcuts',
   PRACTICE_SETTINGS: '/settings/practice',
-  /** Practice hub (same as HOME) */
-  PRACTICE: '/',
+  /** Simulated evaluation and funded account workspace */
+  PRACTICE: '/practice',
   /** Simulated accounts — `/practice/trade/:accountId` */
   PRACTICE_TRADE: '/practice/trade',
   /** Live prop-firm trading terminal */

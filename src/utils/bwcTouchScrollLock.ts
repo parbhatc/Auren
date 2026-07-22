@@ -1,5 +1,5 @@
 /**
- * BetterweightChart calls mountAppTouchScrollLock() on boot but never releases it on
+ * BetterweightChartPro calls mountAppTouchScrollLock() on boot but never releases it on
  * destroy — this leaves `html.tv-app--touch` and a capture-phase touchmove blocker.
  */
 

@@ -4,8 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#09090B" />
     <meta name="color-scheme" content="dark light" />
+    <script>
+      ;(() => {
+        try {
+          const theme = localStorage.getItem('auren-theme') || 'dark'
+          const isDark = theme === 'dark'
+          document.documentElement.classList.toggle('dark', isDark)
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+          document.documentElement.style.backgroundColor = isDark ? '#09090B' : '#FAFAFA'
+          const themeColor = document.querySelector('meta[name="theme-color"]')
+          if (themeColor) themeColor.setAttribute('content', isDark ? '#09090B' : '#FAFAFA')
+        } catch {
+          document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = 'dark'
+          document.documentElement.style.backgroundColor = '#09090B'
+        }
+      })()
+    </script>
     <!-- PWA: standalone + background_color; deliberately no apple-mobile-web-app-status-bar-style
          (black-translucent causes the iOS ~59px bottom chin-gap WebKit bug). -->
     <link rel="manifest" href="/manifest.json" />
@@ -14,16 +31,16 @@
     <meta name="apple-mobile-web-app-title" content="Auren" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Auren</title>
-    <link rel="stylesheet" href="/css/app.css" />
     <script type="importmap">
       {
         "imports": {
-          "lightweight-charts": "/vendor/lightweight-charts.mjs"
+          "prochart": "/vendor/prochart/index.mjs"
         }
       }
     </script>
+    <link rel="stylesheet" href="/css/app.css" />
   </head>
-  <body>
+  <body class="bg-[#FAFAFA] text-[#09090B] dark:bg-[#09090B] dark:text-[#FAFAFA]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

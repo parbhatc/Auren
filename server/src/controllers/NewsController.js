@@ -57,7 +57,7 @@ function hmToMinutes(hm) {
 }
 
 /**
- * BetterweightChart-compatible ForexFactory news API (uses Auren scraped calendar cache).
+ * BetterweightChartPro-compatible ForexFactory news API (uses Auren scraped calendar cache).
  */
 class NewsController {
   static newsConfig(_req, res) {

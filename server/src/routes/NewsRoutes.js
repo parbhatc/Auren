@@ -2,7 +2,7 @@ import express from 'express'
 import NewsController from '../controllers/NewsController.js'
 
 /**
- * BetterweightChart-compatible news routes (ForexFactory calendar for Levels indicator).
+ * BetterweightChartPro-compatible news routes (ForexFactory calendar for Levels indicator).
  */
 class NewsRoutes {
   constructor() {

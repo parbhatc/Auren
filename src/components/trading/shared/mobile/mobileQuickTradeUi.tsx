@@ -14,13 +14,13 @@ export function MobileQtyStepper({
   className?: string
 }) {
   const shell = isDark
-    ? 'border-[#475569] bg-[#020617]'
-    : 'border-slate-200 bg-slate-50'
+    ? 'border-[#3F3F46] bg-[#121215]'
+    : 'border-[#E4E4E7] bg-[#FAFAFA]'
   const btn = isDark
-    ? 'text-[#7d8590] hover:bg-[#1e293b] hover:text-[#e6edf3]'
-    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-  const input = isDark ? 'text-[#e6edf3]' : 'text-slate-900'
-  const divider = isDark ? 'border-[#334155]' : 'border-slate-200'
+    ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
+    : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
+  const input = isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
+  const divider = isDark ? 'border-[#3F3F46]' : 'border-[#E4E4E7]'
 
   return (
     <div
@@ -69,8 +69,8 @@ export function MobileQtyInput({  props,
   className?: string
 }) {
   const shell = isDark
-    ? 'border-[#475569]/60 bg-[#0f172a]/80 text-[#e6edf3] placeholder:text-[#64748b] focus:border-violet-500/40'
-    : 'border-slate-200 bg-white text-slate-900 focus:border-violet-400'
+    ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA] placeholder:text-[#71717A] focus:border-blue-500'
+    : 'border-[#E4E4E7] bg-white text-[#09090B] focus:border-blue-600'
 
   return (
     <input
@@ -98,7 +98,7 @@ export function MobileMarketLabel({ side, qty }: { side: 'buy' | 'sell'; qty: nu
 }
 
 export const MOBILE_MARKET_BTN =
-  '!w-full !min-w-0 !flex-1 !h-10 !rounded-lg px-1.5 text-[10px] font-bold uppercase tracking-wide !shadow-[0_2px_8px_rgba(0,0,0,0.2)]'
+  '!h-11 !w-full !min-w-0 !flex-1 !rounded-lg px-1.5 text-[11px] font-bold uppercase tracking-wide'
 
 export const COMPACT_MARKET_BTN =
-  '!h-9 !min-w-0 !flex-1 !rounded-lg px-1 text-[9px] font-bold uppercase tracking-wide !shadow-[0_2px_6px_rgba(0,0,0,0.2)]'
+  '!h-10 !min-w-0 !flex-1 !rounded-lg px-1 text-[10px] font-bold uppercase tracking-wide'

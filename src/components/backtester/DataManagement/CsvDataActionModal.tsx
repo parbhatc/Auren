@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { Download, RefreshCw, Replace } from 'lucide-react'
+import { Check, Download, RefreshCw, Replace } from 'lucide-react'
 
 import Modal from '../../ui/Modal'
 
@@ -240,7 +240,7 @@ export default function CsvDataActionModal({
 
       : effectiveIntent === 'download'
 
-        ? 'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50'
+        ? 'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50'
 
         : 'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50'
 
@@ -348,7 +348,7 @@ export default function CsvDataActionModal({
 
           {ticker ? (
 
-            <p className={`text-xs font-mono mt-2 ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
+            <p className={`text-xs font-mono mt-2 ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
 
               {ticker}
 
@@ -376,7 +376,10 @@ export default function CsvDataActionModal({
 
                 >
 
-                  {row.resolutionLabel} ✓
+                  <span className="inline-flex items-center gap-1">
+                    {row.resolutionLabel}
+                    <Check className="h-3 w-3" strokeWidth={2} aria-hidden />
+                  </span>
 
                 </span>
 
@@ -428,7 +431,7 @@ export default function CsvDataActionModal({
 
                     {opt.label}
 
-                    {symbolHasChartResolution(symbol, opt.value, inventory) ? ' ✓' : ''}
+                    {symbolHasChartResolution(symbol, opt.value, inventory) ? ' (available)' : ''}
 
                   </option>
 

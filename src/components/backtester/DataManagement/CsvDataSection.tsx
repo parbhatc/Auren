@@ -264,7 +264,7 @@ export default function CsvDataSection({
             }}
             className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
               dataSource === source
-                ? tabRailActiveClass(isDark, source === 'tradesea' ? 'violet' : 'amber')
+                ? tabRailActiveClass(isDark, source === 'tradesea' ? 'blue' : 'amber')
                 : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -284,8 +284,8 @@ export default function CsvDataSection({
                 : 'border-slate-200 bg-slate-50 text-slate-600'
               : tradeseaStatus.ok
               ? isDark
-                ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
-                : 'border-violet-200 bg-violet-50 text-violet-800'
+                ? 'border-blue-500/30 bg-blue-500/10 text-blue-200'
+                : 'border-blue-200 bg-blue-50 text-blue-800'
               : isDark
                 ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
                 : 'border-amber-200 bg-amber-50 text-amber-800'
@@ -324,8 +324,8 @@ export default function CsvDataSection({
             placeholder={t('backtesterDataManagement.csvData.tradingviewTokenPlaceholder', {}, 'Paste your TradingView token')}
             className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${
               isDark
-                ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-violet-500'
-                : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-violet-500'
+                ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-blue-500'
+                : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500'
             }`}
             autoComplete="off"
           />
@@ -351,8 +351,8 @@ export default function CsvDataSection({
           placeholder={t('backtesterDataManagement.csvData.searchPlaceholder', {}, 'Search symbols…')}
           className={`w-full pl-10 pr-4 py-2 rounded-lg border text-sm outline-none transition-all ${
             isDark
-              ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-violet-500'
-              : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-violet-500'
+              ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-blue-500'
+              : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500'
           }`}
         />
       </div>
@@ -462,7 +462,7 @@ export default function CsvDataSection({
                     {stripHtml(row.description)}
                   </p>
                   {row.formattedSymbol && (
-                    <p className={`text-xs font-mono mt-1 ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
+                    <p className={`text-xs font-mono mt-1 ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
                       {row.formattedSymbol}
                     </p>
                   )}
@@ -476,8 +476,8 @@ export default function CsvDataSection({
                         onClick={() => openActionModal(row, 'download')}
                         className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
                           isDark
-                            ? 'bg-violet-600 hover:bg-violet-500 text-white'
-                            : 'bg-violet-600 hover:bg-violet-700 text-white'
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
                         }`}
                       >
                         <Download className={`w-3.5 h-3.5 ${isRowBusy(row.symbol, 'download') ? 'animate-pulse' : ''}`} />
@@ -583,7 +583,7 @@ export default function CsvDataSection({
                         }`}
                       >
                         <p className={`flex-1 min-w-0 text-xs sm:text-sm font-mono tracking-wide ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                          <span className={isDark ? 'text-violet-300' : 'text-violet-700'}>{row.resolutionLabel}</span>
+                          <span className={isDark ? 'text-blue-300' : 'text-blue-700'}>{row.resolutionLabel}</span>
                           <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> → </span>
                           <span>{row.fromLabel}</span>
                           <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> - </span>

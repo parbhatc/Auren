@@ -57,6 +57,7 @@ export const practiceAPI = {
   createAccount: async (body: {
     mode: string
     size: number
+    displayName?: string
     rules?: Partial<PracticeAccountRules>
   }): Promise<{ success: boolean; account: PracticeAccount }> => {
     const res = await api.post('/practice/accounts', body, { headers: getAuthHeaders() })
@@ -65,7 +66,7 @@ export const practiceAPI = {
 
   updateAccount: async (
     id: string,
-    patch: { rules?: Partial<PracticeAccountRules> }
+    patch: { displayName?: string; rules?: Partial<PracticeAccountRules> }
   ): Promise<{ success: boolean; account: PracticeAccount }> => {
     const res = await api.patch(`/practice/accounts/${id}`, patch, { headers: getAuthHeaders() })
     return res.data

@@ -16,7 +16,7 @@ import { BacktesterStats } from '../../../services/stats/BacktesterStats'
 import { calcTradeseaTickPnL } from '../../../services/tradesea/tradeseaPnL'
 import { getTradeCalendarDate } from '../../../utils/tradeCalendarDate'
 import { practiceTradePanelClass } from '../../trading/Practice/practiceTradeTheme'
-import { TradeHeader } from '../../trading/Trading/TradeHeader'
+import BacktesterPageShell from '../shared/BacktesterPageShell'
 import DateRangeSelector from '../../trading/Stats/DateRangeSelector'
 import StatsTabs from '../../trading/Stats/StatsTabs'
 import OverviewTab from '../../trading/Stats/OverviewTab'
@@ -58,12 +58,7 @@ type SymbolDataMap = Record<
 
 type TimelinePoint = NonNullable<DayStatsDialogProps['selectedTimelinePoint']>
 
-const replayHubPath = `${ROUTES.HOME}?mode=replay`
-
-const practicePageBg = (isDark: boolean) =>
-  isDark
-    ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-    : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+const replayHubPath = ROUTES.BACKTESTER
 
 function parseTradeTimestamp(timestamp: string | number | null | undefined): Date | null {
   if (timestamp == null || timestamp === '') return null
@@ -141,6 +136,7 @@ export default function BacktesterStatsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<BacktestSession[]>([])
   const [trades, setTrades] = useState<BacktestTrade[]>([])
@@ -172,7 +168,8 @@ export default function BacktesterStatsPage() {
           return
         }
 
-        await authAPI.validateToken(token)
+        const auth = await authAPI.validateToken(token)
+        setIsAdmin(Boolean(auth.user?.isAdmin))
 
         const [sessionsRes, symbolsRes] = await Promise.all([
           backtesterAPI.getSessions(),
@@ -516,20 +513,19 @@ export default function BacktesterStatsPage() {
 
   if (loading && !sessions.length && !trades.length) {
     return (
-      <div className={`h-screen flex items-center justify-center ${practicePageBg(isDark)}`}>
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-      </div>
+      <BacktesterPageShell isDark={isDark} toggleTheme={toggleTheme} navigate={navigate} activeTab="stats" showAdmin={isAdmin}>
+        <div className={`flex min-h-64 items-center justify-center rounded-xl border ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'}`}>
+          <RefreshCw className="h-6 w-6 animate-spin text-blue-500" aria-label="Loading replay statistics" />
+        </div>
+      </BacktesterPageShell>
     )
   }
 
   if (error) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${practicePageBg(isDark)}`}>
-        <div
-          className={`max-w-md w-full p-6 rounded-2xl border ${
-            isDark ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-200'
-          }`}
-        >
+      <BacktesterPageShell isDark={isDark} toggleTheme={toggleTheme} navigate={navigate} activeTab="stats" showAdmin={isAdmin}>
+        <div className="flex min-h-64 items-center justify-center py-8">
+          <div className={`w-full max-w-md rounded-xl border p-6 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'}`}>
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="w-5 h-5 text-amber-500" />
             <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>{error}</p>
@@ -537,23 +533,21 @@ export default function BacktesterStatsPage() {
           <button
             type="button"
             onClick={() => navigate(replayHubPath)}
-            className="w-full px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold"
+            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}
           >
             {t('practice.trade.backToHub')}
           </button>
+          </div>
         </div>
-      </div>
+      </BacktesterPageShell>
     )
   }
 
   if (!currentSession) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${practicePageBg(isDark)}`}>
-        <div
-          className={`max-w-md w-full p-6 rounded-2xl border ${
-            isDark ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-200'
-          }`}
-        >
+      <BacktesterPageShell isDark={isDark} toggleTheme={toggleTheme} navigate={navigate} activeTab="stats" showAdmin={isAdmin}>
+        <div className="flex min-h-64 items-center justify-center py-8">
+          <div className={`w-full max-w-md rounded-xl border p-6 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'}`}>
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="w-5 h-5 text-amber-500" />
             <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
@@ -563,47 +557,31 @@ export default function BacktesterStatsPage() {
           <button
             type="button"
             onClick={() => navigate(replayHubPath)}
-            className="w-full px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold"
+            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}
           >
             {t('practice.trade.backToHub')}
           </button>
+          </div>
         </div>
-      </div>
+      </BacktesterPageShell>
     )
   }
 
   return (
-    <div
-      className={`practice-stats-shell h-dvh max-h-dvh min-h-0 flex flex-col overflow-hidden transition-all duration-700 ease-in-out ${practicePageBg(isDark)}`}
-    >
-      <TradeHeader
-        isDark={isDark}
-        navigate={navigate}
-        toggleTheme={toggleTheme}
-        showNav
-        onShowNav={() => {}}
-        hideNavToggle
-        showStatsBar={false}
-        showAccountSelector={false}
-        showTradingSettings={false}
-        showLogoAlways
-        hubPath={replayHubPath}
-        headerLabel={`${currentSession.name} · ${currentSession.symbol}`}
-      />
-
-      <main className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden practice-stats-scroll px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <BacktesterPageShell isDark={isDark} toggleTheme={toggleTheme} navigate={navigate} activeTab="stats" showAdmin={isAdmin}>
+      <main className="min-w-0">
         <div className={`min-w-0 p-3 sm:p-4 ${practiceTradePanelClass(isDark)}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-700/60">
+          <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
             <div className="flex items-center gap-2">
-              <TrendingUp className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+              <TrendingUp className="h-5 w-5 text-blue-500" strokeWidth={1.75} />
               <h1 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {t('backtester.stats.title', {}, 'Backtest Statistics')}
+                {currentSession.name} · {currentSession.symbol}
               </h1>
             </div>
             <button
               type="button"
               onClick={() => navigate(`${ROUTES.BACKTESTER_CHART}?sessionId=${currentSession.id}`)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold"
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}
             >
               <Play className="w-4 h-4" />
               {t('backtester.resumeReplay', {}, 'Resume replay')}
@@ -728,6 +706,6 @@ export default function BacktesterStatsPage() {
           )}
         </div>
       </main>
-    </div>
+    </BacktesterPageShell>
   )
 }

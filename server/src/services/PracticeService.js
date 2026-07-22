@@ -57,6 +57,25 @@ function newId(prefix = 'pa') {
   return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`
 }
 
+function practiceAccountDisplayName(mode, size, seed = randomUUID()) {
+  const prefix = mode === 'funded' ? 'AUR-F' : 'AUR-E'
+  const sizeCode = String(Math.round(Number(size || 0) / 1000)).padStart(3, '0')
+  const source = String(seed).replace(/[^a-z0-9]/gi, '').toUpperCase()
+  const token = (source.slice(-8) || randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()).padEnd(8, 'X')
+  let hash = 0
+  for (const char of source) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  const serial = String((hash % 999) + 1).padStart(3, '0')
+  return `${prefix}${sizeCode}-${token}-TEST${serial}`
+}
+
+function normalizePracticeDisplayName(value, fallback) {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 64)
+  const branded = normalized
+    .replace(/^LFE/i, 'AUR-E')
+    .replace(/^LFF/i, 'AUR-F')
+  return branded || fallback
+}
+
 function parseJson(raw, fallback) {
   try {
     return raw ? JSON.parse(raw) : fallback
@@ -71,6 +90,10 @@ function rowToAccount(row) {
   const rules = { ...defaults, ...parseJson(row.rules_json, {}) }
   return {
     id: row.id,
+    displayName: normalizePracticeDisplayName(
+      row.display_name,
+      practiceAccountDisplayName(row.mode, row.size, row.id)
+    ),
     propFirmId: normalizePracticePropFirmId(row.prop_firm_id),
     mode: row.mode,
     size: row.size,
@@ -93,6 +116,24 @@ function rowToAccount(row) {
 }
 
 class PracticeService {
+  async uniqueDisplayName(userId, requested, fallback, excludeAccountId = null) {
+    await Database.initialize()
+    const base = normalizePracticeDisplayName(requested, fallback)
+    for (let attempt = 1; attempt <= 999; attempt += 1) {
+      const suffix = attempt === 1 ? '' : `-${attempt}`
+      const candidate = `${base.slice(0, 64 - suffix.length)}${suffix}`
+      const row = await Database.get(
+        `SELECT id FROM practice_accounts
+         WHERE user_id = ? AND lower(display_name) = lower(?)
+           AND (? IS NULL OR id != ?)
+         LIMIT 1`,
+        [userId, candidate, excludeAccountId, excludeAccountId]
+      )
+      if (!row) return candidate
+    }
+    return practiceAccountDisplayName('eval', 25000)
+  }
+
   async maybeApplySessionReset(userId, account) {
     if (!account) return account
 
@@ -260,11 +301,20 @@ class PracticeService {
     return this.maybeApplySessionReset(userId, account)
   }
 
-  async createAccount(userId, { mode, size, rules, marketData }) {
+  async createAccount(userId, { mode, size, displayName, rules, marketData }) {
     const defaultRules = getDefaultRules(size, mode)
     const mergedRules = { ...defaultRules, ...(rules || {}) }
     const md = marketData || (await this.getMarketData(userId))
     const id = newId('pa')
+    const requestedDisplayName = normalizePracticeDisplayName(
+      displayName,
+      practiceAccountDisplayName(mode, size, id)
+    )
+    const resolvedDisplayName = await this.uniqueDisplayName(
+      userId,
+      requestedDisplayName,
+      practiceAccountDisplayName(mode, size, id)
+    )
     const now = new Date().toISOString()
     const lastResetAt = new Date(getLastResetBoundaryMs()).toISOString()
     const mergedWithSessionLimit = {
@@ -275,14 +325,15 @@ class PracticeService {
     await Database.initialize()
     await Database.run(
       `INSERT INTO practice_accounts (
-        id, user_id, prop_firm_id, mode, size, status, balance, high_water_mark,
+        id, user_id, prop_firm_id, display_name, mode, size, status, balance, high_water_mark,
         drawdown_floor_locked, rules_json, day_pnl_json,
         market_data_account_id, market_data_account_label, created_at, updated_at, last_reset_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?)`,
       [
         id,
         userId,
         md.propFirmId || 'tradesea',
+        resolvedDisplayName,
         mode,
         size,
         mergedRules.startingBalance,
@@ -307,6 +358,17 @@ class PracticeService {
     const updates = []
     const params = []
 
+    if (patch.displayName !== undefined) {
+      updates.push('display_name = ?')
+      params.push(
+        await this.uniqueDisplayName(
+          userId,
+          patch.displayName,
+          account.displayName,
+          accountId
+        )
+      )
+    }
     if (patch.rules) {
       updates.push('rules_json = ?')
       params.push(JSON.stringify(rules))

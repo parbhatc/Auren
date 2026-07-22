@@ -29,7 +29,7 @@ export default defineConfig({
           proxy.on('error', () => {})
         },
       },
-      '/news': {
+      '^/news/(config|calendar)': {
         target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         secure: false,

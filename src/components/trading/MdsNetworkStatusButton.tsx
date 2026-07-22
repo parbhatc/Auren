@@ -150,8 +150,8 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
         aria-haspopup="menu"
         onClick={handleButtonClick}
         disabled={connecting}
-        className={`rounded-lg transition-all duration-200 focus:outline-none flex items-center justify-center bg-transparent border border-transparent hover:bg-[#8b5cf6]/10 hover:border-[#8b5cf6]/25 focus:ring-2 focus:ring-[#8b5cf6]/40 w-7 h-7 ${
-          menuOpen ? 'bg-[#8b5cf6]/15 border-[#8b5cf6]/30' : ''
+        className={`rounded-lg transition-all duration-200 focus:outline-none flex items-center justify-center bg-transparent border border-transparent hover:bg-[#3b82f6]/10 hover:border-[#3b82f6]/25 focus:ring-2 focus:ring-[#3b82f6]/40 w-7 h-7 ${
+          menuOpen ? 'bg-[#3b82f6]/15 border-[#3b82f6]/30' : ''
         } ${connecting ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
       >
         <svg
@@ -195,9 +195,9 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
               type="button"
               role="menuitem"
               onClick={refreshStream}
-              className="group flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-[#1e293b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50"
+              className="group flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-[#27272A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]/50"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#475569] bg-[#020617] text-[#a78bfa] group-hover:border-[#8b5cf6]/50 group-hover:bg-[#8b5cf6]/10">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#3F3F46] bg-[#18181B] text-[#60A5FA] group-hover:border-[#3b82f6]/50 group-hover:bg-[#3b82f6]/10">
                 <RefreshCw className="h-4 w-4" aria-hidden />
               </span>
               <span className="min-w-0">
@@ -223,9 +223,9 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 role="switch"
                 aria-checked={autoReconnect}
                 onClick={toggleAutoReconnect}
-                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50 ${
+                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]/50 ${
                   autoReconnect
-                    ? 'border-[#8b5cf6]/60 bg-[#8b5cf6]'
+                    ? 'border-[#3b82f6]/60 bg-[#3b82f6]'
                     : 'border-[#475569] bg-[#334155]'
                 }`}
               >
@@ -254,9 +254,9 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 role="switch"
                 aria-checked={reconnectOnLimit}
                 onClick={toggleReconnectOnLimit}
-                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/50 ${
+                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]/50 ${
                   reconnectOnLimit
-                    ? 'border-[#8b5cf6]/60 bg-[#8b5cf6]'
+                    ? 'border-[#3b82f6]/60 bg-[#3b82f6]'
                     : 'border-[#475569] bg-[#334155]'
                 }`}
               >

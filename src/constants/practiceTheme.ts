@@ -1,14 +1,14 @@
-/** Dark surfaces for practice / trade terminal UI (slate + violet). */
+/** Neutral dark surfaces for practice / trade terminal UI with one blue accent. */
 export const PRACTICE_DARK = {
-  page: '#020617',
-  shell: '#020617',
-  surface: '#0f172a',
-  elevated: '#1e293b',
-  border: '#475569',
-  borderSubtle: '#334155',
-  muted: '#94a3b8',
-  text: '#f1f5f9',
-  textSecondary: '#cbd5e1',
-  accent: '#8b5cf6',
-  accentMuted: '#a78bfa',
+  page: '#09090B',
+  shell: '#09090B',
+  surface: '#18181B',
+  elevated: '#27272A',
+  border: '#3F3F46',
+  borderSubtle: '#27272A',
+  muted: '#A1A1AA',
+  text: '#FAFAFA',
+  textSecondary: '#D4D4D8',
+  accent: '#3B82F6',
+  accentMuted: '#60A5FA',
 } as const

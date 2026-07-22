@@ -42,7 +42,7 @@ export default function HubModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <button
         type="button"
-        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/65"
         onClick={onCancel}
         disabled={isLoading}
         aria-label="Close"

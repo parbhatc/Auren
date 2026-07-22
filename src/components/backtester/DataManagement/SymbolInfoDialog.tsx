@@ -326,7 +326,7 @@ const SymbolInfoDialog = ({
               Symbol {displaySymbols.length > 1 ? `(${displaySymbols.join(', ')})` : `"${displaySymbols[0]}"`} exists in config.json
             </span>
           ) : (
-            <span className={isDark ? 'text-yellow-300' : 'text-yellow-700'}>
+            <span className={isDark ? 'text-blue-300' : 'text-blue-700'}>
               Symbol {displaySymbols.length > 1 ? `(${displaySymbols.join(', ')})` : `"${displaySymbols[0]}"`} not found in config.json
             </span>
           )}
@@ -521,8 +521,8 @@ const SymbolInfoDialog = ({
                       onClick={() => handleOverwriteClick(symbol)}
                       className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all duration-300 ${
                         isDark
-                          ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                          : 'bg-orange-600 hover:bg-orange-700 text-white'
+                          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
                       }`}
                     >
                       <Download className="w-4 h-4" />
@@ -669,7 +669,7 @@ const SymbolInfoDialog = ({
                     <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                       Formatted Symbol
                     </label>
-                    <p className={`font-mono text-sm ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
+                    <p className={`font-mono text-sm ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
                       {tradingViewData.formattedSymbol}
                     </p>
                   </div>
@@ -732,7 +732,7 @@ const SymbolInfoDialog = ({
                                     <span
                                       key={specIndex}
                                       className={`text-xs px-1.5 py-0.5 rounded ${
-                                        isDark ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                        isDark ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'
                                       }`}
                                     >
                                       {spec}
@@ -764,7 +764,7 @@ const SymbolInfoDialog = ({
                       return (
                         <div className="space-y-4">
                           <div className={`border rounded-lg ${
-                            isDark ? 'border-purple-700 bg-slate-800/50' : 'border-purple-200 bg-white'
+                            isDark ? 'border-blue-700 bg-slate-800/50' : 'border-blue-200 bg-white'
                           }`}>
                             <div className={`px-4 py-3 border-b ${
                               isDark ? 'border-slate-700' : 'border-slate-200'
@@ -806,7 +806,7 @@ const SymbolInfoDialog = ({
                                       <span
                                         key={specIndex}
                                         className={`text-xs px-2 py-0.5 rounded ${
-                                          isDark ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                          isDark ? 'bg-blue-900/50 text-blue-300' : 'bg-blue-100 text-blue-700'
                                         }`}
                                       >
                                         {spec}
@@ -819,7 +819,7 @@ const SymbolInfoDialog = ({
                                 <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                   Full Symbol
                                 </label>
-                                <p className={`text-sm font-mono ${isDark ? 'text-purple-300' : 'text-purple-700'}`}>
+                                <p className={`text-sm font-mono ${isDark ? 'text-blue-300' : 'text-blue-700'}`}>
                                   {fullContractSymbol}
                                 </p>
                               </div>
@@ -878,8 +878,8 @@ const SymbolInfoDialog = ({
                                       onClick={() => handleContractAction('overwrite', contractSymbol)}
                                       className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all duration-300 ${
                                         isDark
-                                          ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                                          : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                          : 'bg-blue-600 hover:bg-blue-700 text-white'
                                       }`}
                                     >
                                       <Download className="w-4 h-4" />
@@ -999,8 +999,8 @@ const SymbolInfoDialog = ({
                             onClick={() => handleOverwriteClick(mainSymbol)}
                             className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all duration-300 ${
                               isDark
-                                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                                : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white'
                             }`}
                           >
                             <Download className="w-4 h-4" />

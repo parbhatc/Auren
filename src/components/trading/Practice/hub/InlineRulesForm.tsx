@@ -56,8 +56,8 @@ function fieldClass(isDark: boolean, invalid?: boolean): string {
     invalid
       ? 'border-red-500/70 focus:ring-red-500/40'
       : isDark
-        ? 'border-slate-700/90 focus:ring-violet-500/35'
-        : 'border-slate-300 focus:ring-violet-500/40'
+        ? 'border-slate-700/90 focus:ring-blue-500/35'
+        : 'border-slate-300 focus:ring-blue-500/40'
   } ${
     isDark
       ? 'bg-slate-900/80 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2'

@@ -30,10 +30,10 @@ const TokenSelector = ({
       focus: isDark ? 'focus:border-blue-500' : 'focus:border-blue-500',
     },
     purple: {
-      active: isDark ? 'bg-purple-600 text-white' : 'bg-purple-500 text-white',
+      active: isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white',
       inactive: isDark ? 'bg-slate-700/50 text-slate-300 hover:bg-slate-700' : 'bg-slate-200 text-slate-700 hover:bg-slate-300',
-      border: isDark ? 'border-purple-700/50' : 'border-purple-200',
-      focus: isDark ? 'focus:border-purple-500' : 'focus:border-purple-500',
+      border: isDark ? 'border-blue-700/50' : 'border-blue-200',
+      focus: isDark ? 'focus:border-blue-500' : 'focus:border-blue-500',
     },
   }
   const colors = colorClasses[colorScheme]

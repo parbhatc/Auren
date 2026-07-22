@@ -1,4 +1,4 @@
-/** IANA timezones supported in user settings (subset of BetterweightChart chart timezones). */
+/** IANA timezones supported in user settings (subset of BetterweightChartPro chart timezones). */
 export const SUPPORTED_CHART_TIMEZONES = [
   'Etc/UTC',
   'America/New_York',

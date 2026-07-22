@@ -191,7 +191,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return this.marketBook.get(streamId)
   }
 
-  /** TradingView / BetterweightChart quote API — bid/ask lines on chart. */
+  /** TradingView / BetterweightChartPro quote API — bid/ask lines on chart. */
   get supportsQuotes(): boolean {
     return true
   }

@@ -14,7 +14,7 @@ export default function AuthPageLayout({
   return (
     <div
       className={`min-h-screen min-h-[100dvh] flex flex-col lg:flex-row ${
-        isDark ? 'bg-slate-950' : 'bg-gradient-to-br from-slate-50 via-indigo-50/40 to-white'
+        isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'
       }`}
     >
       <AuthBrandPanel isDark={isDark} />

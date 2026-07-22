@@ -55,7 +55,11 @@ export default function NewAccountModal({
             type="button"
             onClick={onCreateClick}
             disabled={!canCreate}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 sm:flex-none ${
+              isDark
+                ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+            }`}
           >
             <Plus className="w-4 h-4" aria-hidden />
             {t('practice.hub.create')}

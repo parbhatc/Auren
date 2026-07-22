@@ -151,6 +151,20 @@ const Wrapper = ({ embedded, onBack }: SettingsWrapperProps = {}) => {
   }
 
   if (loading || !user) {
+    if (embedded) {
+      return (
+        <div className="space-y-3" aria-label="Loading account settings">
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className={`h-20 animate-pulse rounded-xl border ${
+                isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
+              }`}
+            />
+          ))}
+        </div>
+      )
+    }
     return <Loading />
   }
 

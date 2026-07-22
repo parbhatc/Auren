@@ -93,6 +93,7 @@ export interface PracticeDayPnL {
 
 export interface PracticeAccount {
   id: string
+  displayName?: string
   propFirmId: PracticePropFirmId
   mode: PracticeAccountMode
   size: PracticeAccountSize
@@ -278,9 +279,10 @@ export function patchPracticeAccount(account: PracticeAccount): void {
 export async function createPracticeAccount(
   mode: PracticeAccountMode,
   size: PracticeAccountSize,
-  rules?: Partial<PracticeAccountRules>
+  rules?: Partial<PracticeAccountRules>,
+  displayName?: string
 ): Promise<PracticeAccount> {
-  const res = await practiceAPI.createAccount({ mode, size, rules })
+  const res = await practiceAPI.createAccount({ mode, size, displayName, rules })
   await refreshPracticeFromApi({ notify: true })
   return res.account
 }
@@ -289,8 +291,11 @@ export async function updatePracticeAccount(
   id: string,
   patch: Omit<Partial<PracticeAccount>, 'rules'> & { rules?: Partial<PracticeAccountRules> }
 ): Promise<PracticeAccount | undefined> {
-  if (patch.rules) {
-    const res = await practiceAPI.updateAccount(id, { rules: patch.rules })
+  if (patch.rules || patch.displayName !== undefined) {
+    const res = await practiceAPI.updateAccount(id, {
+      displayName: patch.displayName,
+      rules: patch.rules,
+    })
     await refreshPracticeFromApi()
     return res.account
   }
@@ -333,10 +338,41 @@ export function getPracticeAccountLabel(account: PracticeAccount): string {
 }
 
 export function getPracticeAccountDisplayTitle(account: PracticeAccount): string {
+  const customName = account.displayName?.trim()
+  if (customName) {
+    return customName
+      .replace(/^LFE/i, 'AUR-E')
+      .replace(/^LFF/i, 'AUR-F')
+  }
+  return generatePracticeAccountName(account.mode, account.size, account.id)
+}
+
+export function getPracticeAccountMetaLabel(account: PracticeAccount): string {
   const firm =
     PRACTICE_PROP_FIRMS.find((f) => f.id === account.propFirmId)?.displayName ||
     account.propFirmId
   return `${firm} · ${getPracticeAccountLabel(account)}`
+}
+
+export function generatePracticeAccountName(
+  mode: PracticeAccountMode,
+  size: PracticeAccountSize,
+  seed?: string
+): string {
+  const prefix = mode === 'funded' ? 'AUR-F' : 'AUR-E'
+  const sizeCode = String(Math.round(size / 1000)).padStart(3, '0')
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const source = seed?.replace(/[^a-z0-9]/gi, '').toUpperCase() ?? ''
+  const token = source
+    ? source.slice(-8).padEnd(8, 'X')
+    : Array.from(
+        { length: 8 },
+        () => alphabet[Math.floor(Math.random() * alphabet.length)]
+      ).join('')
+  let hash = 0
+  for (const character of source) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  const serial = String(source ? (hash % 999) + 1 : Math.floor(Math.random() * 999) + 1).padStart(3, '0')
+  return `${prefix}${sizeCode}-${token}-TEST${serial}`
 }
 
 export { computeDrawdownFloor, evaluatePracticeRules }

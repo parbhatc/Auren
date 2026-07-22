@@ -44,11 +44,11 @@ class PracticeController {
 
   async createAccount(req, res) {
     try {
-      const { mode, size, rules } = req.body
+      const { mode, size, displayName, rules } = req.body
       if (!mode || !size) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: 'mode and size required' })
       }
-      const account = await PracticeService.createAccount(req.user.id, { mode, size, rules })
+      const account = await PracticeService.createAccount(req.user.id, { mode, size, displayName, rules })
       res.status(HTTP_STATUS.CREATED).json({ success: true, account })
     } catch (error) {
       ErrorHandler.handleServerError(res, error)

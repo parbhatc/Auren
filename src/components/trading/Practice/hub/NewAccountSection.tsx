@@ -71,7 +71,11 @@ export default function NewAccountSection({
           type="button"
           onClick={onCreateClick}
           disabled={!marketAccountId}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+          className={`flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:w-auto ${
+            isDark
+              ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+              : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+          }`}
         >
           <Plus className="w-4 h-4" />
           {t('practice.hub.create')}

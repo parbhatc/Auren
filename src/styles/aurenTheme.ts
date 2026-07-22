@@ -2,20 +2,20 @@
 
 export function appPageBackground(isDark: boolean): string {
   return isDark
-    ? 'min-h-screen bg-slate-950'
-    : 'min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100/60 via-slate-50 to-white'
+    ? 'min-h-screen bg-[#09090B]'
+    : 'min-h-screen bg-[#FAFAFA]'
 }
 
 export function appHeaderShell(isDark: boolean): string {
   return isDark
-    ? 'border-slate-800/80 bg-slate-950/80 backdrop-blur-xl'
-    : 'border-slate-200/80 bg-white/80 backdrop-blur-xl'
+    ? 'border-[#27272A] bg-[#09090B]'
+    : 'border-[#E4E4E7] bg-white'
 }
 
 export function panelCardClass(isDark: boolean): string {
   return isDark
-    ? 'rounded-2xl border p-5 sm:p-6 backdrop-blur-sm bg-slate-900/70 border-slate-800/90 shadow-xl shadow-black/25 ring-1 ring-slate-800/50'
-    : 'rounded-2xl border p-5 sm:p-6 backdrop-blur-sm bg-white/90 border-slate-200/90 shadow-lg shadow-slate-200/60 ring-1 ring-slate-100'
+    ? 'rounded-xl border p-5 sm:p-6 bg-[#18181B] border-[#27272A]'
+    : 'rounded-xl border p-5 sm:p-6 bg-white border-[#E4E4E7]'
 }
 
 export function panelCardTitleClass(isDark: boolean): string {
@@ -31,7 +31,7 @@ export function fieldLabelClass(isDark: boolean): string {
 }
 
 export function selectInputClass(isDark: boolean): string {
-  return `w-full px-3 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/40 ${
+  return `w-full px-3 py-2.5 rounded-lg border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
     isDark
       ? 'bg-slate-800/80 border-slate-600 text-slate-100'
       : 'bg-white border-slate-300 text-slate-900'
@@ -47,11 +47,11 @@ export function ghostButtonClass(isDark: boolean): string {
 }
 
 export function primaryButtonClass(): string {
-  return 'px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500 shadow-md shadow-violet-500/20 disabled:opacity-50'
+  return 'px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors'
 }
 
 export function settingsInputClass(isDark: boolean): string {
-  return `w-full px-3 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/35 focus:border-violet-500/40 ${
+  return `w-full px-3 py-2.5 rounded-lg border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-500/40 ${
     isDark
       ? 'bg-slate-900/80 border-slate-700/90 text-slate-100 placeholder:text-slate-500'
       : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
@@ -67,7 +67,7 @@ export function settingsInputDisabledClass(isDark: boolean): string {
 }
 
 export function adminInputClass(isDark: boolean): string {
-  return `w-full px-3 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/35 focus:border-amber-500/40 ${
+  return `w-full px-3 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-500/40 ${
     isDark
       ? 'bg-slate-950/40 border-slate-700/80 text-slate-100 placeholder:text-slate-500'
       : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
@@ -75,7 +75,7 @@ export function adminInputClass(isDark: boolean): string {
 }
 
 export function adminSaveButtonClass(): string {
-  return 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:from-amber-500 hover:to-orange-500 shadow-md shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all'
+  return 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 }
 
 export function adminPrimaryButtonClass(): string {
@@ -96,8 +96,8 @@ export function adminIconButtonClass(
 ): string {
   const map = {
     amber: isDark
-      ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30'
-      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200',
+      ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30'
+      : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200',
     muted: isDark
       ? 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-700/80'
       : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200',
@@ -115,7 +115,7 @@ export function adminListCardClass(isDark: boolean): string {
 }
 
 export function adminSearchInputClass(isDark: boolean): string {
-  return `w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/35 focus:border-amber-500/40 ${
+  return `w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-500/40 ${
     isDark
       ? 'bg-slate-950/40 border-slate-700/80 text-slate-100 placeholder:text-slate-500'
       : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
@@ -124,8 +124,8 @@ export function adminSearchInputClass(isDark: boolean): string {
 
 export function adminBadgeClass(isDark: boolean): string {
   return isDark
-    ? 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25'
-    : 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+    ? 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/25'
+    : 'px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-blue-200'
 }
 
 export function adminInsetListItemClass(isDark: boolean): string {
@@ -153,7 +153,7 @@ export function adminInsetClass(isDark: boolean): string {
 }
 
 export function settingsSaveButtonClass(): string {
-  return 'shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
+  return 'shrink-0 px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 }
 
 export function settingsDividerClass(isDark: boolean): string {
@@ -169,8 +169,8 @@ export function settingsInsetClass(isDark: boolean): string {
 export function listCardClass(isDark: boolean): string {
   return `rounded-xl border flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden transition-shadow ${
     isDark
-      ? 'bg-slate-800/50 border-slate-700/80 hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-950/20'
-      : 'bg-white border-slate-200 hover:border-violet-200 hover:shadow-md hover:shadow-violet-100/50'
+      ? 'bg-[#18181B] border-[#27272A] hover:border-blue-500/50'
+      : 'bg-white border-[#E4E4E7] hover:border-blue-600/40'
   }`
 }
 
@@ -186,15 +186,15 @@ export function tabRailClass(isDark: boolean): string {
   }`
 }
 
-export function tabRailActiveClass(isDark: boolean, tone: 'violet' | 'amber' = 'violet'): string {
+export function tabRailActiveClass(isDark: boolean, tone: 'blue' | 'amber' = 'blue'): string {
   if (tone === 'amber') {
     return isDark
       ? 'bg-amber-600 text-white shadow-md shadow-amber-900/40'
       : 'bg-amber-600 text-white shadow-sm'
   }
   return isDark
-    ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
-    : 'bg-white text-violet-700 shadow-sm'
+    ? 'bg-blue-500 text-white'
+    : 'bg-white text-blue-700'
 }
 
 export function alertBannerClass(isDark: boolean, tone: 'amber' | 'red' | 'emerald'): string {

@@ -100,7 +100,7 @@ export function ScalpFloat({
               Buy
             </button>
           )}
-          <div className="flex h-9 items-center justify-center gap-1 rounded-2xl border border-[#8b5cf6]/50 bg-[#020617]/75 px-1">
+          <div className="flex h-9 items-center justify-center gap-1 rounded-2xl border border-[#3b82f6]/50 bg-[#09090B]/90 px-1">
             <button
               type="button"
               disabled={tradeDisabled}

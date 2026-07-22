@@ -44,13 +44,18 @@ export const getWebSocketUrl = (path: string = ''): string => {
 }
 
 export const getApiPort = (): string => {
+  const configuredPort = import.meta.env.VITE_API_PORT
+  if (configuredPort) return configuredPort
+
   try {
     const url = new URL(API_BASE_URL)
     return url.port || (url.protocol === 'https:' ? '443' : '80')
   } catch {
-    // Fallback: try to extract port from string
+    // Relative `/api` uses the Vite proxy in development and the current origin in production.
     const match = API_BASE_URL.match(/:(\d+)/)
-    return match ? match[1] : ''
+    if (match) return match[1]
+    if (import.meta.env.DEV) return '3001'
+    return window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
   }
 }
 

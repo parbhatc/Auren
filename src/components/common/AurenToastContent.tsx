@@ -18,12 +18,12 @@ const META: Record<
 > = {
   success: { accent: '#22c55e', Icon: CheckCircle2 },
   error: { accent: '#ef4444', Icon: XCircle },
-  info: { accent: '#8b5cf6', Icon: Info },
+  info: { accent: '#3b82f6', Icon: Info },
   warning: { accent: '#f59e0b', Icon: AlertTriangle },
   lockout: { accent: '#f97316', Icon: Lock },
   buy: { accent: '#22c55e', Icon: TrendingUp },
   sell: { accent: '#ef4444', Icon: TrendingDown },
-  pending: { accent: '#8b5cf6', Icon: Clock },
+  pending: { accent: '#3b82f6', Icon: Clock },
 }
 
 export function AurenToastContent({

@@ -5,21 +5,16 @@
   "scripts": {
     "dev": "vite --port 3000",
     "dev:https": "node scripts/dev-https.mjs",
-    "predev": "node scripts/sync-bwc-vendor.mjs --dev",
-    "predev:https": "node scripts/sync-bwc-vendor.mjs --dev",
-    "build": "node scripts/sync-bwc-vendor.mjs --prod && tsc && vite build",
-    "build:lwc": "npm run build --prefix ../lightweightchart && node scripts/sync-bwc-vendor.mjs --dev",
+    "build": "tsc && vite build",
     "preview": "vite preview --port 3000",
-    "sync-bwc-vendor": "node scripts/sync-bwc-vendor.mjs --dev",
     "test": "npm run test --prefix server"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
-    "betterweightchart": "github:parbhatc/BetterweightChart#lwc",
+    "betterweightchartpro": "git+https://github.com/parbhatc/BetterweightChartPro.git",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
-    "lightweight-charts": "github:parbhatc/lightweight-charts",
     "lucide-react": "^0.559.0",
     "luxon": "^3.7.2",
     "react": "^18.2.0",

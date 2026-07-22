@@ -36,9 +36,9 @@ const practicePageBg = (isDark: boolean) =>
 
   isDark
 
-    ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
+    ? 'bg-[#09090B]'
 
-    : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+    : 'bg-[#FAFAFA]'
 
 
 
@@ -180,7 +180,7 @@ export default function StatsPage() {
 
       <div className={`h-screen flex items-center justify-center ${practicePageBg(isDark)}`}>
 
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
 
       </div>
 
@@ -220,7 +220,11 @@ export default function StatsPage() {
 
             onClick={() => navigate(ROUTES.PRACTICE)}
 
-            className="w-full px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold"
+            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${
+              isDark
+                ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+            }`}
 
           >
 

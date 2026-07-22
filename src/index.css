@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --auren-bg: #fafafa;
+  --auren-surface: #ffffff;
+  --auren-surface-muted: #f4f4f5;
+  --auren-border: #e4e4e7;
+  --auren-heading: #09090b;
+  --auren-text: #52525b;
+  --auren-accent: #2563eb;
+  --auren-positive: #059669;
+  --auren-negative: #dc2626;
+  --auren-warning: #d97706;
+}
+
+html.dark {
+  color-scheme: dark;
+  --auren-bg: #09090b;
+  --auren-surface: #18181b;
+  --auren-surface-muted: #121215;
+  --auren-border: #27272a;
+  --auren-heading: #fafafa;
+  --auren-text: #a1a1aa;
+  --auren-accent: #3b82f6;
+  --auren-positive: #10b981;
+  --auren-negative: #ef4444;
+  --auren-warning: #f59e0b;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -22,7 +50,7 @@ html {
      dvh tracks the visible viewport in Safari (URL bar collapse) so the page never scrolls past the app shell. */
   height: 100vh;
   height: 100dvh;
-  background-color: #020617;
+  background-color: #fafafa;
 }
 
 body {
@@ -34,7 +62,47 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #020617;
+  color: var(--auren-heading);
+  background-color: var(--auren-bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+/* Keep iPhone/iPad Safari from zooming the viewport when a compact field receives focus. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+.auren-shell-offset {
+  padding-left: 0;
+  transition: padding-left 180ms ease;
+}
+
+@media (min-width: 1024px) {
+  .auren-shell-offset {
+    padding-left: var(--auren-sidebar-width, 256px);
+  }
+}
+
+html.dark,
+html.dark body {
+  background-color: #09090b;
 }
 
 #root {
@@ -75,7 +143,13 @@ body {
   html,
   body,
   #root {
-    background-color: #020617;
+    background-color: #fafafa;
+  }
+
+  html.dark,
+  html.dark body,
+  html.dark #root {
+    background-color: #09090b;
   }
 }
 
@@ -116,7 +190,7 @@ body {
 
 /* Practice / live trade terminal — fill iOS PWA viewport */
 @media (max-width: 1023px) {
-  .auren-terminal-shell {
+.auren-terminal-shell {
     position: fixed;
     inset: 0;
     display: flex;
@@ -124,6 +198,8 @@ body {
     width: 100%;
     max-width: 100vw;
     box-sizing: border-box;
+    color: var(--auren-heading);
+    background-color: var(--auren-bg);
     padding-left: constant(safe-area-inset-left);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: constant(safe-area-inset-right);
@@ -138,7 +214,13 @@ body {
     max-height: 100dvh;
     display: flex;
     overflow: hidden;
+    color: var(--auren-heading);
+    background-color: var(--auren-bg);
   }
+}
+
+.trading-chart-host {
+  background-color: var(--auren-bg);
 }
 
 /* Practice stats — scroll inside main; header stays pinned */
@@ -600,7 +682,7 @@ body {
   box-shadow: 0 0 8px rgba(210, 153, 34, 0.45);
 }
 .bg-volume {
-  background-color: rgba(139, 92, 246, 0.22);
+  background-color: rgba(59, 130, 246, 0.18);
 }
 .border-dom-buy,
 .border-trade-buy {
@@ -629,7 +711,7 @@ body {
   background-color: rgba(218, 54, 51, 0.12);
 }
 .bg-dom-entry {
-  background-color: rgba(139, 92, 246, 0.12);
+  background-color: rgba(59, 130, 246, 0.1);
 }
 
 /* Unified buy / sell buttons (DOM, pad, chart toolbar) */
@@ -650,7 +732,7 @@ body {
 .trade-btn--market:focus-visible,
 .trade-btn--join:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.45);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
 }
 .trade-btn--compact {
   min-width: 1.75rem;
@@ -893,12 +975,9 @@ body {
   max-width: 340px;
   padding: 12px 38px 12px 12px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 27, 75, 0.92) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.35);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-  backdrop-filter: blur(12px);
+  background: #18181b;
+  border: 1px solid #27272a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 
 .auren-toast__accent,
@@ -909,8 +988,7 @@ body {
   bottom: 8px;
   width: 3px;
   border-radius: 0 4px 4px 0;
-  background: var(--auren-toast-accent, var(--mds-accent, #8b5cf6));
-  box-shadow: 0 0 12px var(--auren-toast-accent, var(--mds-accent, #8b5cf6));
+  background: var(--auren-toast-accent, var(--mds-accent, #3b82f6));
 }
 
 .auren-toast__icon,
@@ -923,8 +1001,8 @@ body {
   height: 36px;
   margin-left: 4px;
   border-radius: 10px;
-  color: var(--auren-toast-accent, var(--mds-accent, #8b5cf6));
-  background: color-mix(in srgb, var(--auren-toast-accent, var(--mds-accent, #8b5cf6)) 18%, transparent);
+  color: var(--auren-toast-accent, var(--mds-accent, #3b82f6));
+  background: color-mix(in srgb, var(--auren-toast-accent, var(--mds-accent, #3b82f6)) 14%, transparent);
 }
 
 .mds-connection-toast__icon--spin svg,
@@ -967,9 +1045,9 @@ body {
 
 .Toastify__toast-theme--light .auren-toast,
 .Toastify__toast-theme--light .mds-connection-toast {
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border-color: rgba(139, 92, 246, 0.25);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  border-color: #e4e4e7;
+  box-shadow: 0 8px 24px rgba(9, 9, 11, 0.1);
 }
 
 .Toastify__toast-theme--light .auren-toast__title,

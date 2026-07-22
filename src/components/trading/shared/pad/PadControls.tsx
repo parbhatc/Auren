@@ -5,31 +5,33 @@ export function PadCheckbox({
   checked,
   onChange,
   tabIndex,
-  accent = 'violet',
+  accent = 'blue',
+  isDark = true,
 }: {
   checked: boolean
   onChange: (next: boolean) => void
   tabIndex?: number
-  accent?: 'violet' | 'red' | 'green'
+  accent?: 'blue' | 'red' | 'green'
+  isDark?: boolean
 }) {
   const on =
     accent === 'red'
       ? 'border-[#f85149] bg-[#f85149]'
       : accent === 'green'
         ? 'border-[#3fb950] bg-[#3fb950]'
-        : 'border-[#8b5cf6] bg-[#8b5cf6]'
+        : 'border-[#3b82f6] bg-[#3b82f6]'
 
   return (
     <button
       type="button"
       tabIndex={tabIndex}
       onClick={() => onChange(!checked)}
-      className="flex items-center gap-2 text-[#7d8590] border border-transparent rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/40"
+      className="flex items-center gap-2 text-[#A1A1AA] border border-transparent rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40"
       aria-pressed={checked}
     >
       <span
         className={`w-4 h-4 rounded border flex items-center justify-center transition ${
-          checked ? on : 'border-[#6e7681] bg-[#020617]'
+          checked ? on : isDark ? 'border-[#52525B] bg-[#18181B]' : 'border-[#A1A1AA] bg-white'
         }`}
       >
         {checked && (
@@ -59,6 +61,7 @@ export function BracketPriceTicksRow({
   dimmed = false,
   dollarEnabled = false,
   equivalents,
+  isDark = true,
 }: {
   priceDisabled: boolean
   ticksDisabled: boolean
@@ -78,15 +81,18 @@ export function BracketPriceTicksRow({
   dollarEnabled?: boolean
   /** Live "10t = 2.5pt = $50/ct" line rendered under the row. */
   equivalents?: string | null
+  isDark?: boolean
 }) {
   return (
     <div
-      className={`grid grid-cols-2 gap-x-2 gap-y-1 rounded-xl border border-[#334155] bg-[#020617]/80 p-2 transition ${
+      className={`grid grid-cols-2 gap-x-2 gap-y-1 rounded-xl border p-2 transition ${
+        isDark ? 'border-[#3F3F46] bg-[#121215]' : 'border-[#E4E4E7] bg-white'
+      } ${
         dimmed ? 'opacity-55' : ''
       }`}
     >
       <label className="flex flex-col gap-1 min-w-0">
-        <span className="text-[9px] font-medium uppercase tracking-wide text-[#64748b] px-0.5">Price</span>
+        <span className="px-0.5 text-[9px] font-medium uppercase tracking-wide text-[#71717A]">Price</span>
         <input
           type="text"
           inputMode="decimal"
@@ -96,11 +102,11 @@ export function BracketPriceTicksRow({
           onChange={(e) => onPriceChange(e.target.value)}
           onFocus={onPriceFocus}
           onBlur={onPriceBlur}
-          className="no-spinner font-mono text-[#e6edf3] w-full text-sm rounded-lg border border-[#475569] bg-[#0f172a] px-2.5 py-2 outline-none focus:border-[#a78bfa] disabled:opacity-50"
+          className={`no-spinner w-full rounded-lg border px-2.5 py-2 font-mono text-sm outline-none focus:border-blue-500 disabled:opacity-50 ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA]' : 'border-[#D4D4D8] bg-white text-[#09090B]'}`}
         />
       </label>
       <label className="flex flex-col gap-1 min-w-0">
-        <span className="text-[9px] font-medium uppercase tracking-wide text-[#64748b] px-0.5">Distance</span>
+        <span className="px-0.5 text-[9px] font-medium uppercase tracking-wide text-[#71717A]">Distance</span>
         <div className="flex items-center gap-1 min-w-0">
           <input
             type="text"
@@ -110,14 +116,14 @@ export function BracketPriceTicksRow({
             value={ticksValue}
             onChange={(e) => onTicksChange(e.target.value)}
             onFocus={onTicksFocus}
-            className="no-spinner font-mono text-[#e6edf3] flex-1 min-w-0 text-sm rounded-lg border border-[#475569] bg-[#0f172a] px-2.5 py-2 outline-none focus:border-[#a78bfa] disabled:opacity-50"
+            className={`no-spinner min-w-0 flex-1 rounded-lg border px-2.5 py-2 font-mono text-sm outline-none focus:border-blue-500 disabled:opacity-50 ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA]' : 'border-[#D4D4D8] bg-white text-[#09090B]'}`}
           />
           <select
             value={distanceUnit}
             disabled={ticksDisabled}
             onChange={(e) => onDistanceUnitChange(e.target.value as BracketDistanceUnit)}
             aria-label="Distance unit"
-            className="shrink-0 h-[38px] px-1.5 rounded-lg border border-[#475569] bg-[#1e293b] text-[10px] font-semibold text-[#94a3b8] hover:border-[#64748b] focus:border-[#a78bfa] outline-none disabled:opacity-50 cursor-pointer"
+            className={`h-[38px] shrink-0 cursor-pointer rounded-lg border px-1.5 text-[10px] font-semibold outline-none focus:border-blue-500 disabled:opacity-50 ${isDark ? 'border-[#3F3F46] bg-[#27272A] text-[#A1A1AA] hover:border-[#52525B]' : 'border-[#D4D4D8] bg-white text-[#52525B] hover:border-[#A1A1AA]'}`}
           >
             <option value="ticks">Ticks</option>
             <option value="points">Pts</option>
@@ -126,7 +132,7 @@ export function BracketPriceTicksRow({
         </div>
       </label>
       {equivalents && (
-        <p className="col-span-2 font-mono text-[9px] text-[#64748b] tabular-nums px-0.5 truncate">
+        <p className="col-span-2 truncate px-0.5 font-mono text-[9px] tabular-nums text-[#71717A]">
           {equivalents}
         </p>
       )}
@@ -142,6 +148,7 @@ export function TickPresetChips({
   tickSize,
   tickValue = 0,
   onSelect,
+  isDark = true,
 }: {
   disabled: boolean
   variant: 'sl' | 'tp'
@@ -150,6 +157,7 @@ export function TickPresetChips({
   tickSize: number
   tickValue?: number
   onSelect: (amount: number) => void
+  isDark?: boolean
 }) {
   const color =
     variant === 'sl'
@@ -178,8 +186,8 @@ export function TickPresetChips({
             type="button"
             disabled={disabled}
             onClick={() => onSelect(presetValue)}
-            className={`${color} font-mono text-[10px] font-medium flex h-7 min-w-[2.25rem] items-center justify-center rounded-lg border border-[#475569] bg-[#1e293b]/80 px-2 disabled:opacity-40 transition ${
-              isActive ? 'ring-1 ring-[#8b5cf6] border-[#8b5cf6]/50 bg-[#8b5cf6]/10' : ''
+            className={`${color} flex h-7 min-w-[2.25rem] items-center justify-center rounded-lg border px-2 font-mono text-[10px] font-medium transition disabled:opacity-40 ${isDark ? 'border-[#3F3F46] bg-[#27272A]' : 'border-[#D4D4D8] bg-white'} ${
+              isActive ? 'ring-1 ring-[#3b82f6] border-[#3b82f6]/50 bg-[#3b82f6]/10' : ''
             }`}
           >
             {label}

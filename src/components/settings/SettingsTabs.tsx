@@ -22,7 +22,7 @@ class SettingsTabs extends Component<SettingsTabsProps> {
       >
         <div
           className={`inline-flex p-1 rounded-xl gap-0.5 min-w-min ${
-            isDark ? 'bg-slate-900/90 ring-1 ring-slate-800' : 'bg-slate-100/90 ring-1 ring-slate-200/80'
+            isDark ? 'border border-[#27272A] bg-[#18181B]' : 'border border-[#E4E4E7] bg-[#F4F4F5]'
           }`}
         >
           {tabs.map((tab) => {
@@ -32,14 +32,14 @@ class SettingsTabs extends Component<SettingsTabsProps> {
                 key={tab.path}
                 type="button"
                 onClick={() => navigate(tab.path)}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
+                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive
                     ? isDark
-                      ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
-                      : 'bg-white text-violet-700 shadow-sm'
+                      ? 'bg-[#FAFAFA] text-[#09090B]'
+                      : 'bg-[#18181B] text-white'
                     : isDark
-                      ? 'text-slate-400 hover:text-slate-200'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'text-[#A1A1AA] hover:text-[#FAFAFA]'
+                      : 'text-[#52525B] hover:text-[#09090B]'
                 }`}
               >
                 {tab.label}

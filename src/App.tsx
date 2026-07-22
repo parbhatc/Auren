@@ -4,7 +4,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useSearchParams,
   useParams,
   useLocation,
 } from 'react-router-dom'
@@ -20,13 +19,13 @@ import KeyboardShortcutsSettings from './components/settings/keyboard_shortcuts'
 import AdminSettings from './components/admin/site_settings'
 import RolesManager from './components/admin/roles'
 import UserManager from './components/admin/users'
-import PracticeHubPage from './pages/trading/practice/HubPage'
 import PracticeTradePage from './pages/trading/practice/TradePage'
 import PracticeTradePadPage from './pages/trading/practice/PadPage'
 import PracticeStatsPage from './pages/trading/practice/StatsPage'
 import PracticeNewsPage from './pages/trading/practice/NewsPage'
 import LiveTradePage from './pages/trading/live/TradePage'
 import BacktesterChartView from './components/backtester/BacktesterChartView'
+import BacktesterSessionsList from './components/backtester/BacktesterSessionsList'
 import BacktesterStats from './components/backtester/Stats'
 import BacktesterDataManagement from './components/backtester/DataManagement'
 import NotFound from './components/common/NotFound'
@@ -44,8 +43,16 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
 import { RouteScrollRestore } from './components/common/RouteScrollRestore'
+import {
+  AnalyticsPage,
+  DashboardPage,
+  JournalPage,
+  NewsWorkspacePage,
+} from './pages/workspace/WorkspacePages'
+import SettingsWorkspacePage from './pages/settings/SettingsWorkspacePage'
+import PracticeWorkspacePage from './pages/practice/PracticeWorkspacePage'
 
-const LegacyRedirect = () => <Navigate to={ROUTES.HOME} replace />
+const LegacyRedirect = () => <Navigate to={ROUTES.DASHBOARD} replace />
 
 /** /practice/:id/... → /practice/trade/:id/... (legacy short URLs) */
 const LegacyShortPracticeRedirect = () => {
@@ -77,7 +84,7 @@ const LegacyLiveTradeRedirect = () => {
 }
 
 function App() {
-  const { isDark } = useTheme()
+  const { isDark, toggleTheme } = useTheme()
   const [hasRoles, setHasRoles] = useState<boolean | null>(null)
   const [serverError, setServerError] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -130,7 +137,7 @@ function App() {
   }
 
   if (serverError) {
-    return <ServerError isDark={isDark} />
+    return <ServerError isDark={isDark} onToggleTheme={toggleTheme} />
   }
 
   if (hasRoles === false) {
@@ -142,16 +149,55 @@ function App() {
       <RouteScrollRestore />
       <Routes>
         <Route
-          path={ROUTES.HOME}
+          path={ROUTES.DASHBOARD}
           element={
             <ProtectedRoute>
-              <PracticeHubPage />
+              <DashboardPage />
             </ProtectedRoute>
           }
         />
-        <Route path="/practice" element={<Navigate to={ROUTES.HOME} replace />} />
+        <Route
+          path={ROUTES.ANALYTICS}
+          element={
+            <ProtectedRoute>
+              <AnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.JOURNAL}
+          element={
+            <ProtectedRoute>
+              <JournalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.NEWS}
+          element={
+            <ProtectedRoute>
+              <NewsWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.HOME}
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.PRACTICE}
+          element={
+            <ProtectedRoute>
+              <PracticeWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/trade/:firmId/:accountId/*" element={<LegacyRedirect />} />
-        <Route path="/backtest/*" element={<Navigate to="/?mode=replay" replace />} />
+        <Route path="/backtest/*" element={<Navigate to={ROUTES.BACKTESTER} replace />} />
         <Route
           path={ROUTES.TRADE}
           element={
@@ -204,42 +250,16 @@ function App() {
           path={ROUTES.SETTINGS}
           element={
             <ProtectedRoute>
-              <Settings />
+              <SettingsWorkspacePage />
             </ProtectedRoute>
           }
-        />
-        <Route
-          path={ROUTES.PROPS_SETTINGS}
-          element={
-            <ProtectedRoute>
-              <PropsSettings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path={ROUTES.UTILS_SETTINGS}
-          element={
-            <ProtectedRoute>
-              <UtilsSettings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path={ROUTES.KEYBOARD_SHORTCUTS_SETTINGS}
-          element={
-            <ProtectedRoute>
-              <KeyboardShortcutsSettings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path={ROUTES.PRACTICE_SETTINGS}
-          element={
-            <ProtectedRoute>
-              <Navigate to={ROUTES.HOME} replace />
-            </ProtectedRoute>
-          }
-        />
+        >
+          <Route index element={<Settings embedded />} />
+          <Route path="props" element={<PropsSettings embedded />} />
+          <Route path="utils" element={<UtilsSettings embedded />} />
+          <Route path="keyboard-shortcuts" element={<KeyboardShortcutsSettings embedded />} />
+          <Route path="practice" element={<Navigate to={ROUTES.PRACTICE} replace />} />
+        </Route>
 
         <Route
           path={ROUTES.ADMIN_SETTINGS}
@@ -268,7 +288,11 @@ function App() {
 
         <Route
           path={ROUTES.BACKTESTER}
-          element={<Navigate to="/?mode=replay" replace />}
+          element={
+            <ProtectedRoute>
+              <BacktesterSessionsList />
+            </ProtectedRoute>
+          }
         />
         <Route
           path={ROUTES.BACKTESTER_CHART}
@@ -288,7 +312,7 @@ function App() {
         />
         <Route
           path="/backtester/testing-strategies"
-          element={<Navigate to="/?mode=replay" replace />}
+          element={<Navigate to={ROUTES.BACKTESTER} replace />}
         />
         <Route
           path={ROUTES.BACKTESTER_DATA_MANAGEMENT}
@@ -300,9 +324,8 @@ function App() {
         />
 
         {/* Legacy NexusSyncPro paths → home */}
-        <Route path="/journal/*" element={<LegacyRedirect />} />
-        <Route path="/economic-news" element={<LegacyRedirect />} />
-        <Route path="/dashboard" element={<LegacyRedirect />} />
+        <Route path="/journal/*" element={<Navigate to={ROUTES.JOURNAL} replace />} />
+        <Route path="/economic-news" element={<Navigate to={ROUTES.NEWS} replace />} />
 
         <Route
           path={ROUTES.LOGIN}

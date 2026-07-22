@@ -243,6 +243,7 @@ class Database {
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         prop_firm_id TEXT NOT NULL DEFAULT 'tradesea',
+        display_name TEXT NOT NULL DEFAULT '',
         mode TEXT NOT NULL,
         size INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'active',
@@ -389,6 +390,41 @@ class Database {
       await run(`ALTER TABLE practice_accounts ADD COLUMN last_reset_at TEXT`)
     } catch (err) {
       // Column already exists
+    }
+
+    try {
+      await run(`ALTER TABLE practice_accounts ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    await run(`
+      UPDATE practice_accounts
+      SET display_name =
+        CASE WHEN mode = 'funded' THEN 'AUR-F' ELSE 'AUR-E' END ||
+        printf('%03d', CAST(size / 1000 AS INTEGER)) || '-' ||
+        upper(substr(replace(replace(id, '_', ''), '-', ''), -8)) || '-TEST' ||
+        printf('%03d', (abs(rowid) % 999) + 1)
+      WHERE trim(display_name) = ''
+    `)
+
+    await run(`
+      UPDATE practice_accounts
+      SET display_name =
+        CASE
+          WHEN upper(substr(display_name, 1, 3)) = 'LFF' THEN 'AUR-F'
+          ELSE 'AUR-E'
+        END || substr(display_name, 4)
+      WHERE upper(substr(display_name, 1, 3)) IN ('LFE', 'LFF')
+    `)
+
+    try {
+      await run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_accounts_user_display_name
+        ON practice_accounts(user_id, display_name COLLATE NOCASE)
+      `)
+    } catch (err) {
+      console.warn('Could not create unique practice account name index:', err.message)
     }
 
     try {

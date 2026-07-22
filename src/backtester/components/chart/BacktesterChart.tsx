@@ -590,7 +590,7 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
 }
 
 /**
- * BetterweightChart shell for CSV replay backtesting.
+ * BetterweightChartPro shell for CSV replay backtesting.
  * Exposes TV-compatible helpers (getChartWidget, resetAllChartData) for BacktesterTradeHandler.
  */
 export default BacktesterChart

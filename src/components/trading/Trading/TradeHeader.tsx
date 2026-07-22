@@ -14,6 +14,7 @@ import HeaderTradingSettings from '../shared/header/HeaderTradingSettings'
 import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
 import { MdsConnectionLimitModal } from '../MdsConnectionLimitModal'
 import type { FormattedAccount } from '../../../utils/marketAccountDisplay'
+import { getPracticeAccountById } from '../../../constants/practice'
 
 export function TradeHeader({
   isDark,
@@ -35,6 +36,7 @@ export function TradeHeader({
   showAccountSelector = true,
   showTradingSettings = true,
   showLogoAlways = false,
+  hideDesktopLogo = false,
   hideNavToggle = false,
   practiceAccountStatus,
   liveMode = false,
@@ -72,6 +74,8 @@ export function TradeHeader({
   showTradingSettings?: boolean
   /** Show Auren logo on mobile as well as desktop */
   showLogoAlways?: boolean
+  /** The shared product sidebar already carries the desktop brand. */
+  hideDesktopLogo?: boolean
   /** Never show the menu button to restore navigation */
   hideNavToggle?: boolean
   practiceAccountStatus?: 'blown' | 'passed'
@@ -91,6 +95,9 @@ export function TradeHeader({
   headerConnectionAccessory?: ReactNode
 }) {
   const accountId = accountIdProp ?? practiceAccountId
+  const practiceAccount = accountId ? getPracticeAccountById(accountId) : undefined
+  const profitTarget =
+    practiceAccount?.mode === 'eval' ? practiceAccount.rules.profitTarget ?? undefined : undefined
   const [connectionLimitOpen, setConnectionLimitOpen] = useState(false)
 
   useEffect(() => {
@@ -120,8 +127,8 @@ export function TradeHeader({
   }
 
   const shell = isDark
-    ? 'border-slate-800 bg-slate-950/95 text-slate-200'
-    : 'border-slate-200 bg-white/95 text-slate-800'
+    ? 'border-[#27272A] bg-[#09090B] text-[#D4D4D8]'
+    : 'border-[#E4E4E7] bg-white text-[#27272A]'
 
   // BAL / RP&L / UP&L now read live from accountStatsStore via <LiveAccountStats>,
   // so the header no longer re-renders on every PnL tick. balance/rpl/upl/
@@ -131,7 +138,7 @@ export function TradeHeader({
 
   return (
     <div
-      className={`sticky top-0 shrink-0 z-[110] max-lg:pt-[env(safe-area-inset-top,0px)] backdrop-blur-sm ${shell}`}
+      className={`sticky top-0 z-[110] shrink-0 max-lg:pt-[env(safe-area-inset-top,0px)] ${shell}`}
     >
       <header className="min-h-10 lg:h-10 border-b border-inherit flex items-stretch gap-1.5 lg:gap-2 px-2">
         {/* Mobile-only: desktop always shows the nav rail, so no header toggle there. */}
@@ -140,7 +147,7 @@ export function TradeHeader({
             type="button"
             onClick={onShowNav}
             className={`lg:hidden self-center p-1.5 rounded shrink-0 ${
-              isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+            isDark ? 'text-[#A1A1AA] hover:bg-[#18181B]' : 'text-[#52525B] hover:bg-[#F4F4F5]'
             }`}
             title="Show navigation"
             aria-label="Show navigation"
@@ -149,7 +156,7 @@ export function TradeHeader({
           </button>
         )}
 
-        <div className={`${showLogoAlways ? 'block' : 'hidden lg:block'} shrink-0 self-center`}>
+        <div className={`${hideDesktopLogo ? 'hidden' : showLogoAlways ? 'block' : 'hidden lg:block'} shrink-0 self-center`}>
           <Logo
             isDark={isDark}
             compact
@@ -164,8 +171,8 @@ export function TradeHeader({
           <div
             className={`shrink-0 self-center min-w-0 max-w-[9rem] sm:max-w-[14rem] truncate rounded-md border px-2 py-0.5 text-xs font-semibold ${
               isDark
-                ? 'border-violet-500/30 bg-violet-500/10 text-violet-200'
-                : 'border-violet-200 bg-violet-50 text-violet-800'
+                ? 'border-blue-500/30 bg-blue-500/10 text-blue-300'
+                : 'border-blue-200 bg-blue-50 text-blue-800'
             }`}
             title={headerLabel}
           >
@@ -203,7 +210,7 @@ export function TradeHeader({
 
         {showStatsBar ? (
           <div className="flex-1 min-w-0 self-stretch py-0.5">
-            <LiveAccountStats isDark={isDark} inline />
+            <LiveAccountStats isDark={isDark} inline target={profitTarget} />
           </div>
         ) : (
           <div className="flex-1 min-w-0" aria-hidden />
@@ -227,8 +234,8 @@ export function TradeHeader({
             }}
             className={`${headerActionVisibility} p-1.5 rounded ${
               isDark
-                ? 'text-slate-500 hover:text-red-400 hover:bg-slate-800'
-                : 'text-slate-500 hover:text-red-600 hover:bg-slate-100'
+                ? 'text-[#71717A] hover:bg-[#18181B] hover:text-red-400'
+                : 'text-[#71717A] hover:bg-[#F4F4F5] hover:text-red-600'
             }`}
             aria-label="Logout"
           >

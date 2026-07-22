@@ -10,7 +10,7 @@ const META: Record<
   connecting: {
     title: 'Connecting',
     subtitle: 'Opening market data stream…',
-    accent: '#8b5cf6',
+    accent: '#3b82f6',
     Icon: Loader2,
   },
   reconnecting: {

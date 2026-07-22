@@ -1,5 +1,5 @@
 /**
- * Practice trade UI palette — matches Practice hub (violet / indigo / slate).
+ * Practice trade UI palette — neutral zinc surfaces with a single blue accent.
  * Use for color-only swaps; do not change layout from these tokens.
  */
 
@@ -7,37 +7,37 @@ export { PRACTICE_DARK } from '../../../constants/practiceTheme'
 
 export const practiceTradePageClass = (isDark: boolean) =>
   isDark
-    ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-    : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+    ? 'bg-[#09090B]'
+    : 'bg-[#FAFAFA]'
 
 export const practiceTradeShellClass = (isDark: boolean) =>
-  isDark ? 'border-slate-800 bg-slate-950/95 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+  isDark ? 'border-[#27272A] bg-[#09090B] text-[#D4D4D8]' : 'border-[#E4E4E7] bg-white text-[#52525B]'
 
 export const practiceTradeSurfaceClass = (isDark: boolean) =>
-  isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
+  isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
 
 export const practiceTradeInsetClass = (isDark: boolean) =>
-  isDark ? 'bg-slate-950' : 'bg-slate-50'
+  isDark ? 'bg-[#09090B]' : 'bg-[#F4F4F5]'
 
 export const practiceTradeAccentText = (isDark: boolean) =>
-  isDark ? 'text-violet-400' : 'text-violet-600'
+  isDark ? 'text-blue-400' : 'text-blue-600'
 
 export const practiceTradeAccentBorder = (isDark: boolean) =>
-  isDark ? 'border-violet-500' : 'border-violet-500'
+  isDark ? 'border-blue-500' : 'border-blue-600'
 
 /** Main content panel (stats, news body) — matches chart / order pad frame on trade page */
 export const practiceTradePanelClass = (isDark: boolean) =>
   isDark
-    ? 'rounded-2xl border border-slate-700/80 bg-slate-900/90'
-    : 'rounded-2xl border border-slate-200 bg-white/95'
+    ? 'rounded-xl border border-[#27272A] bg-[#18181B]'
+    : 'rounded-xl border border-[#E4E4E7] bg-white'
 
 export const practiceTradePageBgClass = practiceTradePageClass
 
 /** Stat cards on practice session stats (/trade/:id/stats). */
 export const practiceStatCardClass = (isDark: boolean) =>
   isDark
-    ? 'rounded-2xl border border-slate-700/80 bg-slate-900/80 shadow-lg shadow-black/20 ring-1 ring-slate-800/50'
-    : 'rounded-2xl border border-slate-200 bg-white shadow-md shadow-slate-200/40 ring-1 ring-slate-100'
+    ? 'rounded-xl border border-[#27272A] bg-[#18181B]'
+    : 'rounded-xl border border-[#E4E4E7] bg-white'
 
 export const practiceStatIconMutedClass = (isDark: boolean) =>
-  isDark ? 'text-violet-400/70' : 'text-violet-500/80'
+  isDark ? 'text-blue-400/80' : 'text-blue-600/80'

@@ -186,6 +186,9 @@
     "title": "Server Connection Error",
     "message": "Unable to connect to the server. The server may not be running or is unreachable.",
     "howToFix": "How to fix:",
+    "tryAgain": "Try again",
+    "useLightMode": "Use light mode",
+    "useDarkMode": "Use dark mode",
     "step1": "Make sure the server is running (check server terminal)",
     "step2": "Verify the server is running on the correct port (port: {port})",
     "step3": "Check your network connection and firewall settings"

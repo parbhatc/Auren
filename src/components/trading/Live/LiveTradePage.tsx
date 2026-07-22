@@ -21,8 +21,8 @@ export default function LiveTradePage() {
   const tradeseaFirm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
 
   const pageBg = isDark
-    ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-    : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+    ? 'bg-[#09090B]'
+    : 'bg-[#FAFAFA]'
 
   const runValidation = useCallback(async () => {
     if (firmId !== 'tradesea' || !tradeseaFirm) {
@@ -83,7 +83,7 @@ export default function LiveTradePage() {
   if (isValidating && !refreshing) {
     return (
       <div className={`h-screen flex items-center justify-center ${pageBg}`}>
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
       </div>
     )
   }
@@ -100,7 +100,11 @@ export default function LiveTradePage() {
           <button
             type="button"
             onClick={() => navigate(`${ROUTES.HOME}?mode=live`)}
-            className="w-full px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold"
+            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${
+              isDark
+                ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+            }`}
           >
             {t('live.trade.backToHub')}
           </button>

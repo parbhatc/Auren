@@ -31,7 +31,7 @@ export default function BacktesterWsStatusButton({
         aria-expanded={menuOpen}
         aria-haspopup="menu"
         onClick={() => setMenuOpen((v) => !v)}
-        className={`rounded-lg transition-all duration-200 focus:outline-none flex items-center justify-center bg-transparent border border-transparent hover:bg-[#8b5cf6]/10 hover:border-[#8b5cf6]/25 focus:ring-2 focus:ring-[#8b5cf6]/40 w-7 h-7 ${
+        className={`rounded-lg transition-all duration-200 focus:outline-none flex items-center justify-center bg-transparent border border-transparent hover:bg-[#3b82f6]/10 hover:border-[#3b82f6]/25 focus:ring-2 focus:ring-[#3b82f6]/40 w-7 h-7 ${
           connecting ? 'cursor-wait' : 'cursor-pointer'
         }`}
       >

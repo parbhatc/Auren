@@ -13,17 +13,13 @@ class RoleError extends Component<RoleErrorProps> {
 
     return (
       <div
-        className={`min-h-screen flex items-center justify-center p-4 transition-all duration-700 ease-in-out ${
-          isDark
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950'
-            : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+        className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${
+          isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'
         }`}
       >
         <div
-          className={`max-w-md w-full p-8 rounded-2xl shadow-2xl border ${
-            isDark
-              ? 'bg-slate-800/90 border-red-800/50 backdrop-blur-sm'
-              : 'bg-white/90 border-red-300 backdrop-blur-sm'
+          className={`max-w-md w-full p-8 rounded-xl border ${
+            isDark ? 'bg-[#18181B] border-[#27272A]' : 'bg-white border-[#E4E4E7]'
           }`}
         >
           <div className="flex items-center gap-4 mb-6">

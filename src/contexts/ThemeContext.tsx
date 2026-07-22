@@ -34,6 +34,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     } else {
       document.documentElement.classList.remove('dark')
     }
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+    document.documentElement.style.backgroundColor = isDark ? '#09090B' : '#FAFAFA'
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    themeColor?.setAttribute('content', isDark ? '#09090B' : '#FAFAFA')
 
     try {
       localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light')

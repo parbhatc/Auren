@@ -37,15 +37,15 @@ export default function AccountCard({
       : account.status === 'blown'
         ? 'bg-red-500/15 text-red-400 border-red-500/30'
         : isDark
-          ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
-          : 'bg-violet-100 text-violet-700 border-violet-200'
+          ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+          : 'bg-blue-50 text-blue-700 border-blue-200'
 
   return (
     <div
-      className={`rounded-xl border flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden transition-shadow ${
+      className={`rounded-xl border flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden transition-colors ${
         isDark
-          ? 'bg-slate-800/50 border-slate-700/80 hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-950/20'
-          : 'bg-white border-slate-200 hover:border-violet-200 hover:shadow-md hover:shadow-violet-100/50'
+          ? 'bg-[#18181B] border-[#27272A] hover:border-blue-500/50'
+          : 'bg-white border-[#E4E4E7] hover:border-blue-600/40'
       }`}
     >
       <button
@@ -88,7 +88,7 @@ export default function AccountCard({
                 e.stopPropagation()
                 onTrade()
               }}
-              className="flex items-center gap-1 px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium"
+              className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
             >
               <TrendingUp className="w-4 h-4" />
               {t('practice.hub.trade')}

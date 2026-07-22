@@ -49,7 +49,7 @@ export default function AccountsList({
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   key === 'active'
-                    ? 'bg-violet-500'
+                    ? 'bg-blue-500'
                     : key === 'passed'
                       ? 'bg-emerald-500'
                       : 'bg-red-500'
@@ -94,7 +94,11 @@ export default function AccountsList({
             <button
               type="button"
               onClick={onCreateAccount}
-              className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-violet-500/25"
+              className={`mt-4 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-colors ${
+                isDark
+                  ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                  : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+              }`}
             >
               {t('practice.hub.create')}
             </button>

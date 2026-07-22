@@ -29,9 +29,9 @@ const DataSourceSection = ({
       hover: isDark ? 'hover:bg-blue-900/20' : 'hover:bg-blue-50',
     },
     purple: {
-      border: isDark ? 'border-purple-700/50' : 'border-purple-200',
-      badge: isDark ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700',
-      hover: isDark ? 'hover:bg-purple-900/20' : 'hover:bg-purple-50',
+      border: isDark ? 'border-blue-700/50' : 'border-blue-200',
+      badge: isDark ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700',
+      hover: isDark ? 'hover:bg-blue-900/20' : 'hover:bg-blue-50',
     },
   }
   const colors = colorClasses[colorScheme]
@@ -317,7 +317,7 @@ const DataSourceSection = ({
                                 </span>
                               )}
                               {hasContracts && (
-                                <span className={`text-xs ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
+                                <span className={`text-xs ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
                                   {contracts.length} contract{contracts.length !== 1 ? 's' : ''}
                                 </span>
                               )}
@@ -329,7 +329,7 @@ const DataSourceSection = ({
                             <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${
                               type === 'tradesea'
                                 ? isDark ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50' : 'bg-blue-100 text-blue-700 border border-blue-200'
-                                : isDark ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'bg-purple-100 text-purple-700 border border-purple-200'
+                                : isDark ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50' : 'bg-blue-100 text-blue-700 border border-blue-200'
                             }`}>
                               {resultType}
                             </span>
@@ -337,7 +337,7 @@ const DataSourceSection = ({
                           {exchange && (
                             <span className={`text-xs px-1.5 py-0.5 rounded ${
                               type === 'tradingview'
-                                ? isDark ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                ? isDark ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'
                                 : isDark ? 'bg-slate-600/50 text-slate-300' : 'bg-slate-200 text-slate-600'
                             }`}>
                               {exchange}

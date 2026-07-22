@@ -64,7 +64,7 @@ class Routes {
     const economicNewsRoutes = new EconomicNewsRoutes()
     this.router.use('/economic-news', economicNewsRoutes.getRouter())
 
-    // BetterweightChart news feed (ForexFactory calendar for Levels indicator)
+    // BetterweightChartPro news feed (ForexFactory calendar for Levels indicator)
     const newsRoutes = new NewsRoutes()
     this.router.use('/news', newsRoutes.getRouter())
 

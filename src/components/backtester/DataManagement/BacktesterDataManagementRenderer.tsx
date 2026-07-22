@@ -1,11 +1,12 @@
-import { Component } from 'react'
+import { Component, type ReactNode } from 'react'
 import { ROUTES } from '../../../constants/routes'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import Loading from '../../common/Loading'
 import ConfirmDialog from '../../common/ConfirmDialog'
-import HubNav from '../../trading/Practice/hub/HubNav'
 import HubHeroSection from '../../trading/Practice/hub/HubHeroSection'
+import ProductHeader from '../../layout/ProductHeader'
+import BacktesterNav from '../shared/BacktesterNav'
 import CsvDataSection from './CsvDataSection'
 import SymbolInfoSection from './SymbolInfoSection'
 import SymbolFormModal from './SymbolFormModal'
@@ -46,25 +47,34 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
       onCsvDownload,
       onCsvTradingViewTokenChange,
       onCsvTradingViewTokenBlur,
-      onHubTabChange,
-      onLogout,
       tradingviewCurrentToken,
       progressState,
     } = this.props
 
-    if (!user?.isAdmin) {
-      return (
-        <div className={appPageBackground(isDark)}>
-          <HubNav
+    const shell = (content: ReactNode) => (
+      <div className={`auren-shell-offset ${appPageBackground(isDark)}`}>
+        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+          <BacktesterNav
             isDark={isDark}
             toggleTheme={toggleTheme}
-            activeTab="admin"
-            onTabChange={onHubTabChange}
-            onLogout={onLogout}
+            navigate={navigate}
+            activeTab="data"
             showAdmin
           />
-          <main className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-            <div className={`${panelCardClass(isDark)} text-center max-w-md mx-auto`}>
+          {content}
+        </main>
+      </div>
+    )
+
+    if (loading) {
+      return shell(<div className="min-h-64"><Loading /></div>)
+    }
+
+    if (!user?.isAdmin) {
+      return shell(
+        <div className="py-12">
+            <div className={`${panelCardClass(isDark)} mx-auto max-w-md text-center`}>
               <h2 className={`text-xl font-bold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 {t('backtesterDataManagement.accessDenied')}
               </h2>
@@ -79,36 +89,21 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
                 {t('backtesterDataManagement.goToDashboard')}
               </button>
             </div>
-          </main>
         </div>
       )
     }
 
-    if (loading) {
-      return <Loading />
-    }
-
     const isFormOpen = Boolean(editingSymbol && editingData)
 
-    return (
-      <div className={appPageBackground(isDark)}>
-        <HubNav
-          isDark={isDark}
-          toggleTheme={toggleTheme}
-          activeTab="admin"
-          onTabChange={onHubTabChange}
-          onLogout={onLogout}
-          showAdmin
-        />
-
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    return shell(
+      <>
           <HubHeroSection
             isDark={isDark}
             icon={Database}
             badge={t('backtester.data.badge', {}, 'Admin')}
             headline={t('backtesterDataManagement.title')}
             subtitle={t('backtesterDataManagement.subtitle')}
-            accent="amber"
+            accent="blue"
           />
 
           <ErrorMessage message={error} isDark={isDark} className="mb-4" />
@@ -122,7 +117,7 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
                 onClick={() => onTabChange(tab)}
                 className={`flex-none px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
                   activeTab === tab
-                    ? tabRailActiveClass(isDark, 'violet')
+                    ? tabRailActiveClass(isDark, 'blue')
                     : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -180,8 +175,7 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
               onTradingViewTokenBlur={onCsvTradingViewTokenBlur}
             />
           )}
-        </main>
-      </div>
+      </>
     )
   }
 }

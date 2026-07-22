@@ -90,7 +90,7 @@ export default function HubSettingsPanel({ isDark }: { isDark: boolean }) {
                   key={id}
                   type="button"
                   onClick={() => openSection(id)}
-                  className={`group text-left ${card} !p-4 transition-all duration-200 hover:ring-violet-500/30 active:scale-[0.99] ${
+                  className={`group text-left ${card} !p-4 transition-all duration-200 hover:ring-blue-500/30 active:scale-[0.99] ${
                     isDark ? 'hover:bg-slate-900/90' : 'hover:shadow-lg'
                   }`}
                 >
@@ -98,8 +98,8 @@ export default function HubSettingsPanel({ isDark }: { isDark: boolean }) {
                     <div
                       className={`p-2 rounded-xl shrink-0 transition-colors ${
                         isDark
-                          ? 'bg-violet-500/15 text-violet-400 group-hover:bg-violet-500/20'
-                          : 'bg-violet-100 text-violet-600'
+                          ? 'bg-blue-500/15 text-blue-400 group-hover:bg-blue-500/20'
+                          : 'bg-blue-50 text-blue-600'
                       }`}
                     >
                       <Icon className="w-5 h-5" />

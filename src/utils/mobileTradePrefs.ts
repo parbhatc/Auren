@@ -5,7 +5,7 @@ export type { MobileTradePrefs, PracticeMobileTradePrefs } from '../types/mobile
 
 const DEFAULT_PREFS: MobileTradePrefs = {
   floatingPad: false,
-  quickTradeMinimized: false,
+  quickTradeMinimized: true,
 }
 
 function storageKey(accountId: string): string {

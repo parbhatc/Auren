@@ -158,10 +158,10 @@ export default function SymbolInfoSection({
                           <FeeCell isDark={isDark} label="Reg" value={data.regulatoryFee ?? 0} />
                           <FeeCell isDark={isDark} label="Comm" value={data.commissionFee ?? 0} />
                           <div>
-                            <span className={`block text-[10px] uppercase tracking-wide ${isDark ? 'text-amber-500/80' : 'text-amber-700'}`}>
+                            <span className={`block text-[10px] uppercase tracking-wide ${isDark ? 'text-blue-400/80' : 'text-blue-700'}`}>
                               Total
                             </span>
-                            <span className={`text-sm font-semibold tabular-nums ${isDark ? 'text-amber-300' : 'text-amber-800'}`}>
+                            <span className={`text-sm font-semibold tabular-nums ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
                               {(data.totalFees ?? 0).toFixed(4)}
                             </span>
                           </div>
@@ -251,8 +251,8 @@ export default function SymbolInfoSection({
                     </span>
                   </div>
                   <div>
-                    <span className={`block text-[10px] uppercase ${isDark ? 'text-amber-500/80' : 'text-amber-700'}`}>Total</span>
-                    <span className={`text-sm font-semibold tabular-nums ${isDark ? 'text-amber-300' : 'text-amber-800'}`}>
+                    <span className={`block text-[10px] uppercase ${isDark ? 'text-blue-400/80' : 'text-blue-700'}`}>Total</span>
+                    <span className={`text-sm font-semibold tabular-nums ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>
                       {(data.totalFees ?? 0).toFixed(4)}
                     </span>
                   </div>

@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { DisplayUnitProvider } from './contexts/DisplayUnitContext'
 import './index.css'
 import './services/tradesea/practiceChartSymbolDebug'
 import { registerCandleDebugGlobals } from './services/debug/candleDebugCapture'
@@ -36,7 +37,9 @@ if (import.meta.env.DEV) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
+      <DisplayUnitProvider>
+        <App />
+      </DisplayUnitProvider>
     </ThemeProvider>
   </React.StrictMode>,
 )

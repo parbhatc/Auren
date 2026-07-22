@@ -26,7 +26,7 @@ const MOBILE_FLUSH_SHELL =
   'max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:shadow-none'
 
 const FOCUS_RING =
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]'
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-[#18181B]'
 
 export function QuickTradeCard({
   props,
@@ -66,14 +66,14 @@ export function QuickTradeCard({
     (ui.hideClosePosition ? 0 : 1) + (ui.hideReverse ? 0 : 1) + (ui.hideFlattenAll ? 0 : 1)
 
   const shell = isDark
-    ? 'border-[#475569] bg-[#0f172a] shadow-[0_12px_32px_rgba(0,0,0,0.35)]'
-    : 'border-slate-200 bg-white/95 shadow-lg shadow-slate-200/40'
+    ? 'border-[#27272A] bg-[#18181B]'
+    : 'border-[#E4E4E7] bg-white'
   const presetShell = isDark
-    ? 'border-[#334155] bg-[#020617]'
-    : 'border-slate-200 bg-slate-50'
-  const presetActive = isDark ? 'bg-[#8b5cf6] text-white' : 'bg-violet-600 text-white'
+    ? 'border-[#3F3F46] bg-[#121215]'
+    : 'border-[#E4E4E7] bg-[#FAFAFA]'
+  const presetActive = isDark ? 'bg-[#3b82f6] text-white' : 'bg-blue-600 text-white'
   const presetIdle = isDark
-    ? 'text-[#94a3b8] hover:bg-[#1e293b] hover:text-[#e6edf3]'
+    ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
     : 'text-slate-600 hover:bg-white hover:text-slate-900'
   const offline = isDark ? 'text-[#7d8590]' : 'text-slate-400'
 
@@ -180,7 +180,7 @@ export function QuickTradeCard({
       </div>
     ) : null
 
-  const mobileToolbarDivider = isDark ? 'border-[#334155]/80' : 'border-slate-200'
+  const mobileToolbarDivider = isDark ? 'border-[#3F3F46]' : 'border-[#E4E4E7]'
 
   const mobileToolbarRow = (
     <div className="flex min-w-0 items-center gap-1">
@@ -339,10 +339,10 @@ function PresetQtyStrip({
     ? 'flex h-6 w-full min-w-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums transition active:scale-95'
     : 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition active:scale-95'
   const stepBtn = isDark
-    ? 'bg-white/10 text-[#94a3b8] hover:bg-white/15'
+    ? 'bg-[#27272A] text-[#A1A1AA] hover:bg-[#3F3F46]'
     : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
   const presetIdle = isDark
-    ? 'bg-white/10 text-[#94a3b8] hover:bg-white/15'
+    ? 'bg-[#27272A] text-[#A1A1AA] hover:bg-[#3F3F46]'
     : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
   const presetActive = isDark
     ? 'bg-[#e8eaed] font-bold text-[#14181f] shadow-sm'
@@ -425,14 +425,14 @@ function QtyStepper({
 > & { variant: 'dark' | 'light'; disabled?: boolean; compact?: boolean }) {
   const shell =
     variant === 'dark'
-      ? 'border-[#475569] bg-[#020617]'
-      : 'border-slate-200 bg-white'
+      ? 'border-[#3F3F46] bg-[#121215]'
+      : 'border-[#E4E4E7] bg-white'
   const btn =
     variant === 'dark'
-      ? 'text-[#7d8590] hover:bg-[#1e293b] hover:text-[#e6edf3]'
-      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-  const input = variant === 'dark' ? 'text-[#e6edf3]' : 'text-slate-900'
-  const divider = variant === 'dark' ? 'border-[#334155]' : 'border-slate-200'
+      ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
+      : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
+  const input = variant === 'dark' ? 'text-[#FAFAFA]' : 'text-[#09090B]'
+  const divider = variant === 'dark' ? 'border-[#3F3F46]' : 'border-[#E4E4E7]'
   const radius = compact ? 'rounded-md' : 'rounded-xl'
   const btnPad = compact ? 'px-1.5' : 'px-2.5'
   const inputW = compact ? 'w-7 text-xs' : 'w-9 text-sm'
@@ -492,15 +492,15 @@ function DomStyleAction({
 }) {
   const toneClass = isDark
     ? {
-        close: 'border border-slate-600/80 bg-slate-800/70 text-slate-200 hover:border-slate-500 hover:bg-slate-700/80',
+        close: 'border border-[#3F3F46] bg-[#27272A] text-[#D4D4D8] hover:border-[#52525B] hover:bg-[#3F3F46]',
         reverse:
-          'border border-violet-500/35 bg-violet-500/10 text-violet-200 hover:bg-violet-500/16',
+          'border border-blue-500/35 bg-blue-500/10 text-blue-300 hover:bg-blue-500/15',
         flatten:
           'border border-amber-500/40 bg-amber-500/12 text-amber-200 hover:bg-amber-500/20',
       }[tone]
     : {
         close: 'border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
-        reverse: 'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100',
+        reverse: 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
         flatten: 'border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
       }[tone]
 

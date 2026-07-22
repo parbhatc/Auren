@@ -214,11 +214,11 @@ function TradePageInner() {
       <div
         className={`h-screen flex items-center justify-center ${
           isDark
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-            : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+            ? 'bg-[#09090B]'
+            : 'bg-[#FAFAFA]'
         }`}
       >
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
       </div>
     )
   }
@@ -228,8 +228,8 @@ function TradePageInner() {
       <div
         className={`min-h-screen flex flex-col items-center justify-center p-4 ${
           isDark
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-            : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+            ? 'bg-[#09090B]'
+            : 'bg-[#FAFAFA]'
         }`}
       >
         <div
@@ -242,7 +242,11 @@ function TradePageInner() {
             <button
               type="button"
               onClick={() => navigate(ROUTES.PRACTICE)}
-              className="flex-1 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold"
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
+                isDark
+                  ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                  : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+              }`}
             >
               {t('practice.trade.backToHub')}
             </button>
@@ -257,11 +261,11 @@ function TradePageInner() {
       <div
         className={`h-screen flex items-center justify-center ${
           isDark
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-            : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+            ? 'bg-[#09090B]'
+            : 'bg-[#FAFAFA]'
         }`}
       >
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
       </div>
     )
   }
@@ -274,8 +278,8 @@ function TradePageInner() {
     navigate(practiceTradeStatsPath(practiceAccount.id))
   }
   const pageBg = isDark
-    ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-    : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+    ? 'bg-[#09090B]'
+    : 'bg-[#FAFAFA]'
 
   if (practiceAccount.status === 'blown') {
     return (

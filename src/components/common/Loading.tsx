@@ -50,10 +50,8 @@ class Loading extends Component<LoadingProps> {
     if (fullScreen) {
       return (
         <div
-          className={`min-h-screen flex items-center justify-center transition-all duration-700 ease-in-out ${
-            isDarkMode
-              ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950'
-              : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+          className={`min-h-screen flex items-center justify-center transition-colors duration-200 ${
+            isDarkMode ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'
           }`}
         >
           {content}

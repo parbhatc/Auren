@@ -17,30 +17,31 @@ export function MobileOrderSheet({
   return (
     <MobileTradeOverlayShell open={open} onClose={onClose} ariaLabel="Trade panel">
       <div
-        className={`flex flex-col h-[min(72vh,580px)] w-full rounded-t-2xl border-t shadow-2xl overflow-hidden ${
-          isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+        className={`flex h-[min(82dvh,680px)] w-full flex-col overflow-hidden rounded-t-2xl border-t ${
+          isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
         }`}
       >
         <div
           className={`flex items-center justify-between px-3 py-1.5 border-b shrink-0 ${
-            isDark ? 'border-slate-700' : 'border-slate-200'
+            isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'
           }`}
         >
-          <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Trade panel
-          </span>
+          <div>
+            <span className={`block text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Order entry</span>
+            <span className={`block text-[10px] ${isDark ? 'text-[#71717A]' : 'text-[#71717A]'}`}>Ticket and depth of market</span>
+          </div>
           <button
             type="button"
             onClick={onClose}
             className={`p-1.5 rounded-lg ${
-              isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-100'
+              isDark ? 'text-[#A1A1AA] hover:bg-[#27272A]' : 'text-[#52525B] hover:bg-[#F4F4F5]'
             }`}
             aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 pt-0">
           <TradePanel {...padProps} hideDetach fullWidth />
         </div>
       </div>

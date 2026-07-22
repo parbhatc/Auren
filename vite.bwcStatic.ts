@@ -73,8 +73,8 @@ function copyDir(src: string, dest: string): void {
 }
 
 /**
- * Serve BetterweightChart `public/` and testing_web indicator assets from the
- * `betterweightchart` npm package (github:parbhatc/BetterweightChart).
+ * Serve BetterweightChartPro `public/` and testing_web indicator assets from the
+ * `betterweightchartpro` npm package (github:parbhatc/BetterweightChartPro).
  */
 export function betterweightChartStatic(bwcRoot: string): Plugin {
   const publicRoot = path.join(bwcRoot, 'public')
@@ -104,7 +104,7 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
   }
 
   return {
-    name: 'betterweightchart-static',
+    name: 'betterweightchartpro-static',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next()

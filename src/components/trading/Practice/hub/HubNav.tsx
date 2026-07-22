@@ -23,8 +23,8 @@ function tabActiveClass(id: HubTab, isDark: boolean): string {
       : 'bg-amber-600 text-white shadow-sm'
   }
   return isDark
-    ? 'bg-violet-600 text-white shadow-md shadow-violet-900/40'
-    : 'bg-white text-violet-700 shadow-sm'
+    ? 'bg-blue-500 text-white'
+    : 'bg-white text-blue-700'
 }
 
 function HubTabRail({
@@ -45,7 +45,7 @@ function HubTabRail({
   return (
     <div
       className={`inline-flex w-full sm:w-auto p-1 rounded-xl gap-0.5 ${
-        isDark ? 'bg-slate-900/90 ring-1 ring-slate-800' : 'bg-slate-100/90 ring-1 ring-slate-200/80'
+        isDark ? 'bg-[#18181B] ring-1 ring-[#27272A]' : 'bg-[#F4F4F5] ring-1 ring-[#E4E4E7]'
       } ${className}`}
     >
       {tabs.map(({ id, labelKey }) => {
@@ -87,8 +87,8 @@ export default function HubNav({
   showAdmin: boolean
 }) {
   const shell = isDark
-    ? 'border-slate-800/80 bg-slate-950/80 backdrop-blur-xl'
-    : 'border-slate-200/80 bg-white/80 backdrop-blur-xl'
+    ? 'border-[#27272A] bg-[#09090B]'
+    : 'border-[#E4E4E7] bg-white'
 
   return (
     <div className={`sticky top-0 z-50 border-b auren-sticky-app-header ${shell}`}>
@@ -97,7 +97,7 @@ export default function HubNav({
           <button
             type="button"
             onClick={() => onTabChange('accounts')}
-            className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <Logo isDark={isDark} compact size="sm" />
           </button>

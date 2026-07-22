@@ -39,6 +39,7 @@ import { TradingChartHost } from './tradingRenderer/TradingChartHost'
 import { publishAccountStats } from '../../../services/trading/accountStatsStore'
 import { TerminalTradeLayout } from './tradingRenderer/TerminalTradeLayout'
 import { ClassicTradePanel } from './tradingRenderer/ClassicTradePanel'
+import ProductHeader from '../../layout/ProductHeader'
 
 /**
  * Trading renderer component
@@ -695,20 +696,23 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     return (
       <div
-        className={`transition-all duration-700 ease-in-out flex ${
+        className={`flex ${terminalShell ? 'auren-shell-offset' : 'transition-all duration-300 ease-in-out'} ${
           terminalShell
             ? 'auren-terminal-shell'
             : 'h-screen max-h-screen overflow-hidden'
         } ${
           terminalShell
             ? isDark
-              ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950'
-              : 'bg-gradient-to-br from-slate-50 via-blue-50/80 to-indigo-100/60'
+              ? 'bg-[#09090B]'
+              : 'bg-[#FAFAFA]'
             : isDark
-              ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950'
-              : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+              ? 'bg-[#09090B]'
+              : 'bg-[#FAFAFA]'
         }`}
       >
+        {terminalShell ? (
+          <ProductHeader isDark={isDark} toggleTheme={toggleTheme} sidebarOnly />
+        ) : null}
         <TradingRendererNav
           showNav={showNav}
           terminalShell={terminalShell}
@@ -749,6 +753,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
               isDark={isDark}
               navigate={navigate}
               toggleTheme={toggleTheme}
+              hideDesktopLogo
               practiceAccountId={practiceMode ? practiceAccountId : undefined}
               practiceAccountStatus={practiceAccountStatus}
               onRefreshPracticeAccount={onRefreshPracticeAccount}

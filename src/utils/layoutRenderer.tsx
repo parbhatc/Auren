@@ -178,7 +178,7 @@ export const renderPracticeTradeLayout = (
     panelFrame?: boolean
   }
 ) => {
-  const panelWidth = options?.panelWidth ?? 332
+  const panelWidth = options?.panelWidth ?? 312
   const mobileScalpBar = options?.mobileScalpBar ?? null
   const panelFrame = options?.panelFrame !== false
   const showMobileNav = options?.showMobileNav !== false
@@ -205,7 +205,7 @@ export const renderPracticeTradeLayout = (
         <div
           className={
             panelFrame
-              ? 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/90'
+              ? 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[#27272A] bg-[#18181B]'
               : 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden gap-3'
           }
           style={{ width: panelWidth }}

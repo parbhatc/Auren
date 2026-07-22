@@ -31,11 +31,11 @@ function CompactQuickTrade({
   const tradeDisabled = !isTradePanelTradingEnabled(props)
   const qty = Number(props.quantity) || 1
   const shell = isDark
-    ? 'border-[#475569] bg-[#0f172a]'
-    : 'border-slate-200 bg-white'
+    ? 'border-[#27272A] bg-[#18181B]'
+    : 'border-[#E4E4E7] bg-white'
   const iconBtn = isDark
-    ? 'text-[#7d8590] hover:bg-[#1e293b] hover:text-[#e6edf3]'
-    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+    ? 'text-[#71717A] hover:bg-[#27272A] hover:text-[#FAFAFA]'
+    : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
 
   return (
     <div
@@ -126,8 +126,8 @@ export function MobileScalpBar({
   if (prefs.floatingPad) return null
 
   const iconBtn = isDark
-    ? 'flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 text-[#7d8590] hover:text-[#e6edf3] hover:bg-[#1e293b] active:bg-[#1e293b] touch-manipulation'
-    : 'flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-100 touch-manipulation'
+    ? 'flex min-h-[40px] min-w-[40px] items-center justify-center rounded-md p-1.5 text-[#71717A] hover:text-[#FAFAFA] hover:bg-[#27272A] active:bg-[#27272A] touch-manipulation'
+    : 'flex min-h-[40px] min-w-[40px] items-center justify-center rounded-md p-1.5 text-[#52525B] hover:text-[#09090B] hover:bg-[#F4F4F5] active:bg-[#F4F4F5] touch-manipulation'
 
   const headerActions = (
     <div className="flex shrink-0 items-center gap-0.5">
