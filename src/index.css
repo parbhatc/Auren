@@ -927,6 +927,15 @@ html.dark body {
   display: none !important;
 }
 
+/* Journal review uses BWC as a read-only evidence chart. */
+.journal-bwc-review [aria-label="Chart settings"],
+.journal-bwc-review button[aria-label^="News at"],
+.journal-bwc-review .tv-chart-bottom-bar,
+.journal-bwc-review .drawing-toolbar,
+.journal-bwc-review .status-line {
+  display: none !important;
+}
+
 /* Auren custom toasts (react-toastify) */
 .auren-toastify.Toastify__toast,
 .mds-connection-toastify.Toastify__toast {

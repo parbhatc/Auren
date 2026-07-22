@@ -47,12 +47,49 @@ export function clampPadFloatPosition(
   margin = 8
 ): { x: number; y: number } {
   if (typeof window === 'undefined') return { x, y }
-  const maxX = Math.max(margin, window.innerWidth - panelWidth - margin)
-  const maxY = Math.max(margin, window.innerHeight - panelHeight - margin)
+  const viewport = window.visualViewport
+  const viewportLeft = viewport?.offsetLeft ?? 0
+  const viewportTop = viewport?.offsetTop ?? 0
+  const viewportWidth = viewport?.width ?? window.innerWidth
+  const viewportHeight = viewport?.height ?? window.innerHeight
+  const minX = viewportLeft + margin
+  const minY = viewportTop + margin
+  const maxX = Math.max(minX, viewportLeft + viewportWidth - panelWidth - margin)
+  const maxY = Math.max(minY, viewportTop + viewportHeight - panelHeight - margin)
   return {
-    x: Math.min(maxX, Math.max(margin, x)),
-    y: Math.min(maxY, Math.max(margin, y)),
+    x: Math.min(maxX, Math.max(minX, x)),
+    y: Math.min(maxY, Math.max(minY, y)),
   }
+}
+
+function padFloatPositionKey(accountId: string): string {
+  return `auren.trade-pad.float-position.${accountId}`
+}
+
+export function savePadFloatPosition(accountId: string, position: { x: number; y: number }): void {
+  try {
+    localStorage.setItem(padFloatPositionKey(accountId), JSON.stringify(position))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getSavedPadFloatPosition(
+  accountId: string,
+  panelWidth = 346,
+  panelHeight = 200
+): { x: number; y: number } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(padFloatPositionKey(accountId)) || 'null')
+    const x = Number(saved?.x)
+    const y = Number(saved?.y)
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return clampPadFloatPosition(x, y, panelWidth, panelHeight)
+    }
+  } catch {
+    /* ignore */
+  }
+  return getPadFloatPosition(panelWidth, panelHeight)
 }
 
 export function getPadFloatPosition(panelWidth = 346, panelHeight = 200): { x: number; y: number } {

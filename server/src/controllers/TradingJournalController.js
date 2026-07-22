@@ -2,6 +2,176 @@ import Database from '../config/Database.js'
 import crypto from 'crypto'
 
 class TradingJournalController {
+  // ========== USER-CURATED JOURNAL ENTRIES ==========
+
+  journalEntryId() {
+    return `jt_${crypto.randomBytes(9).toString('base64url')}`
+  }
+
+  parseJournalEntry(record) {
+    if (!record) return record
+    const parseObject = (value) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) return value
+      try {
+        const parsed = JSON.parse(value || '{}')
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+      } catch {
+        return {}
+      }
+    }
+    return {
+      id: record.id,
+      strategyId: record.strategy_id,
+      playbook: record.playbook_name,
+      dateTime: record.entry_datetime,
+      exitDateTime: record.exit_datetime || '',
+      symbol: record.symbol,
+      side: record.side,
+      entryPrice: record.entry_price || '',
+      closePrice: record.close_price || '',
+      size: record.position_size || '',
+      pnl: record.pnl || '',
+      outcome: record.outcome || 'planned',
+      conditionResponses: parseObject(record.condition_responses),
+      source: record.source === 'replay' ? 'replay' : 'manual',
+      sourceSessionId: record.source_session_id || undefined,
+      sourceTradeId: record.source_trade_id || undefined,
+      sourceContext: parseObject(record.source_context),
+      riskPlan: parseObject(record.risk_plan),
+      notes: record.notes || '',
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+    }
+  }
+
+  journalEntryValues(body) {
+    const allowedOutcomes = new Set(['planned', 'win', 'loss', 'breakeven'])
+    const allowedSides = new Set(['long', 'short'])
+    const allowedSources = new Set(['manual', 'replay'])
+    const objectOrEmpty = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+    return {
+      strategyId: body.strategyId || null,
+      playbook: String(body.playbook || '').trim(),
+      dateTime: String(body.dateTime || '').trim(),
+      exitDateTime: String(body.exitDateTime || '').trim(),
+      symbol: String(body.symbol || '').trim().toUpperCase(),
+      side: allowedSides.has(body.side) ? body.side : 'long',
+      entryPrice: body.entryPrice == null ? '' : String(body.entryPrice),
+      closePrice: body.closePrice == null ? '' : String(body.closePrice),
+      size: body.size == null ? '' : String(body.size),
+      pnl: body.pnl == null ? '' : String(body.pnl),
+      outcome: allowedOutcomes.has(body.outcome) ? body.outcome : 'planned',
+      conditionResponses: body.conditionResponses && typeof body.conditionResponses === 'object'
+        ? body.conditionResponses
+        : {},
+      source: allowedSources.has(body.source) ? body.source : 'manual',
+      sourceSessionId: body.sourceSessionId == null ? null : String(body.sourceSessionId),
+      sourceTradeId: body.sourceTradeId == null ? null : String(body.sourceTradeId),
+      sourceContext: objectOrEmpty(body.sourceContext),
+      riskPlan: objectOrEmpty(body.riskPlan),
+      notes: body.notes == null ? '' : String(body.notes),
+    }
+  }
+
+  async createJournalEntry(req, res) {
+    try {
+      const userId = req.user.id
+      const values = this.journalEntryValues(req.body)
+      if (!values.playbook || !values.dateTime || !values.symbol) {
+        return res.status(400).json({ success: false, error: 'Playbook, date/time, and symbol are required' })
+      }
+      const entryId = this.journalEntryId()
+      await Database.run(`
+        INSERT INTO journal_entries (
+          id, user_id, strategy_id, playbook_name, entry_datetime, exit_datetime, symbol, side,
+          entry_price, close_price, position_size, pnl, outcome, condition_responses,
+          source, source_session_id, source_trade_id, source_context, risk_plan, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        entryId, userId, values.strategyId, values.playbook, values.dateTime, values.exitDateTime || null, values.symbol,
+        values.side, values.entryPrice, values.closePrice, values.size, values.pnl,
+        values.outcome, JSON.stringify(values.conditionResponses), values.source,
+        values.sourceSessionId, values.sourceTradeId, JSON.stringify(values.sourceContext),
+        JSON.stringify(values.riskPlan), values.notes,
+      ])
+      const record = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      res.json({ success: true, entry: this.parseJournalEntry(record) })
+    } catch (error) {
+      console.error('Error creating journal entry:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async getJournalEntries(req, res) {
+    try {
+      const records = await Database.query(
+        'SELECT * FROM journal_entries WHERE user_id = ? ORDER BY entry_datetime DESC, created_at DESC',
+        [req.user.id]
+      )
+      res.json({ success: true, entries: records.map((record) => this.parseJournalEntry(record)) })
+    } catch (error) {
+      console.error('Error fetching journal entries:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async getJournalEntry(req, res) {
+    try {
+      const record = await Database.get(
+        'SELECT * FROM journal_entries WHERE id = ? AND user_id = ?',
+        [req.params.id, req.user.id]
+      )
+      if (!record) return res.status(404).json({ success: false, error: 'Journal entry not found' })
+      res.json({ success: true, entry: this.parseJournalEntry(record) })
+    } catch (error) {
+      console.error('Error fetching journal entry:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async updateJournalEntry(req, res) {
+    try {
+      const userId = req.user.id
+      const entryId = req.params.id
+      const existing = await Database.get('SELECT id FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      if (!existing) return res.status(404).json({ success: false, error: 'Journal entry not found' })
+      const values = this.journalEntryValues(req.body)
+      if (!values.playbook || !values.dateTime || !values.symbol) {
+        return res.status(400).json({ success: false, error: 'Playbook, date/time, and symbol are required' })
+      }
+      await Database.run(`
+        UPDATE journal_entries SET
+          strategy_id = ?, playbook_name = ?, entry_datetime = ?, exit_datetime = ?, symbol = ?, side = ?,
+          entry_price = ?, close_price = ?, position_size = ?, pnl = ?, outcome = ?,
+          condition_responses = ?, source = ?, source_session_id = ?, source_trade_id = ?,
+          source_context = ?, risk_plan = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `, [
+        values.strategyId, values.playbook, values.dateTime, values.exitDateTime || null, values.symbol, values.side,
+        values.entryPrice, values.closePrice, values.size, values.pnl, values.outcome,
+        JSON.stringify(values.conditionResponses), values.source, values.sourceSessionId, values.sourceTradeId,
+        JSON.stringify(values.sourceContext), JSON.stringify(values.riskPlan), values.notes, entryId, userId,
+      ])
+      const record = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      res.json({ success: true, entry: this.parseJournalEntry(record) })
+    } catch (error) {
+      console.error('Error updating journal entry:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async deleteJournalEntry(req, res) {
+    try {
+      const existing = await Database.get('SELECT id FROM journal_entries WHERE id = ? AND user_id = ?', [req.params.id, req.user.id])
+      if (!existing) return res.status(404).json({ success: false, error: 'Journal entry not found' })
+      await Database.run('DELETE FROM journal_entries WHERE id = ? AND user_id = ?', [req.params.id, req.user.id])
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error deleting journal entry:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
   // ========== TRADES ==========
   
   async createTrade(req, res) {

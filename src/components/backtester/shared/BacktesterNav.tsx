@@ -25,7 +25,7 @@ export default function BacktesterNav({
   return (
     <nav
       aria-label="Replay sections"
-      className={`mb-6 flex gap-1 overflow-x-auto rounded-xl border p-1 ${
+      className={`mb-6 flex w-full min-w-0 gap-1 overflow-x-auto rounded-xl border p-1 ${
         isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
       }`}
     >
@@ -37,7 +37,7 @@ export default function BacktesterNav({
             key={tab.id}
             type="button"
             onClick={() => navigate(tab.route)}
-            className={`inline-flex min-w-max items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
+            className={`inline-flex min-w-max flex-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
               active
                 ? isDark
                   ? 'bg-[#FAFAFA] text-[#09090B]'

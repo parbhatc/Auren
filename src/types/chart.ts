@@ -119,6 +119,10 @@ export type AurenChartProps = {
   containerId?: string
   className?: string
   style?: import('react').CSSProperties
+  chrome?: boolean
+  drawings?: boolean
+  persistDrawings?: boolean
+  compact?: boolean
   accountId?: string
   practiceAccountId?: string
   tradeseaServices?: Record<string, unknown> | null
@@ -130,6 +134,7 @@ export type AurenChartProps = {
   }
   onSymbolChange?: (symbol: string) => void
   onChartReady?: () => void | Promise<void>
+  onWidgetReady?: (widget: unknown) => void | Promise<void>
   onAutoSaveNeeded?: () => void | Promise<void>
 }
 

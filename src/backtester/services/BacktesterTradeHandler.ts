@@ -35,7 +35,7 @@ export class BacktesterTradeHandler {
   /** Assigned by the host view to refresh position/P&L UI after trade actions. */
   onPositionUpdate?: () => void
   onUnrealizedPnLUpdate?: (pnl: number) => void
-  onTradeSaved?: () => void
+  onTradeSaved?: (tradeData?: Record<string, unknown>) => void
 
   constructor(session: BacktestSession | null, client: BacktesterChartClient | null) {
     this.session = session

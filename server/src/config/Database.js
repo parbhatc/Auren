@@ -154,6 +154,37 @@ class Database {
       )
     `)
 
+    // Journal records stay separate from execution analytics. Replay capture is
+    // opt-in and creates the same user-curated record shape as manual capture.
+    await run(`
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        strategy_id TEXT,
+        playbook_name TEXT NOT NULL,
+        entry_datetime DATETIME NOT NULL,
+        exit_datetime DATETIME,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        entry_price TEXT,
+        close_price TEXT,
+        position_size TEXT,
+        pnl TEXT,
+        outcome TEXT NOT NULL DEFAULT 'planned',
+        condition_responses TEXT NOT NULL DEFAULT '{}',
+        source TEXT NOT NULL DEFAULT 'manual',
+        source_session_id TEXT,
+        source_trade_id TEXT,
+        source_context TEXT NOT NULL DEFAULT '{}',
+        risk_plan TEXT NOT NULL DEFAULT '{}',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE SET NULL
+      )
+    `)
+
     await run(`
       CREATE TABLE IF NOT EXISTS daily_reviews (
         id TEXT PRIMARY KEY,
@@ -341,6 +372,7 @@ class Database {
     await run(`CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades(user_id)`)
     await run(`CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date)`)
     await run(`CREATE INDEX IF NOT EXISTS idx_trades_strategy_id ON trades(strategy_id)`)
+    await run(`CREATE INDEX IF NOT EXISTS idx_journal_entries_user_date ON journal_entries(user_id, entry_datetime)`)
     await run(`CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON strategies(user_id)`)
     await run(`CREATE INDEX IF NOT EXISTS idx_rules_user_id ON rules(user_id)`)
     await run(`CREATE INDEX IF NOT EXISTS idx_daily_reviews_user_date ON daily_reviews(user_id, review_date)`)
@@ -390,6 +422,26 @@ class Database {
       await run(`ALTER TABLE practice_accounts ADD COLUMN last_reset_at TEXT`)
     } catch (err) {
       // Column already exists
+    }
+
+    try {
+      await run(`ALTER TABLE journal_entries ADD COLUMN exit_datetime DATETIME`)
+    } catch (err) {
+      // Column already exists
+    }
+
+    for (const migration of [
+      `ALTER TABLE journal_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+      `ALTER TABLE journal_entries ADD COLUMN source_session_id TEXT`,
+      `ALTER TABLE journal_entries ADD COLUMN source_trade_id TEXT`,
+      `ALTER TABLE journal_entries ADD COLUMN source_context TEXT NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE journal_entries ADD COLUMN risk_plan TEXT NOT NULL DEFAULT '{}'`,
+    ]) {
+      try {
+        await run(migration)
+      } catch (err) {
+        // Column already exists
+      }
     }
 
     try {

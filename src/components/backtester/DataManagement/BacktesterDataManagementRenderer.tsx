@@ -54,7 +54,7 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
     const shell = (content: ReactNode) => (
       <div className={`auren-shell-offset ${appPageBackground(isDark)}`}>
         <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <BacktesterNav
             isDark={isDark}
             toggleTheme={toggleTheme}

@@ -1,10 +1,11 @@
 import { Component } from 'react'
-import { Clock, Globe, ChevronDown } from 'lucide-react'
+import { BookOpenCheck, Clock, Globe, ChevronDown } from 'lucide-react'
 import { UtilsSettingsProps } from '../../../types'
 import SettingsPageLayout from '../../layout/SettingsPageLayout'
 import { panelCardClass, selectInputClass, settingsInsetClass } from '../../../styles/aurenTheme'
 import { t } from '../../../utils/translator'
 import { SUPPORTED_CHART_TIMEZONES } from '../../../constants/chartTimezones'
+import { isReplayJournalEnabled, setReplayJournalEnabled } from '../../../features/journal/replayJournalPreference'
 
 /**
  * Utils Settings renderer component
@@ -16,9 +17,11 @@ class Renderer extends Component<UtilsSettingsProps> {
   state = {
     currentTime: new Date(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    replayJournalEnabled: false,
   }
 
   componentDidMount() {
+    this.setState({ replayJournalEnabled: isReplayJournalEnabled() })
     const savedTimezone = localStorage.getItem('user_timezone')
     if (savedTimezone) {
       const timezone = savedTimezone === 'UTC' ? 'Etc/UTC' : savedTimezone
@@ -49,6 +52,12 @@ class Renderer extends Component<UtilsSettingsProps> {
   handleTimezoneChange = (timezone: string) => {
     this.setState({ timezone })
     localStorage.setItem('user_timezone', timezone)
+  }
+
+  handleReplayJournalToggle = () => {
+    const enabled = !this.state.replayJournalEnabled
+    setReplayJournalEnabled(enabled)
+    this.setState({ replayJournalEnabled: enabled })
   }
 
   formatTime = (date: Date, timezone: string) => {
@@ -120,12 +129,12 @@ class Renderer extends Component<UtilsSettingsProps> {
 
   render() {
     const { isDark, toggleTheme, navigate, embedded, onBack } = this.props
-    const { currentTime, timezone } = this.state
+    const { currentTime, timezone, replayJournalEnabled } = this.state
 
     const textClass = isDark ? 'text-white' : 'text-slate-900'
     const textSecondaryClass = isDark ? 'text-slate-400' : 'text-slate-600'
     const selectClass = selectInputClass(isDark)
-    const iconAccent = isDark ? 'text-violet-400' : 'text-violet-600'
+    const iconAccent = isDark ? 'text-blue-400' : 'text-blue-600'
     const card = panelCardClass(isDark)
     const inset = settingsInsetClass(isDark)
 
@@ -184,6 +193,32 @@ class Renderer extends Component<UtilsSettingsProps> {
                 {t('practice.hub.settings.timezoneDesc')}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div className={card}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 gap-3">
+              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-blue-400' : 'border-[#E4E4E7] bg-[#FAFAFA] text-blue-600'}`}>
+                <BookOpenCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className={`text-sm font-semibold ${textClass}`}>Replay journaling</h2>
+                <p className={`mt-1 max-w-2xl text-xs leading-5 ${textSecondaryClass}`}>
+                  Off by default. When enabled, replay can prefill the current cursor or execution, then lets you choose any playbook and review its own conditions before saving. Replay trades are never imported automatically.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={replayJournalEnabled}
+              aria-label="Replay journaling"
+              onClick={this.handleReplayJournalToggle}
+              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full border transition-colors ${replayJournalEnabled ? 'border-blue-500 bg-blue-500' : isDark ? 'border-[#3F3F46] bg-[#27272A]' : 'border-[#D4D4D8] bg-[#E4E4E7]'}`}
+            >
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${replayJournalEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
           </div>
         </div>
 

@@ -84,6 +84,7 @@ export default function CsvDataSection({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [overwriteConfirm, setOverwriteConfirm] = useState<{ symbol: string; resolution: string } | null>(null)
   const [actionSymbol, setActionSymbol] = useState<string | null>(null)
+  const [updateAllState, setUpdateAllState] = useState<{ completed: number; total: number; current: string } | null>(null)
   const [actionModal, setActionModal] = useState<{
     symbol: string
     displaySymbol?: string
@@ -95,6 +96,11 @@ export default function CsvDataSection({
 
   const wsSource = wsSourceFromCsvDataSource(dataSource)
   const grouped = useMemo(() => groupInventoryBySymbol(inventory), [inventory])
+  const updateAllTargets = useMemo(() => grouped.flatMap(({ symbol, resolutions }) => (
+    hasSymbolTicker(symbols, symbol, dataSource)
+      ? resolutions.map((row) => ({ symbol, resolution: row.resolution }))
+      : []
+  )), [dataSource, grouped, symbols])
 
   useEffect(() => {
     let cancelled = false
@@ -232,6 +238,34 @@ export default function CsvDataSection({
       setSearchError(err instanceof Error ? err.message : 'Update failed')
     } finally {
       setActionSymbol(null)
+    }
+  }
+
+  const handleUpdateAll = async () => {
+    if (!updateAllTargets.length || updateAllState) return
+    setSearchError('')
+    try {
+      assertCanRunAction()
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Update unavailable')
+      return
+    }
+
+    const failures: string[] = []
+    for (let index = 0; index < updateAllTargets.length; index += 1) {
+      const target = updateAllTargets[index]
+      setUpdateAllState({ completed: index, total: updateAllTargets.length, current: `${target.symbol} ${target.resolution}` })
+      setActionSymbol(target.symbol)
+      try {
+        await onUpdate(target.symbol, wsSource, csvFolderToChartResolution(target.resolution))
+      } catch {
+        failures.push(`${target.symbol} ${target.resolution}`)
+      }
+    }
+    setActionSymbol(null)
+    setUpdateAllState(null)
+    if (failures.length) {
+      setSearchError(`Update all finished with ${failures.length} failed dataset${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`)
     }
   }
 
@@ -640,6 +674,34 @@ export default function CsvDataSection({
     <div className="space-y-4">
       {controls}
       {searchResultsPanel}
+      {!loading && grouped.length > 0 && (
+        <div className={`${panelCardClass(isDark)} flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5`}>
+          <div>
+            <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>CSV inventory</p>
+            <p className={`mt-0.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              {updateAllState
+                ? `Updating ${updateAllState.current} · ${updateAllState.completed + 1} of ${updateAllState.total}`
+                : `${updateAllTargets.length} eligible dataset${updateAllTargets.length === 1 ? '' : 's'} for ${dataSource === 'tradesea' ? 'Tradesea' : 'TradingView'}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleUpdateAll()}
+            disabled={!updateAllTargets.length || updateAllState !== null || actionSymbol !== null}
+            className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-white' : 'bg-[#18181B] text-white hover:bg-black'
+            }`}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${updateAllState ? 'animate-spin' : ''}`} />
+            {updateAllState ? `Updating ${updateAllState.completed + 1}/${updateAllState.total}` : 'Update all'}
+          </button>
+        </div>
+      )}
+      {!search.trim() && searchError && (
+        <div className={`rounded-lg border px-4 py-3 text-xs ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          {searchError}
+        </div>
+      )}
       {inventoryPanel}
 
       <ConfirmDialog

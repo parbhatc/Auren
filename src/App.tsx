@@ -47,6 +47,7 @@ import {
   AnalyticsPage,
   DashboardPage,
   JournalPage,
+  JournalTradeDetailPage,
   NewsWorkspacePage,
 } from './pages/workspace/WorkspacePages'
 import SettingsWorkspacePage from './pages/settings/SettingsWorkspacePage'
@@ -169,6 +170,14 @@ function App() {
           element={
             <ProtectedRoute>
               <JournalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${ROUTES.JOURNAL}/:tradeId`}
+          element={
+            <ProtectedRoute>
+              <JournalTradeDetailPage />
             </ProtectedRoute>
           }
         />

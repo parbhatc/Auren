@@ -28,6 +28,7 @@ import { publishAccountStats } from '../../../services/trading/accountStatsStore
 import Logo from '../../common/Logo'
 import { HeaderThemeButton } from '../../trading/shared/header/HeaderThemeButton'
 import { ArrowLeft, LogOut } from 'lucide-react'
+import ReplayJournalCapture, { type ReplayJournalSnapshot } from './ReplayJournalCapture'
 
 const BACKTESTER_MAX_QTY = 100
 
@@ -45,6 +46,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   private pendingUnrealizedPnL: number | null = null
   private unrealizedPnLFlushScheduled = false
   private websocketSessionId: string | null = null
+  private lastReplayTrade: Record<string, unknown> | null = null
 
   state = {
     isPlaying: false,
@@ -111,7 +113,8 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     })
 
     // Set callback for when trade is saved to refresh stats
-    ;(this.tradeHandler as any).onTradeSaved = () => {
+    ;(this.tradeHandler as any).onTradeSaved = (tradeData?: Record<string, unknown>) => {
+      if (tradeData) this.lastReplayTrade = tradeData
       void this.loadSessionStats()
     }
 
@@ -148,6 +151,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   componentDidUpdate(prevProps: BacktesterChartViewProps) {
     // Update trade handler if session changes
     if (prevProps.session?.id !== this.props.session?.id) {
+      this.lastReplayTrade = null
       if (this.tradeHandler) {
         this.tradeHandler.updateSession(this.props.session)
         this.tradeHandler.setDatafeed(this.datafeed)
@@ -336,6 +340,126 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     }
     const { session } = this.props
     return getInitialChartSymbol(session?.symbol)
+  }
+
+  private toLocalDateTime = (value: unknown): string => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return ''
+    const date = new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
+    const pad = (part: number) => String(part).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  }
+
+  private cleanJournalSymbol = (symbol: string): string => {
+    const root = normalizeBacktesterSymbolRoot(symbol)
+    return root || symbol.split(':').pop() || symbol
+  }
+
+  buildReplayJournalSnapshot = (preferExecution: boolean): ReplayJournalSnapshot => {
+    const chartSymbol = this.getChartSymbol()
+    const symbol = this.cleanJournalSymbol(chartSymbol)
+    const cache = this.tradeHandler?.getTradeCache?.()
+    const chart = cache?.getChart?.()
+    const lastBar = this.datafeed.getLastBarForChart(chart) || this.datafeed.getLastBarForSymbol(chartSymbol) || this.datafeed.getLastBarForSymbol(symbol)
+    const cursorSec = this.datafeed.getPlaybackAnchorSecPublic() ?? (lastBar?.time ? Number(lastBar.time) : Math.floor(Date.now() / 1000))
+    const cursorDateTime = this.toLocalDateTime(cursorSec)
+    let chartResolution = this.state.playbackTimeframe
+    try {
+      chartResolution = String((this.chartRef.current as any)?.widgetRef?.activeChart?.()?.resolution?.() || chartResolution)
+    } catch {
+      // The playback timeframe is a safe fallback while the chart boots.
+    }
+    const availableBars = this.datafeed.getReplayBarsForSymbol(chartSymbol, chartResolution, 5000).map((bar) => {
+      const dateTime = this.toLocalDateTime(bar.time)
+      const date = new Date(bar.time < 10_000_000_000 ? bar.time * 1000 : bar.time)
+      return {
+        dateTime,
+        label: date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }),
+        time: dateTime.split('T')[1] || '',
+        open: String(bar.open),
+        high: String(bar.high),
+        low: String(bar.low),
+        close: String(bar.close),
+      }
+    })
+    if (preferExecution && this.lastReplayTrade) {
+      const trade = this.lastReplayTrade
+      const entryPrice = Number(trade.entryPrice)
+      const exitPrice = Number(trade.exitPrice)
+      const rawContracts = Number(trade.contracts) || 0
+      const side = trade.direction === 'short' || rawContracts < 0 ? 'short' : 'long'
+      const signedContracts = side === 'short' ? -Math.abs(rawContracts) : Math.abs(rawContracts)
+      const tickSize = this.datafeed.getTickSize(String(trade.symbol || chartSymbol))
+      const tickValue = this.datafeed.getTickValue(String(trade.symbol || chartSymbol))
+      const pnl = Number.isFinite(entryPrice) && Number.isFinite(exitPrice) && tickSize > 0
+        ? ((exitPrice - entryPrice) / tickSize) * tickValue * signedContracts
+        : 0
+      return {
+        kind: 'closed_trade',
+        symbol: this.cleanJournalSymbol(String(trade.symbol || chartSymbol)),
+        side,
+        entryPrice: Number.isFinite(entryPrice) ? String(entryPrice) : '',
+        closePrice: Number.isFinite(exitPrice) ? String(exitPrice) : '',
+        size: String(Math.abs(rawContracts) || ''),
+        pnl: Number.isFinite(pnl) ? String(Number(pnl.toFixed(2))) : '',
+        outcome: pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven',
+        entryDateTime: this.toLocalDateTime(trade.entryTime),
+        exitDateTime: this.toLocalDateTime(trade.exitTime),
+        cursorDateTime,
+        chartResolution,
+        barHigh: lastBar?.high == null ? '' : String(lastBar.high),
+        barLow: lastBar?.low == null ? '' : String(lastBar.low),
+        availableBars,
+        stopLossPrice: trade.stopLoss == null ? '' : String(trade.stopLoss),
+        takeProfitPrice: trade.takeProfit == null ? '' : String(trade.takeProfit),
+        sourceTradeId: trade.id == null ? undefined : String(trade.id),
+      }
+    }
+
+    const position = preferExecution ? cache?.getPosition?.(chartSymbol) : null
+    if (position) {
+      const contracts = Number(position.contracts) || 0
+      return {
+        kind: 'open_position',
+        symbol: this.cleanJournalSymbol(String(position.symbol || chartSymbol)),
+        side: position.type === 'short' || contracts < 0 ? 'short' : 'long',
+        entryPrice: position.entry == null ? '' : String(position.entry),
+        closePrice: '',
+        size: String(Math.abs(contracts) || ''),
+        pnl: '',
+        outcome: 'planned',
+        entryDateTime: this.toLocalDateTime(position.entryTime) || cursorDateTime,
+        exitDateTime: '',
+        cursorDateTime,
+        chartResolution,
+        barHigh: lastBar?.high == null ? '' : String(lastBar.high),
+        barLow: lastBar?.low == null ? '' : String(lastBar.low),
+        availableBars,
+        stopLossPrice: position.stopLoss == null ? '' : String(position.stopLoss),
+        takeProfitPrice: position.takeProfit == null ? '' : String(position.takeProfit),
+        sourceTradeId: position.id == null ? undefined : String(position.id),
+      }
+    }
+
+    return {
+      kind: 'cursor',
+      symbol,
+      side: 'long',
+      entryPrice: lastBar?.close == null ? '' : String(lastBar.close),
+      closePrice: '',
+      size: String(Math.max(1, Number(this.state.contractQuantity) || 1)),
+      pnl: '',
+      outcome: 'planned',
+      entryDateTime: cursorDateTime,
+      exitDateTime: '',
+      cursorDateTime,
+      chartResolution,
+      barHigh: lastBar?.high == null ? '' : String(lastBar.high),
+      barLow: lastBar?.low == null ? '' : String(lastBar.low),
+      availableBars,
+      stopLossPrice: '',
+      takeProfitPrice: '',
+    }
   }
 
   /**
@@ -907,7 +1031,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
       <div className="relative w-full h-full min-h-0">
         {wsState === 'connecting' && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/70">
-            <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDark ? 'border-violet-400' : 'border-violet-600'}`} />
+            <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDark ? 'border-blue-400' : 'border-blue-600'}`} />
             <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Connecting replay data…</p>
           </div>
         )}
@@ -1026,11 +1150,19 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
               />
             }
             headerConnectionAccessory={
-              <BacktesterWsStatusButton
-                isDark={isDark}
-                state={wsState}
-                onReconnect={this.reconnectWebSocket}
-              />
+              <div className="flex items-center gap-1">
+                <ReplayJournalCapture
+                  isDark={isDark}
+                  session={session}
+                  navigate={navigate}
+                  getSnapshot={this.buildReplayJournalSnapshot}
+                />
+                <BacktesterWsStatusButton
+                  isDark={isDark}
+                  state={wsState}
+                  onReconnect={this.reconnectWebSocket}
+                />
+              </div>
             }
           />
 

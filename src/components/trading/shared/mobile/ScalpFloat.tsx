@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { GripHorizontal, Minus, Plus } from 'lucide-react'
 import { resolveDomBidAsk, type TradeseaMarketBook } from '../../../../services/tradesea/tradeseaMarketBook'
 import type { TradePanelProps } from '../pad/TradePanel'
 import { isTradePanelTradingEnabled, TRADE_OFFLINE_DISABLED_CLASS } from '../../../../utils/tradePanelTrading'
@@ -16,6 +16,8 @@ export function ScalpFloat({
   maxQty,
   onDock,
   onDragStart,
+  onNudge,
+  dragging = false,
   dockTitle = 'Dock to chart',
 }: {
   chartSymbol: string
@@ -23,6 +25,8 @@ export function ScalpFloat({
   maxQty: number
   onDock: () => void
   onDragStart?: (clientX: number, clientY: number) => void
+  onNudge?: (deltaX: number, deltaY: number) => void
+  dragging?: boolean
   dockTitle?: string
 }) {
   const tradeDisabled = !isTradePanelTradingEnabled(props)
@@ -55,18 +59,39 @@ export function ScalpFloat({
 
   return (
     <div
-      className="pointer-events-auto select-none rounded-2xl border border-[#475569]/75 bg-[#0f172a]/88 p-3 shadow-2xl backdrop-blur-md w-[346px]"
-      style={{ touchAction: 'none' }}
+      className="pointer-events-auto w-full select-none rounded-2xl border border-[#475569]/75 bg-[#0f172a]/88 p-3 shadow-2xl backdrop-blur-md"
     >
       <div className="flex flex-col gap-2">
         <div
-          className="flex items-center justify-between gap-2 cursor-move"
-          onMouseDown={(e) => onDragStart?.(e.clientX, e.clientY)}
-          onTouchStart={(e) => {
-            const t = e.touches[0]
-            if (t) onDragStart?.(t.clientX, t.clientY)
+          role="button"
+          tabIndex={0}
+          aria-label="Move quick trade panel"
+          title="Drag quick trade anywhere"
+          className={`flex h-7 touch-none items-center justify-center gap-2 rounded-lg border border-[#334155]/70 bg-[#09090B]/60 text-[10px] font-medium uppercase tracking-[0.14em] text-[#7D8590] ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          onPointerDown={(event) => {
+            event.preventDefault()
+            onDragStart?.(event.clientX, event.clientY)
+          }}
+          onKeyDown={(event) => {
+            const distance = event.shiftKey ? 24 : 8
+            const delta = event.key === 'ArrowLeft'
+              ? [-distance, 0]
+              : event.key === 'ArrowRight'
+                ? [distance, 0]
+                : event.key === 'ArrowUp'
+                  ? [0, -distance]
+                  : event.key === 'ArrowDown'
+                    ? [0, distance]
+                    : null
+            if (!delta) return
+            event.preventDefault()
+            onNudge?.(delta[0], delta[1])
           }}
         >
+          <GripHorizontal className="h-4 w-4" aria-hidden />
+          Quick trade · drag anywhere
+        </div>
+        <div className="flex items-center justify-between gap-2">
           <PadTradeSymbolPicker props={props} disabled={tradeDisabled} />
           <button
             type="button"

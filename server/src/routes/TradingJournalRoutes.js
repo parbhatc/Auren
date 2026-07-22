@@ -16,6 +16,37 @@ class TradingJournalRoutes {
    * Setup all trading journal routes
    */
   setupRoutes() {
+    // ========== MANUAL JOURNAL ENTRIES ==========
+    this.router.post(
+      '/entries',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.createJournalEntry.bind(TradingJournalController)
+    )
+
+    this.router.get(
+      '/entries',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.getJournalEntries.bind(TradingJournalController)
+    )
+
+    this.router.get(
+      '/entries/:id',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.getJournalEntry.bind(TradingJournalController)
+    )
+
+    this.router.put(
+      '/entries/:id',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.updateJournalEntry.bind(TradingJournalController)
+    )
+
+    this.router.delete(
+      '/entries/:id',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.deleteJournalEntry.bind(TradingJournalController)
+    )
+
     // ========== TRADES ==========
     this.router.post(
       '/trades',

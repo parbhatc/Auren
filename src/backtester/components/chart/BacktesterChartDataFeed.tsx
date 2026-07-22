@@ -606,6 +606,28 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return this.getPlaybackAnchorSec()
   }
 
+  /** Loaded replay candles at the active resolution for journal evidence capture. */
+  getReplayBarsForSymbol(symbol: string, resolution: ResolutionString, limit = 5000): Bar[] {
+    const candidates = [
+      this.getCacheKey(symbol, resolution),
+      this.getCacheKey(this.normalizeSymbol(symbol), resolution),
+    ]
+    const anchor = this.getPlaybackAnchorSec()
+    for (const key of candidates) {
+      const bars = this.replayLtfBars.get(key)
+      if (!bars?.length) continue
+      return bars
+        .filter((bar) => anchor == null || this.normalizeBarTime(bar.time) <= anchor)
+        .slice(-Math.max(1, limit))
+    }
+    const last = this.getLastBarForSymbol(symbol)
+    return last ? [last] : []
+  }
+
+  getRecentReplayBars(symbol: string, resolution: ResolutionString, limit = 3): Bar[] {
+    return this.getReplayBarsForSymbol(symbol, resolution, limit)
+  }
+
   getPlaybackAnchorSecForResolution(resolution: ResolutionString): number | null {
     const anchorSec = this.getPlaybackAnchorSec()
     if (anchorSec == null) return null

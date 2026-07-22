@@ -128,7 +128,7 @@ class BacktesterTradeCache extends ChartTradeCache {
         // Notify handler that stats should be refreshed
         if (this.tradeHandler && (this.tradeHandler as any).onTradeSaved) {
           try {
-            (this.tradeHandler as any).onTradeSaved()
+            (this.tradeHandler as any).onTradeSaved(tradeData)
           } catch (callbackError) {
             // Ignore callback errors
           }

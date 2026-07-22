@@ -73,6 +73,7 @@ package-lock.json
 server/package-lock.json
 
 # Local dev / scratch tests (not for publish)
+HANDOFF.md
 test_*.mjs
 test_*.js
 test_*.cjs

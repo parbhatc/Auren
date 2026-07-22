@@ -326,6 +326,7 @@ export default function AurenChart(props: AurenChartProps) {
     if (!mount) return
 
     let cancelled = false
+    let compactToolbarObserver: MutationObserver | null = null
 
     if (!datafeedSource) return
 
@@ -334,6 +335,15 @@ export default function AurenChart(props: AurenChartProps) {
     const initialSymbol = resolveInitialSymbol(liveProps.symbol)
     const resolution = String(liveProps.timeframe || '1')
     const theme = liveProps.isDark === false ? 'light' : 'dark'
+
+    if (liveProps.compact) {
+      shell.querySelector('.tv-workspace')?.classList.add('tv-workspace--no-draw')
+      shell.querySelector('.tv-chart-bottom-bar')?.setAttribute('hidden', '')
+      shell.querySelector('.status-line')?.setAttribute('hidden', '')
+      purgeOrphanedBwcFloatingToolbars()
+      compactToolbarObserver = new MutationObserver(purgeOrphanedBwcFloatingToolbars)
+      compactToolbarObserver.observe(document.body, { childList: true, subtree: true })
+    }
 
     debugPracticeChartSymbol('AurenChart.init', { initialSymbol, resolution, practiceAccountId }, { force: true })
 
@@ -368,9 +378,13 @@ export default function AurenChart(props: AurenChartProps) {
           symbol: initialSymbol,
           resolution,
           theme,
-          drawings: true,
-          chrome: true,
+          drawings: liveProps.drawings !== false,
+          persistDrawings: liveProps.persistDrawings !== false,
+          chrome: liveProps.chrome !== false,
           replay: false,
+          contextMenuHiddenActions: liveProps.compact
+            ? ['remove-drawings', 'remove-indicators', 'settings']
+            : [],
           datafeed,
           orderLineTheme: CHART_ORDER_LINE_THEME,
           onSymbolChange: notifySymbolChange,
@@ -382,6 +396,7 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         widgetRef.current = widget
+        await propsRef.current.onWidgetReady?.(widget)
 
         if (chartReloadPendingRef.current || mdsNeedsHistoryReloadRef.current) {
           void runChartReloadRef.current?.()
@@ -423,6 +438,7 @@ export default function AurenChart(props: AurenChartProps) {
 
     return () => {
       cancelled = true
+      compactToolbarObserver?.disconnect()
       clearChartContextActions()
       bindBwcTradeContextHooks({
         registerTradeContextActions: () => {},

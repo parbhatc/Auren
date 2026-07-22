@@ -230,6 +230,21 @@ export type BwcWidget = {
   toolbar?: import('./bwcToolbarApi').BwcToolbarApi
   getSymbolInfo?: () => Record<string, unknown> | null | undefined
   getBars?: () => Array<{ close?: number; open?: number }>
+  settings?: {
+    merge?: (patch: Record<string, Record<string, unknown>>, opts?: { skipHistory?: boolean }) => void
+  }
+  drawShape?: (
+    shape: string,
+    points: Array<{ time: number; price: number }>,
+    opts?: { paneIndex?: number; locked?: boolean; props?: Record<string, unknown> }
+  ) => unknown
+  getAllChartPanes?: () => Array<{
+    chart?: { timeScale?: () => { setVisibleRange?: (range: { from: number; to: number }) => void } }
+    series?: {
+      applyOptions?: (options: Record<string, unknown>) => void
+      priceScale?: () => { applyOptions?: (options: Record<string, unknown>) => void }
+    }
+  }>
   positionOverlay?: {
     buy: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
     sell: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
