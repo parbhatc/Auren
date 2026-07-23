@@ -3,7 +3,11 @@
  * Speaks the MDS wire protocol on /tradesea-mds-ws; backend translates to Tradesea.
  */
 import { getAuthToken, getWebSocketUrl } from '../../api/api'
-import { dismissMdsConnectionToast, showMdsConnectionToast } from './mdsConnectionToast'
+import {
+  dismissMdsConnectionToast,
+  isMdsConnectionToastActive,
+  showMdsConnectionToast,
+} from './mdsConnectionToast'
 import {
   encodeMdsSubscribe,
   encodeMdsUnsubscribe,
@@ -647,7 +651,9 @@ export class TradeseaMdsClient {
     this.logWs('Connecting…', {
       accountId: accountId.slice(0, 12) + '…',
     })
-    showMdsConnectionToast(this.reconnecting ? 'reconnecting' : 'connecting')
+    // Opening Trade or Practice performs a routine initial connection. Keep that
+    // quiet; reconnect paths already create a persistent recovery toast.
+    if (this.reconnecting) showMdsConnectionToast('reconnecting')
 
     const token = getAuthToken()
     if (!token) {
@@ -674,7 +680,9 @@ export class TradeseaMdsClient {
       this.startPing(ws)
       this.setConnectionState('connected')
       this.logWs('Connected')
-      showMdsConnectionToast('connected')
+      // Only announce recovery when a reconnect/disconnect notice is active.
+      // A normal first connection should not toast on every page visit.
+      if (isMdsConnectionToastActive()) showMdsConnectionToast('connected')
       this.emit('open', undefined as MdsEventMap['open'])
       setTimeout(() => {
         if (this.ws !== ws) return

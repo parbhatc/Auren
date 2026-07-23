@@ -6,7 +6,6 @@ import {
   BookOpen,
   CandlestickChart,
   ChevronDown,
-  Download,
   Activity,
   Menu,
   Moon,
@@ -72,11 +71,6 @@ const UNITS: { id: DisplayUnit; label: string; compact: string }[] = [
   { id: 'percent', label: '% Return', compact: '%' },
 ]
 
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
-
 function accountLabel(account: PracticeAccount): string {
   return getPracticeAccountDisplayTitle(account)
 }
@@ -105,7 +99,6 @@ export default function ProductHeader({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('auren-sidebar-collapsed') === '1')
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
   const [activeId, setActiveId] = useState(() => {
     try {
       return localStorage.getItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID) || getPracticeAccounts()[0]?.id || ''
@@ -131,15 +124,6 @@ export default function ProductHeader({
     localStorage.setItem('auren-sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
 
-  useEffect(() => {
-    const onPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as InstallPromptEvent)
-    }
-    window.addEventListener('beforeinstallprompt', onPrompt)
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
-  }, [])
-
   const activeAccount = useMemo(
     () => accounts.find((account) => account.id === activeId) ?? accounts[0],
     [accounts, activeId]
@@ -158,13 +142,6 @@ export default function ProductHeader({
   const selectRoute = (path: string) => {
     setSidebarOpen(false)
     navigate(path)
-  }
-
-  const installApp = async () => {
-    if (!installPrompt) return
-    await installPrompt.prompt()
-    await installPrompt.userChoice
-    setInstallPrompt(null)
   }
 
   const sidebar = (
@@ -266,18 +243,6 @@ export default function ProductHeader({
           <Wifi className="h-[18px] w-[18px] shrink-0 text-emerald-500" strokeWidth={1.75} aria-hidden />
           <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>Tradesea connected</span>
         </div>
-        <button
-          type="button"
-          onClick={() => void installApp()}
-          disabled={!installPrompt}
-          title={installPrompt ? 'Install Auren' : 'Install from your browser menu'}
-          className={`flex h-10 w-full items-center rounded-md px-3 text-sm font-medium disabled:opacity-50 ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
-            isDark ? 'text-[#A1A1AA] hover:bg-[#18181B]' : 'text-[#52525B] hover:bg-[#F4F4F5]'
-          }`}
-        >
-          <Download className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
-          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>Install Auren</span>
-        </button>
         <button
           type="button"
           onClick={toggleTheme}

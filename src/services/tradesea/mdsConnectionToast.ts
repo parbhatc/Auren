@@ -50,3 +50,7 @@ export function showMdsConnectionToast(
 export function dismissMdsConnectionToast(): void {
   toast.dismiss(TOAST_ID)
 }
+
+export function isMdsConnectionToastActive(): boolean {
+  return toast.isActive(TOAST_ID)
+}

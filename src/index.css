@@ -74,6 +74,13 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Remove Safari's delayed/double-tap activation path from app controls. */
+button {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 input,
 select,
 textarea {
@@ -746,6 +753,12 @@ html.dark body {
 }
 .group\/dom-row:hover .trade-btn--compact:not(:disabled) {
   opacity: 1;
+}
+@media (hover: none), (pointer: coarse) {
+  /* Touch devices have no reliable hover reveal; keep DOM actions tappable. */
+  .trade-btn--compact:not(:disabled) {
+    opacity: 1;
+  }
 }
 .trade-btn--buy.trade-btn--compact {
   background-color: #238636;
