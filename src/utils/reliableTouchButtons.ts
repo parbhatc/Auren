@@ -9,6 +9,7 @@ const TAP_MAX_DRIFT_PX = 14
 const DUPLICATE_CLICK_WINDOW_MS = 700
 
 const CHART_TOUCH_BUTTON_SELECTOR = [
+  '.tv-toolbar button',
   '.drawing-toolbar button',
   '.tv-chart-bottom-bar button',
   '.tv-floating-toolbar button',
@@ -35,7 +36,7 @@ function reliableButtonFromTarget(target: EventTarget | null): HTMLButtonElement
   if (button.closest('.tv-symbol, .tv-tf')) return null
 
   // React-owned controls are outside `.tv-app`. Within the chart, limit the
-  // bridge to the click-only drawing and bottom-toolbar controls.
+  // bridge to click-only header, drawing, and bottom-toolbar controls.
   if (!button.closest('.tv-app') || button.matches(CHART_TOUCH_BUTTON_SELECTOR)) {
     return button
   }
