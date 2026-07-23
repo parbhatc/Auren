@@ -52,6 +52,7 @@ type Props = {
   session: BacktestSession
   navigate: (path: string) => void
   getSnapshot: (preferExecution: boolean) => ReplayJournalSnapshot
+  openRequest?: number
 }
 
 type ReplayJournalDraft = {
@@ -657,7 +658,7 @@ function RiskEditor({ label, value, onChange, inputClass }: { label: string; val
   return <div className="grid gap-2 sm:grid-cols-4"><FieldShell label={`${label} type`}><select aria-label={`${label} type`} value={value.mode} onChange={(event) => onChange({ ...value, mode: event.target.value as JournalRiskMode })} className={`${inputClass} mt-1 w-full`}>{modes.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></FieldShell>{value.mode !== 'none' && <><FieldShell label={value.mode === 'fixed' ? 'Price' : value.mode === 'strict_r' ? 'R multiple' : 'Rule / trigger'}><input aria-label={`${label} value`} inputMode={value.mode === 'fixed' || value.mode === 'strict_r' ? 'decimal' : 'text'} value={value.mode === 'fixed' ? value.price || '' : value.value || ''} onChange={(event) => onChange(value.mode === 'fixed' ? { ...value, price: event.target.value } : { ...value, value: event.target.value })} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Basis"><input aria-label={`${label} basis`} placeholder="FVG, swing, range…" value={value.basis || ''} onChange={(event) => onChange({ ...value, basis: event.target.value })} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Timeframe"><select aria-label={`${label} timeframe`} value={value.timeframe || ''} onChange={(event) => onChange({ ...value, timeframe: event.target.value })} className={`${inputClass} mt-1 w-full`}><option value="">Any</option>{TIMEFRAMES.map((tf) => <option key={tf}>{tf}</option>)}</select></FieldShell></>}</div>
 }
 
-export default function ReplayJournalCapture({ isDark, session, navigate, getSnapshot }: Props) {
+export default function ReplayJournalCapture({ isDark, session, navigate, getSnapshot, openRequest = 0 }: Props) {
   const draftKey = `auren:replay-journal-draft:${session.id}`
   const [enabled, setEnabled] = useState(isReplayJournalEnabled)
   const [open, setOpen] = useState(false)
@@ -727,6 +728,11 @@ export default function ReplayJournalCapture({ isDark, session, navigate, getSna
       setError(loadError instanceof Error ? loadError.message : 'Could not load playbooks')
     }
   }
+
+  useEffect(() => {
+    if (!openRequest || !enabled || open) return
+    void openCapture()
+  }, [openRequest])
 
   const save = async () => {
     if (!snapshot || !selectedStrategy) {

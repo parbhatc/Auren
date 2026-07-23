@@ -29,6 +29,10 @@ import Logo from '../../common/Logo'
 import { HeaderThemeButton } from '../../trading/shared/header/HeaderThemeButton'
 import { ArrowLeft, LogOut } from 'lucide-react'
 import ReplayJournalCapture, { type ReplayJournalSnapshot } from './ReplayJournalCapture'
+import {
+  getActiveShortcut,
+  getShortcutsWithCustomizations,
+} from '../../../utils/keyboardShortcutsStorage'
 
 const BACKTESTER_MAX_QTY = 100
 
@@ -61,6 +65,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     realizedPnL: 0,
     unrealizedPnL: 0,
     showKeyboardShortcutsHelp: false,
+    journalOpenRequest: 0,
   }
 
   componentDidMount() {
@@ -487,6 +492,24 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     const { session } = this.props
     const { contractQuantity } = this.state
 
+    const journalShortcut = getShortcutsWithCustomizations()
+      .flatMap((category) => category.shortcuts)
+      .find((shortcut) => shortcut.id === 'open-journal')
+    if (journalShortcut?.enabled !== false) {
+      const active = getActiveShortcut(journalShortcut)
+      const matchesJournalShortcut =
+        active.key.toLowerCase() === event.key.toLowerCase() &&
+        !!active.ctrl === event.ctrlKey &&
+        !!active.shift === event.shiftKey &&
+        !!active.alt === event.altKey &&
+        !!active.meta === event.metaKey
+      if (matchesJournalShortcut) {
+        event.preventDefault()
+        this.setState({ journalOpenRequest: this.state.journalOpenRequest + 1 })
+        return
+      }
+    }
+
     switch (event.key.toLowerCase()) {
       case ' ': // Space - Play/Pause
         event.preventDefault()
@@ -644,6 +667,10 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
         key: '?',
         shift: true,
         description: 'Help: Show Keyboard Shortcuts',
+      },
+      {
+        key: 'J',
+        description: 'Navigation: Open Replay Journal',
       },
     ]
   }
@@ -1156,6 +1183,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
                   session={session}
                   navigate={navigate}
                   getSnapshot={this.buildReplayJournalSnapshot}
+                  openRequest={this.state.journalOpenRequest}
                 />
                 <BacktesterWsStatusButton
                   isDark={isDark}

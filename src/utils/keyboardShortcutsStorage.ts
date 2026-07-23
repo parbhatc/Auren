@@ -116,6 +116,13 @@ export const DEFAULT_SHORTCUTS: ShortcutCategory[] = [
         enabled: true,
       },
       {
+        id: 'open-journal',
+        category: 'navigation',
+        description: 'Open Replay Journal',
+        defaultKey: 'j',
+        enabled: true,
+      },
+      {
         id: 'create-session',
         category: 'navigation',
         description: 'Create New Session',
