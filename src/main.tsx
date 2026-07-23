@@ -9,10 +9,12 @@ import { registerCandleDebugGlobals } from './services/debug/candleDebugCapture'
 import { registerConsoleCaptureGlobals } from './services/debug/consoleLogCapture'
 import { installBwcTouchScrollLockIntercept } from './utils/bwcTouchScrollLock'
 import { retireLegacyPwaCaches } from './utils/pwa'
+import { installReliableTouchButtons } from './utils/reliableTouchButtons'
 
 registerCandleDebugGlobals()
 registerConsoleCaptureGlobals()
 installBwcTouchScrollLockIntercept()
+installReliableTouchButtons()
 void retireLegacyPwaCaches()
 
 /** Suppress noisy unhandled rejections from browser extensions (not from app code). */
