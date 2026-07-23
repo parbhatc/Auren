@@ -5,9 +5,7 @@ import type { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClien
 import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
 import {
   readMdsAutoReconnect,
-  readMdsReconnectOnLimit,
   writeMdsAutoReconnect,
-  writeMdsReconnectOnLimit,
 } from '../../services/tradesea/mdsReconnectPrefs'
 
 type MdsNetworkStatusButtonProps = {
@@ -44,41 +42,30 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
   const [state, setState] = useState<MdsConnectionState>(() => mds?.getConnectionState() ?? 'disconnected')
   const [menuOpen, setMenuOpen] = useState(false)
   const [autoReconnect, setAutoReconnect] = useState(() => mds?.isAutoReconnectEnabled() ?? true)
-  const [reconnectOnLimit, setReconnectOnLimit] = useState(
-    () => mds?.isReconnectOnLimitEnabled() ?? false
-  )
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!mds) {
       setState('disconnected')
       setAutoReconnect(true)
-      setReconnectOnLimit(false)
       return
     }
     setState(mds.getConnectionState())
     const storedAuto = readMdsAutoReconnect()
-    const storedLimit = readMdsReconnectOnLimit()
     if (mds.isAutoReconnectEnabled() !== storedAuto) {
       mds.setAutoReconnectEnabled(storedAuto)
     }
-    if (mds.isReconnectOnLimitEnabled() !== storedLimit) {
-      mds.setReconnectOnLimitEnabled(storedLimit)
-    }
     setAutoReconnect(mds.isAutoReconnectEnabled())
-    setReconnectOnLimit(mds.isReconnectOnLimitEnabled())
     const statusMds = asMdsStatusClient(mds as MdsStatusClient)
     const offConnection = statusMds.on('connection', (s) => setState(s))
     const offOpen = statusMds.on('open', () => setState(mds.getConnectionState()))
     const offClose = statusMds.on('close', () => setState('disconnected'))
     const offAuto = statusMds.on('autoReconnect', (enabled) => setAutoReconnect(enabled))
-    const offLimit = statusMds.on('reconnectOnLimit', (enabled) => setReconnectOnLimit(enabled))
     return () => {
       offConnection()
       offOpen()
       offClose()
       offAuto()
-      offLimit()
     }
   }, [mds])
 
@@ -121,13 +108,6 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
     mds?.setAutoReconnectEnabled(next)
     setAutoReconnect(next)
   }, [autoReconnect, mds])
-
-  const toggleReconnectOnLimit = useCallback(() => {
-    const next = !reconnectOnLimit
-    writeMdsReconnectOnLimit(next)
-    mds?.setReconnectOnLimitEnabled(next)
-    setReconnectOnLimit(next)
-  }, [mds, reconnectOnLimit])
 
   const title = connected
     ? 'Market data connected. Stream options.'
@@ -215,7 +195,7 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
                 <p className="text-[10px] text-[#7d8590] leading-snug">
                   {autoReconnect
                     ? 'Retries after unexpected drops'
-                    : 'Manual refresh only (no limit retries)'}
+                    : 'Manual refresh only'}
                 </p>
               </div>
               <button
@@ -237,40 +217,10 @@ export function MdsNetworkStatusButton({ mds, onReconnect, className = '' }: Mds
               </button>
             </div>
 
-            <div
-              role="menuitem"
-              className="flex items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 hover:bg-[#1e293b]"
-            >
-              <div className="min-w-0 pr-1">
-                <p className="text-sm font-medium text-[#e6edf3]">Connect on limit</p>
-                <p className="text-[10px] text-[#7d8590] leading-snug">
-                  {reconnectOnLimit
-                    ? 'Retries until a connection slot is free (requires auto-reconnect)'
-                    : 'Off — limit closes stay offline'}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={reconnectOnLimit}
-                onClick={toggleReconnectOnLimit}
-                className={`relative h-6 w-11 shrink-0 rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3b82f6]/50 ${
-                  reconnectOnLimit
-                    ? 'border-[#3b82f6]/60 bg-[#3b82f6]'
-                    : 'border-[#475569] bg-[#334155]'
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${
-                    reconnectOnLimit ? 'left-[1.35rem]' : 'left-0.5'
-                  }`}
-                />
-              </button>
-            </div>
           </div>
 
           <p className="border-t border-[#334155] px-3 py-2 text-[9px] leading-snug text-[#64748b]">
-            Close extra Tradesea / Auren tabs if you hit connection limits.
+            Connection-limit disconnects stay offline until you refresh manually.
           </p>
         </div>
       )}

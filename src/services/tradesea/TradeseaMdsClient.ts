@@ -19,9 +19,7 @@ import {
 } from '../mds/mdsWire'
 import {
   readMdsAutoReconnect,
-  readMdsReconnectOnLimit,
   writeMdsAutoReconnect,
-  writeMdsReconnectOnLimit,
 } from './mdsReconnectPrefs'
 import { resolveMdsSubscribeTicker } from './tradeseaMdsSymbols'
 import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
@@ -59,7 +57,6 @@ type MdsEventMap = {
   message: TradeseaMdsMessage
   connection: MdsConnectionState
   autoReconnect: boolean
-  reconnectOnLimit: boolean
   connectionsLimitBlocked: void
   open: void
   resubscribed: void
@@ -90,7 +87,8 @@ export class TradeseaMdsClient {
   private pingSocket: WebSocket | null = null
   private loggedMdsErrors = new Set<string>()
   private autoReconnectEnabled = readMdsAutoReconnect()
-  private reconnectOnLimitEnabled = readMdsReconnectOnLimit()
+  /** A connection-limit close is terminal until manual refresh or account switch. */
+  private connectionLimitBlocked = false
   private manualDisconnect = false
   /** Suppresses one onclose auto-reconnect when replacing the active socket. */
   private suppressAutoReconnectOnce = false
@@ -104,20 +102,8 @@ export class TradeseaMdsClient {
   private reconnecting = false
   private suspended = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  /** Separate from reconnectTimer so a new connect() does not cancel limit retries. */
-  private limitReconnectTimer: ReturnType<typeof setTimeout> | null = null
-  /** Timestamps of limit-driven reconnect attempts (sliding 1-minute window). */
-  private limitReconnectAttempts: number[] = []
-  private limitReconnectStopped = false
-  private static readonly LIMIT_RECONNECT_MAX_PER_MINUTE = 10
-  private static readonly LIMIT_RECONNECT_WINDOW_MS = 60_000
   private static readonly CLOSE_GRACE_MS = 2_000
   private static readonly RESUME_DELAY_MS = 2_500
-  private static readonly LIMIT_RECONNECT_MS = 1_000
-  private static readonly LIMIT_RECONNECT_MAX_MS = 45_000
-  private limitReconnectBackoffMs = 1_000
-  /** Extra grace when replacing socket after connection-limit close. */
-  private static readonly LIMIT_CLOSE_GRACE_MS = 1_000
   private static readonly DROP_RECONNECT_MS = 4_000
   private static readonly PING_INTERVAL_MS = 5_000
   /** Wait for proxy/upstream to settle before subscribe burst (Tradesea worker pattern). */
@@ -278,7 +264,14 @@ export class TradeseaMdsClient {
   private handleForegroundResume(): void {
     if (this.suspended) this.suspended = false
     this.syncPrefsFromStorage()
-    if (!this.autoReconnectEnabled || !this.lastAccountId || !this.lastConnectionGroupId) return
+    if (
+      this.connectionLimitBlocked ||
+      !this.autoReconnectEnabled ||
+      !this.lastAccountId ||
+      !this.lastConnectionGroupId
+    ) {
+      return
+    }
 
     const hiddenMs = this.pageHiddenAt ? Date.now() - this.pageHiddenAt : 0
     this.pageHiddenAt = null
@@ -321,48 +314,8 @@ export class TradeseaMdsClient {
     writeMdsAutoReconnect(enabled)
     if (!enabled) {
       this.clearReconnectTimer()
-      this.clearLimitReconnectTimer()
-      if (this.reconnectOnLimitEnabled) {
-        this.reconnectOnLimitEnabled = false
-        writeMdsReconnectOnLimit(false)
-        this.emit('reconnectOnLimit', false)
-      }
     }
     this.emit('autoReconnect', enabled)
-    if (
-      enabled &&
-      this.reconnectOnLimitEnabled &&
-      !this.isConnectedOrConnecting() &&
-      this.lastAccountId &&
-      this.lastConnectionGroupId &&
-      !this.suspended
-    ) {
-      this.scheduleLimitReconnect()
-    }
-  }
-
-  isReconnectOnLimitEnabled(): boolean {
-    return this.reconnectOnLimitEnabled
-  }
-
-  setReconnectOnLimitEnabled(enabled: boolean): void {
-    if (this.reconnectOnLimitEnabled === enabled) return
-    this.reconnectOnLimitEnabled = enabled
-    writeMdsReconnectOnLimit(enabled)
-    this.emit('reconnectOnLimit', enabled)
-    if (!enabled) {
-      this.clearLimitReconnectTimer()
-      return
-    }
-    if (
-      this.autoReconnectEnabled &&
-      !this.isConnectedOrConnecting() &&
-      this.lastAccountId &&
-      this.lastConnectionGroupId &&
-      !this.suspended
-    ) {
-      this.scheduleLimitReconnect()
-    }
   }
 
   /** True when ltp + bid/ask + quotes + ttv (and depth when entitled) are on the wire for `symbol`. */
@@ -402,9 +355,8 @@ export class TradeseaMdsClient {
   /** Re-open MDS after upstream has time to release the previous socket. */
   reconnect(): void {
     this.suspended = false
-    this.resetLimitReconnectBudget()
+    this.connectionLimitBlocked = false
     this.clearAllReconnectTimers()
-    this.limitReconnectBackoffMs = TradeseaMdsClient.LIMIT_RECONNECT_MS
     this.logWs('Reconnecting…')
     showMdsConnectionToast('reconnecting')
     void this.reconnectInternal(TradeseaMdsClient.CLOSE_GRACE_MS)
@@ -412,7 +364,6 @@ export class TradeseaMdsClient {
 
   private syncPrefsFromStorage(): void {
     this.autoReconnectEnabled = readMdsAutoReconnect()
-    this.reconnectOnLimitEnabled = readMdsReconnectOnLimit()
   }
 
   private clearReconnectTimer(): void {
@@ -422,16 +373,8 @@ export class TradeseaMdsClient {
     }
   }
 
-  private clearLimitReconnectTimer(): void {
-    if (this.limitReconnectTimer) {
-      clearTimeout(this.limitReconnectTimer)
-      this.limitReconnectTimer = null
-    }
-  }
-
   private clearAllReconnectTimers(): void {
     this.clearReconnectTimer()
-    this.clearLimitReconnectTimer()
   }
 
   private static isConnectionsLimitClose(code: number, reason: string): boolean {
@@ -445,6 +388,7 @@ export class TradeseaMdsClient {
     this.clearReconnectTimer()
     if (
       !this.autoReconnectEnabled ||
+      this.connectionLimitBlocked ||
       !this.lastAccountId ||
       !this.lastConnectionGroupId ||
       this.suspended
@@ -459,104 +403,6 @@ export class TradeseaMdsClient {
         return
       }
       this.connect(this.lastAccountId!, this.lastConnectionGroupId!, this.bootstrap ?? undefined)
-    }, delayMs)
-  }
-
-  private shouldRetryAfterLimitClose(): boolean {
-    this.syncPrefsFromStorage()
-    return (
-      Boolean(this.lastAccountId && this.lastConnectionGroupId) &&
-      !this.suspended &&
-      !this.limitReconnectStopped &&
-      this.autoReconnectEnabled &&
-      this.reconnectOnLimitEnabled
-    )
-  }
-
-  private pruneLimitReconnectAttempts(now = Date.now()): void {
-    const cutoff = now - TradeseaMdsClient.LIMIT_RECONNECT_WINDOW_MS
-    this.limitReconnectAttempts = this.limitReconnectAttempts.filter((t) => t > cutoff)
-  }
-
-  private limitReconnectBudgetExceeded(): boolean {
-    this.pruneLimitReconnectAttempts()
-    return this.limitReconnectAttempts.length >= TradeseaMdsClient.LIMIT_RECONNECT_MAX_PER_MINUTE
-  }
-
-  private recordLimitReconnectAttempt(): void {
-    this.pruneLimitReconnectAttempts()
-    this.limitReconnectAttempts.push(Date.now())
-  }
-
-  private resetLimitReconnectBudget(): void {
-    this.limitReconnectAttempts = []
-    this.limitReconnectStopped = false
-  }
-
-  private cancelLimitReconnectLoop(): void {
-    this.limitReconnectStopped = true
-    this.clearLimitReconnectTimer()
-    this.logWs('Connection limit — stopped auto-reconnect', {
-      attempts: this.limitReconnectAttempts.length,
-      windowSec: TradeseaMdsClient.LIMIT_RECONNECT_WINDOW_MS / 1000,
-    })
-    console.warn(
-      '[Tradesea MDS] Stopped auto-reconnect after 10 attempts in 1 minute. Close other Tradesea/Auren tabs, then use Refresh stream.'
-    )
-    showMdsConnectionToast('limit')
-  }
-
-  /** Wait for upstream to release the slot, then full reconnect (close grace + new socket). */
-  private scheduleLimitReconnect(): void {
-    this.clearLimitReconnectTimer()
-    if (this.limitReconnectBudgetExceeded()) {
-      this.cancelLimitReconnectLoop()
-      return
-    }
-    if (!this.shouldRetryAfterLimitClose()) {
-      this.logWs('Connection limit — reconnect skipped', {
-        hasSession: Boolean(this.lastAccountId && this.lastConnectionGroupId),
-        suspended: this.suspended,
-        autoReconnect: this.autoReconnectEnabled,
-        reconnectOnLimit: this.reconnectOnLimitEnabled,
-      })
-      return
-    }
-    const delayMs = this.limitReconnectBackoffMs
-    this.logWs('Connection limit — scheduling reconnect', { delayMs })
-    this.limitReconnectTimer = setTimeout(() => {
-      this.limitReconnectTimer = null
-      if (!this.shouldRetryAfterLimitClose()) {
-        this.logWs('Connection limit — reconnect aborted (prefs/session changed)', {})
-        return
-      }
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.limitReconnectBackoffMs = TradeseaMdsClient.LIMIT_RECONNECT_MS
-        return
-      }
-      if (this.ws?.readyState === WebSocket.CONNECTING) {
-        this.scheduleLimitReconnect()
-        return
-      }
-      if (this.limitReconnectBudgetExceeded()) {
-        this.cancelLimitReconnectLoop()
-        return
-      }
-      this.recordLimitReconnectAttempt()
-      this.logWs('Reconnecting (connection limit)…', { delayMs })
-      showMdsConnectionToast('reconnecting')
-      void this.reconnectInternal(TradeseaMdsClient.LIMIT_CLOSE_GRACE_MS).then(() => {
-        if (!this.shouldRetryAfterLimitClose()) return
-        if (this.getConnectionState() === 'connected') {
-          this.limitReconnectBackoffMs = TradeseaMdsClient.LIMIT_RECONNECT_MS
-          return
-        }
-        this.limitReconnectBackoffMs = Math.min(
-          Math.round(this.limitReconnectBackoffMs * 1.4),
-          TradeseaMdsClient.LIMIT_RECONNECT_MAX_MS
-        )
-        this.scheduleLimitReconnect()
-      })
     }, delayMs)
   }
 
@@ -584,8 +430,7 @@ export class TradeseaMdsClient {
       return
     }
     if (this.reconnecting) {
-      this.logWs('Reconnect deferred — already in progress', {})
-      this.scheduleLimitReconnect()
+      this.logWs('Reconnect skipped — already in progress', {})
       return
     }
     this.reconnecting = true
@@ -632,6 +477,15 @@ export class TradeseaMdsClient {
       this.bootstrap = bootstrap
     }
     const sessionKey = `${accountId}:${connectionGroupId}`
+    const switchingSession =
+      Boolean(this.lastAccountId && this.lastConnectionGroupId) &&
+      (this.lastAccountId !== accountId || this.lastConnectionGroupId !== connectionGroupId)
+    if (switchingSession) this.connectionLimitBlocked = false
+    if (this.connectionLimitBlocked) {
+      this.logWs('Connect skipped — connection limit requires manual refresh', {})
+      this.setConnectionState('disconnected')
+      return
+    }
     if (this.ws) {
       const state = this.ws.readyState
       if (this.sessionKey === sessionKey && (state === WebSocket.OPEN || state === WebSocket.CONNECTING)) {
@@ -674,9 +528,6 @@ export class TradeseaMdsClient {
     ws.onopen = () => {
       if (this.ws !== ws) return
       this.touchWireActivity()
-      this.clearLimitReconnectTimer()
-      this.resetLimitReconnectBudget()
-      this.limitReconnectBackoffMs = TradeseaMdsClient.LIMIT_RECONNECT_MS
       this.startPing(ws)
       this.setConnectionState('connected')
       this.logWs('Connected')
@@ -774,25 +625,11 @@ export class TradeseaMdsClient {
       }
 
       if (limitExceeded && !this.suspended) {
-        this.syncPrefsFromStorage()
-        if (!this.autoReconnectEnabled || !this.reconnectOnLimitEnabled) {
-          this.logWs('Connection limit — reconnect disabled by prefs', {
-            autoReconnect: this.autoReconnectEnabled,
-            reconnectOnLimit: this.reconnectOnLimitEnabled,
-          })
-          dismissMdsConnectionToast()
-          this.emit('connectionsLimitBlocked', undefined as MdsEventMap['connectionsLimitBlocked'])
-          return
-        }
-        showMdsConnectionToast('limit')
-        if (this.limitReconnectStopped || this.limitReconnectBudgetExceeded()) {
-          this.cancelLimitReconnectLoop()
-          return
-        }
-        console.warn(
-          '[Tradesea MDS] Connection limit exceeded — retrying (Connect on limit). Close other Tradesea/Auren tabs on this account.'
-        )
-        this.scheduleLimitReconnect()
+        this.connectionLimitBlocked = true
+        this.clearReconnectTimer()
+        dismissMdsConnectionToast()
+        this.logWs('Connection limit — staying offline until manual refresh', {})
+        this.emit('connectionsLimitBlocked', undefined as MdsEventMap['connectionsLimitBlocked'])
         return
       }
 
