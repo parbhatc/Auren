@@ -107,10 +107,13 @@ class TradeseaMdsWebSocket extends WebSocketBase {
     }
 
     const pending = []
+    let upstreamReadyForTraffic = false
 
     upstream.on('open', () => {
       console.log('[TradeseaMds] upstream connected for account', accountId)
       const flushPending = () => {
+        if (clientClosed || upstream.readyState !== WebSocket.OPEN) return
+        upstreamReadyForTraffic = true
         for (const msg of pending) {
           try {
             upstream.send(msg)
@@ -196,7 +199,11 @@ class TradeseaMdsWebSocket extends WebSocketBase {
         return
       }
 
-      if (upstream.readyState === WebSocket.OPEN) {
+      // Tradesea's socket can report OPEN before its subscription session is
+      // ready. Keep every control frame ordered behind the settle delay;
+      // otherwise a fast foreground reconnect can silently lose the final
+      // candle/book subscribe frames while HTTP history still succeeds.
+      if (upstream.readyState === WebSocket.OPEN && upstreamReadyForTraffic) {
         try {
           const out = translateClientToUpstream(raw, isBinary)
           if (out != null) upstream.send(out, { binary: isBinary && typeof out !== 'string' })

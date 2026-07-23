@@ -280,6 +280,10 @@ export default function AurenChart(props: AurenChartProps) {
         await widget.reset({ data: true })
         candleDebug.chartReloadDone()
         mdsNeedsHistoryReloadRef.current = false
+        // widget.reset replaces the candle listener after the reconnect's
+        // first resubscribe burst. Reassert the resulting final registry so a
+        // foreground resume cannot restore history but leave live data silent.
+        mds.resendAllSubscriptions()
       } catch (err) {
         console.warn('[AurenChart] MDS reconnect chart reload failed:', err)
         chartReloadPendingRef.current = true
@@ -301,6 +305,21 @@ export default function AurenChart(props: AurenChartProps) {
       reloadTimer = null
     })
 
+    // A forced foreground reconnect detaches its old socket deliberately and
+    // therefore may not produce a native close event. The connection state
+    // transition still marks the chart for a data reset on the new socket.
+    let hasConnected = mds.getConnectionState() === 'connected'
+    const offConnection = mds.on('connection', (state) => {
+      if (state === 'connected') {
+        hasConnected = true
+        return
+      }
+      if (!hasConnected) return
+      mdsNeedsHistoryReloadRef.current = true
+      if (reloadTimer) clearTimeout(reloadTimer)
+      reloadTimer = null
+    })
+
     const offResubscribed = mds.on('resubscribed', () => {
       if (!mdsNeedsHistoryReloadRef.current) return
       scheduleChartReload()
@@ -308,6 +327,7 @@ export default function AurenChart(props: AurenChartProps) {
 
     return () => {
       offClose()
+      offConnection()
       offResubscribed()
       runChartReloadRef.current = null
       if (reloadTimer) clearTimeout(reloadTimer)

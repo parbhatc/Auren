@@ -900,6 +900,16 @@ export class TradeseaMdsClient {
     if (payload) this.sendWire(payload, true)
   }
 
+  /**
+   * Reassert the final local subscription registry after a chart data reset.
+   * This is intentionally subscribe-only because a fresh upstream socket has
+   * no subscription state to clean up.
+   */
+  resendAllSubscriptions(): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.resubscribeAll()
+  }
+
   /** Drop bootstrap subs in memory only (socket is closing or fresh upstream). */
   private dropBootstrapSubsLocal(): void {
     for (const id of this.bootstrapSubIds) {
