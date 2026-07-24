@@ -974,8 +974,8 @@ export class TradeseaPropFirm extends PropFirmBase {
     const tradeseaSvc = this.chartServices as TradeseaChartServices | undefined
     const useDelayedMd = tradeseaSvc ? shouldUseDelayedMdsSymbols(tradeseaSvc.streamConfig) : false
     const stream =
-      df?.resolveStreamInstrument?.(`CME:${root}`) ??
-      resolveMdsSubscribeTicker(`CME:${root}`, useDelayedMd)
+      df?.resolveStreamInstrument?.(root) ??
+      resolveMdsSubscribeTicker(root, useDelayedMd)
 
     if (this.practiceMode) {
       this.chartSymbolSyncedFromTv = true
@@ -997,25 +997,29 @@ export class TradeseaPropFirm extends PropFirmBase {
   }
 
   private applyMdsBootstrapForChartSymbol(): void {
-    const bootstrapKey = `${this.chartSymbol}__${this.chartResolution}`
     if (
       !this.chartServices ||
       !('mds' in this.chartServices) ||
-      !this.chartServices.mds ||
-      bootstrapKey === this.lastBootstrapKey
+      !this.chartServices.mds
     ) {
       return
     }
-    this.lastBootstrapKey = bootstrapKey
     const tradeseaSvc = this.chartServices as TradeseaChartServices
     const useDelayedMd = shouldUseDelayedMdsSymbols(tradeseaSvc.streamConfig)
-    const ticker = resolveMdsSubscribeTicker(this.chartSymbol, useDelayedMd)
+    const resolvedStream = tradeseaSvc.datafeed.resolveStreamInstrument(this.chartSymbol)
+    const ticker = resolveMdsSubscribeTicker(resolvedStream || this.chartSymbol, useDelayedMd)
+    const bootstrapKey = `${ticker}__${this.chartResolution}`
+    if (bootstrapKey === this.lastBootstrapKey) return
+    this.lastBootstrapKey = bootstrapKey
     tradeseaSvc.mds.setBootstrap(
       {
         symbols: [ticker],
         resolution: this.chartResolution,
       },
-      { wireUnsub: true }
+      // Pane subscriptions are owned by TradeseaDatafeed. Keep only reconnect
+      // metadata here so changing the active pane cannot unsubscribe another
+      // pane or duplicate its book streams.
+      { apply: false }
     )
     debugPracticeChartSymbol('TradeseaPropFirm.applyMdsBootstrap', {
       chartSymbol: this.chartSymbol,
@@ -1040,6 +1044,10 @@ export class TradeseaPropFirm extends PropFirmBase {
       willChange: prev !== root,
     }, { force: prev !== root })
     if (this.chartSymbol === root) {
+      // Re-apply even when the display root did not change because the
+      // instrument catalog may have resolved a more precise stream alias.
+      // applyMdsBootstrapForChartSymbol deduplicates by final wire ticker.
+      this.applyMdsBootstrapForChartSymbol()
       this.onChartSymbolChangeListener?.(chartSym)
       return
     }
@@ -1049,8 +1057,8 @@ export class TradeseaPropFirm extends PropFirmBase {
     if (df?.ensureMarketBookSubscription && this.chartServices) {
       const useDelayedMd = shouldUseDelayedMdsSymbols(this.chartServices.streamConfig)
       const stream =
-        df.resolveStreamInstrument?.(`CME:${root}`) ??
-        resolveMdsSubscribeTicker(`CME:${root}`, useDelayedMd)
+        df.resolveStreamInstrument?.(root) ??
+        resolveMdsSubscribeTicker(root, useDelayedMd)
       df.ensureMarketBookSubscription(stream)
     }
     this.onChartSymbolChangeListener?.(chartSym)
@@ -1060,8 +1068,11 @@ export class TradeseaPropFirm extends PropFirmBase {
     this.chartResolution = timeframe || this.chartResolution
 
     if (this.practiceMode) {
-      // Bootstrap MDS with default NQ until TV restores a symbol from load_last_chart.
-      this.applyMdsBootstrapForChartSymbol()
+      // Wait for TV/UDF to restore the saved instrument before replacing the
+      // bootstrap. The datafeed normalizes its final stream alias for MDS.
+      if (this.chartSymbolSyncedFromTv) {
+        this.applyMdsBootstrapForChartSymbol()
+      }
     } else {
       this.chartSymbol = symbol || this.chartSymbol
       this.applyMdsBootstrapForChartSymbol()

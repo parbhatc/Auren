@@ -1,6 +1,6 @@
 /**
  * MDS wire protocol — firm-agnostic client ↔ backend messages.
- * Backend translates to/from provider-specific frames (Tradesea f:1..7 today).
+ * Backend translates to/from provider-specific frames (Tradesea f:1..8 today).
  *
  * Client subscribe:   { "action": "subscribe", "type": "last_traded_price", "symbols": ["CME:MNQ"] }
  * Client unsubscribe: { "action": "unsubscribe", "type": "last_traded_price", "symbols": ["CME:MNQ"] }
@@ -16,6 +16,7 @@ const F = {
   CANDLES: 5,
   QUOTES: 6,
   TTV: 7,
+  MARKET_MODE: 8,
 }
 
 const BUCKETS = {
@@ -23,6 +24,7 @@ const BUCKETS = {
   best_bid_ask: 'bidAskDef',
   market_depth: 'marketDepthDef',
   traded_volume_at_price: 'ttvDef',
+  market_mode: 'marketModeDef',
 }
 
 const STREAM_TYPES = {
@@ -31,6 +33,7 @@ const STREAM_TYPES = {
   QUOTES: 'quotes',
   TRADED_VOLUME_AT_PRICE: 'traded_volume_at_price',
   MARKET_DEPTH: 'market_depth',
+  MARKET_MODE: 'market_mode',
   CANDLES: 'bar',
 }
 
@@ -154,6 +157,15 @@ function clientControlToUpstream(control) {
         u: subscribe ? [] : symbols,
         l: LANE,
       }
+    case STREAM_TYPES.MARKET_MODE:
+    case 'marketMode':
+      return {
+        f: F.MARKET_MODE,
+        b: BUCKETS.market_mode,
+        s: subscribe ? symbols : [],
+        u: subscribe ? [] : symbols,
+        l: LANE,
+      }
     case STREAM_TYPES.CANDLES:
     case 'bar':
     case 'candles':
@@ -228,6 +240,14 @@ function upstreamToClientTick(obj) {
       symbol,
       levels: obj.v,
       updateType: obj.u,
+    }
+  }
+  if (f === F.MARKET_MODE) {
+    return {
+      type: STREAM_TYPES.MARKET_MODE,
+      symbol,
+      reason: obj.reason,
+      mode: obj.mode,
     }
   }
   if (f === F.QUOTES || (symbol && (obj.p != null || obj.ap != null || obj.bp != null))) {

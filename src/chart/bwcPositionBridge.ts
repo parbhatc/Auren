@@ -130,7 +130,7 @@ export class BwcPositionLineHandle {
     if (!this.active()) return
     const overlay = this.bridge.getOverlay()
     if (!overlay) return
-    if (type === 'position') overlay.clear()
+    if (type === 'position') this.bridge.clear()
     else if (type === 'stop_loss') overlay.clearStopLoss()
     else if (type === 'take_profit') overlay.clearTakeProfit()
   }
@@ -151,6 +151,9 @@ export class BwcPositionBridge {
   private activeSymbol: string | null = null
   private readonly handles = new Map<string, BwcPositionLineHandle>()
   private offLiveBar: (() => void) | null = null
+  private syncRevision = 0
+  private syncQueue: Promise<void> = Promise.resolve()
+  private suppressedCloseEvents = 0
 
   constructor(
     private readonly widget: BwcWidgetWithOverlay,
@@ -181,7 +184,10 @@ export class BwcPositionBridge {
     if (!overlay) return
 
     overlay.onClose(() => {
-      if (this.suppressChartEvents) return
+      if (this.suppressedCloseEvents > 0) {
+        this.suppressedCloseEvents -= 1
+        return
+      }
       const symbol = this.activeSymbol
       if (!symbol) return
       const position = this.tradeCache.getPosition(symbol) as {
@@ -234,8 +240,22 @@ export class BwcPositionBridge {
   }
 
   clear(): void {
-    this.getOverlay()?.clear()
+    this.syncRevision += 1
+    this.clearOverlayProgrammatically()
     this.activeSymbol = null
+  }
+
+  private clearOverlayProgrammatically(
+    overlay = this.getOverlay()
+  ): void {
+    if (!overlay) return
+    this.suppressedCloseEvents += 1
+    overlay.clear()
+    // BWC currently emits close synchronously. Expire an unused guard so a
+    // later user click can never be mistaken for this programmatic clear.
+    setTimeout(() => {
+      if (this.suppressedCloseEvents > 0) this.suppressedCloseEvents -= 1
+    }, 0)
   }
 
   async sync(
@@ -251,6 +271,33 @@ export class BwcPositionBridge {
 
     this.wire()
     this.activeSymbol = symbol
+    const revision = ++this.syncRevision
+    const run = () =>
+      this.performSync(
+        revision,
+        symbol,
+        entry,
+        contracts,
+        stopLoss,
+        takeProfit,
+        opts
+      )
+    const queued = this.syncQueue.then(run, run)
+    this.syncQueue = queued.catch(() => undefined)
+    return queued
+  }
+
+  private async performSync(
+    revision: number,
+    symbol: string,
+    entry: number,
+    contracts: number,
+    stopLoss: number | null,
+    takeProfit: number | null,
+    opts: { createBrackets?: boolean }
+  ): Promise<void> {
+    const overlay = this.getOverlay()
+    if (!overlay || revision !== this.syncRevision || this.activeSymbol !== symbol) return
 
     const createBrackets = opts.createBrackets !== false
     const current = overlay.getPosition()
@@ -269,10 +316,18 @@ export class BwcPositionBridge {
         current.qty !== contracts ||
         !sameSide
       ) {
-        overlay.clear()
+        this.clearOverlayProgrammatically(overlay)
         const qty = Math.abs(contracts)
         if (contracts > 0) await overlay.buy({ price: entry, qty })
         else if (contracts < 0) await overlay.sell({ price: entry, qty })
+      }
+
+      if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
+        // A close occurred while the async overlay mutation was in flight.
+        // Newer syncs are queued behind this one, so clearing here cannot erase
+        // a replacement position.
+        this.clearOverlayProgrammatically(overlay)
+        return
       }
 
       if (!createBrackets) return
@@ -288,6 +343,11 @@ export class BwcPositionBridge {
         if (snap?.takeProfit !== takeProfit) await overlay.setTakeProfit(takeProfit)
       } else if (snap?.takeProfit != null) {
         overlay.clearTakeProfit()
+      }
+
+      if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
+        this.clearOverlayProgrammatically(overlay)
+        return
       }
 
       this.writeBracketsToCache(symbol, stopLoss, takeProfit)

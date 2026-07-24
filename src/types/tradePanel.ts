@@ -91,6 +91,7 @@ export type TradePanelProps = {
     onUpdate: (streamId: string, kind: MarketBookUpdateKind) => void
   ) => () => void
   ensureMarketBook?: () => void
+  releaseMarketBook?: () => void
   getChartPositionUpl?: () => number | null
   getDomPositionContext?: () => DomPositionContext | null
   hideDetach?: boolean

@@ -172,6 +172,9 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     ensureMarketBook: tsDatafeed?.ensureMarketBookSubscription
       ? () => tsDatafeed.ensureMarketBookSubscription!(chartSymbolLabel)
       : undefined,
+    releaseMarketBook: tsDatafeed?.releaseMarketBookSubscription
+      ? () => tsDatafeed.releaseMarketBookSubscription!(chartSymbolLabel)
+      : undefined,
     getChartPositionUpl:
       tradeHandler instanceof PracticeTradeHandler
         ? () => tradeHandler.getPositionUplFor(chartSymbolLabel)

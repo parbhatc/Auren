@@ -45,8 +45,12 @@ export async function prepareTradeseaChartServices(
   const useDelayedMd = shouldUseDelayedMdsSymbols(streamConfig)
 
   const bootstrapSymbol = existing?.bootstrapSymbol
-  if (bootstrapSymbol) {
-    const ticker = resolveMdsSubscribeTicker(bootstrapSymbol, useDelayedMd)
+  const resolvedBootstrapSymbol =
+    bootstrapSymbol && existing?.datafeed
+      ? existing.datafeed.resolveStreamInstrument(bootstrapSymbol)
+      : ''
+  if (resolvedBootstrapSymbol) {
+    const ticker = resolveMdsSubscribeTicker(resolvedBootstrapSymbol, useDelayedMd)
     const bootstrap = {
       symbols: [ticker],
       resolution: existing?.bootstrapResolution || '1',

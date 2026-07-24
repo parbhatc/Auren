@@ -1,12 +1,21 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import ProductHeader from '../../components/layout/ProductHeader'
 import SettingsTabs from '../../components/settings/SettingsTabs'
+import { ROUTES } from '../../constants/routes'
 import { useTheme } from '../../hooks/useTheme'
 
 export default function SettingsWorkspacePage() {
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    if (location.pathname !== ROUTES.KEYBOARD_SHORTCUTS_SETTINGS) return
+
+    const mobile = window.matchMedia('(max-width: 639px)')
+    if (mobile.matches) navigate(ROUTES.SETTINGS, { replace: true })
+  }, [location.pathname, navigate])
 
   return (
     <div className={`auren-shell-offset min-h-screen ${isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'}`}>
@@ -20,7 +29,7 @@ export default function SettingsWorkspacePage() {
             Settings
           </h1>
           <p className={`mt-1 text-sm ${isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}>
-            Manage your account, market data, utilities, and terminal shortcuts.
+            Manage your account, market data, and workspace utilities.
           </p>
         </header>
         <SettingsTabs key={location.pathname} isDark={isDark} navigate={navigate} />

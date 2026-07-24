@@ -137,6 +137,7 @@ export default function TradePanel(props: TradePanelProps) {
     getMarketBook,
     subscribeMarketBook,
     ensureMarketBook,
+    releaseMarketBook,
     chartSymbol = 'CME:MNQ',
   } = props
 
@@ -244,7 +245,11 @@ export default function TradePanel(props: TradePanelProps) {
 
   useEffect(() => {
     ensureMarketBook?.()
-  }, [ensureMarketBook, chartSymbol])
+    return () => releaseMarketBook?.()
+    // The callbacks are rebuilt with the pad props; chartSymbol/accountId are
+    // the semantic subscription identity and avoid release/re-add churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartSymbol, accountId])
 
   useEffect(() => {
     if (tab === 'dom' || tab === 'ticket') {

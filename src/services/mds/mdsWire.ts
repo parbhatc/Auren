@@ -9,6 +9,7 @@ export const MDS_STREAM_TYPES = {
   QUOTES: 'quotes',
   TRADED_VOLUME_AT_PRICE: 'traded_volume_at_price',
   MARKET_DEPTH: 'market_depth',
+  MARKET_MODE: 'market_mode',
   BAR: 'bar',
 } as const
 
@@ -21,6 +22,7 @@ export type MdsSubscriptionPayload =
   | { kind: 'depth'; symbols: string[]; bucket: string }
   | { kind: 'quotes'; symbols: string[] }
   | { kind: 'ttv'; symbols: string[]; bucket: string }
+  | { kind: 'marketMode'; symbols: string[]; bucket: string }
 
 export type MdsClientMessage =
   | { action: 'subscribe'; type: MdsStreamType; symbols: string[]; resolutions?: string[] }
@@ -74,6 +76,8 @@ function payloadStreamType(payload: MdsSubscriptionPayload): MdsStreamType {
       return MDS_STREAM_TYPES.QUOTES
     case 'ttv':
       return MDS_STREAM_TYPES.TRADED_VOLUME_AT_PRICE
+    case 'marketMode':
+      return MDS_STREAM_TYPES.MARKET_MODE
     default:
       return MDS_STREAM_TYPES.LAST_TRADED_PRICE
   }
@@ -109,7 +113,12 @@ export function mdsTickToFrame(msg: MdsTickMessage): Record<string, unknown> | n
   const sym = String(msg.symbol || '')
   switch (msg.type) {
     case 'error':
-      return { f: 0, c: String(msg.code ?? ''), m: String(msg.message ?? '') }
+      return {
+        f: 0,
+        id: sym,
+        c: String(msg.code ?? ''),
+        m: String(msg.message ?? ''),
+      }
     case MDS_STREAM_TYPES.LAST_TRADED_PRICE:
       return {
         f: 2,
@@ -175,6 +184,13 @@ export function mdsTickToFrame(msg: MdsTickMessage): Record<string, unknown> | n
         pvc: msg.priorClose,
         nc: msg.netChange,
         pc: msg.percentChange,
+      }
+    case MDS_STREAM_TYPES.MARKET_MODE:
+      return {
+        f: 8,
+        id: sym,
+        reason: msg.reason,
+        mode: msg.mode,
       }
     default:
       return null

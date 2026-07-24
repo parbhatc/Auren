@@ -146,7 +146,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       this.mds.on('ltp', (msg) => {
         const id = this.bookStreamId(String(msg.id || ''))
         if (!id || msg.p == null) return
-        this.marketBook.applyLtp(id, Number(msg.p))
+        const price = Number(msg.p)
+        this.marketBook.applyLtp(id, price)
+        this.dispatchLtpToCandleSubscribers(id, price, Number(msg.t))
       }),
       this.mds.on('bestBidAsk', (msg) => {
         const id = this.bookStreamId(String(msg.id || ''))
@@ -363,7 +365,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.onMdsOpen()
   }
 
-  /** Ensure MDS LTP / BBA / depth / quotes for order pad (per stream ticker). */
+  /** Ensure the official MDS chart/book streams for one stream ticker. */
   ensureMarketBookSubscription(chartSymbol: string): void {
     const streamId = this.streamSymbol(chartSymbol)
     if (!streamId) return
@@ -402,7 +404,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     bookEntries.push({ kind: 'quotes', subId: quotesId })
     const ttvId = this.mds.subscribeTtv([streamId])
     bookEntries.push({ kind: 'ttv', subId: ttvId })
-    const subs = [ltpId, bbaId, quotesId, ttvId]
+    const marketModeId = this.mds.subscribeMarketMode([streamId])
+    bookEntries.push({ kind: 'market-mode', subId: marketModeId })
+    const subs = [ltpId, bbaId, quotesId, ttvId, marketModeId]
     if (this.mds.isMarketDepthEntitled()) {
       const depthId = this.mds.subscribeDepth([streamId])
       if (depthId >= 0) {
@@ -412,6 +416,22 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     }
     candleDebug.bookSubscribe(chartSymbol, bookEntries)
     this.bookSubIdsByStream.set(streamId, subs)
+  }
+
+  /** Release a trade-panel-only book once no chart pane uses its stream. */
+  releaseMarketBookSubscription(chartSymbol: string): void {
+    const streamId = this.streamSymbol(chartSymbol)
+    if (!streamId) return
+    const streamStillUsed = [...this.subIdByKey.keys()].some(
+      (activeKey) => this.parseResKey(activeKey)?.streamId === streamId
+    )
+    if (streamStillUsed) return
+
+    const bookSubIds = this.bookSubIdsByStream.get(streamId)
+    if (bookSubIds?.length) {
+      for (const bookSubId of bookSubIds) this.mds.unsubscribe(bookSubId)
+    }
+    this.bookSubIdsByStream.delete(streamId)
   }
 
   isDelayedMarketData(): boolean {
@@ -565,6 +585,82 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       this.marketBook.applyLtp(bookId, normalizedBar.close)
     }
     this.scheduleTradeHandlerBar(chartSymbolForBar, resolution, normalizedBar)
+  }
+
+  /**
+   * Resolve exact and product-equivalent subscriptions. Some MDS venues emit a
+   * canonical id that differs from the UDF/search ticker (notably metals).
+   */
+  private candleSubscriptionKeys(streamId: string): Array<{
+    key: string
+    resolution: string
+  }> {
+    const incomingProduct = resolveProductSymbolFromCatalog(streamId, this.instrumentIndex)
+    const matches: Array<{ key: string; resolution: string }> = []
+    for (const key of this.keyToSubs.keys()) {
+      const sep = key.lastIndexOf('__')
+      if (sep <= 0) continue
+      const subscribedStream = key.slice(0, sep)
+      const resolution = key.slice(sep + 2)
+      if (subscribedStream === streamId) {
+        matches.push({ key, resolution })
+        continue
+      }
+      const subscribedProduct = resolveProductSymbolFromCatalog(
+        subscribedStream,
+        this.instrumentIndex
+      )
+      if (
+        incomingProduct &&
+        subscribedProduct &&
+        incomingProduct === subscribedProduct
+      ) {
+        matches.push({ key, resolution })
+      }
+    }
+    return matches
+  }
+
+  /**
+   * Keep the forming candle moving from last-trade ticks when an instrument's
+   * dedicated candle stream is sparse or absent. Native candle frames still
+   * replace this fallback with authoritative OHLCV whenever they arrive.
+   */
+  private dispatchLtpToCandleSubscribers(
+    streamId: string,
+    price: number,
+    time: number
+  ): void {
+    if (!Number.isFinite(price)) return
+    for (const { key, resolution } of this.candleSubscriptionKeys(streamId)) {
+      if (String(resolution).toUpperCase().endsWith('T')) continue
+      const barTime = this.alignBarTimeMs(
+        Number.isFinite(time) && time > 0 ? time : Date.now(),
+        resolution
+      )
+      const previous = this.lastBarByKey.get(key)
+      const sameBar =
+        previous != null &&
+        this.alignBarTimeMs(previous.time, resolution) === barTime
+      const bar: Bar = sameBar
+        ? {
+            ...previous,
+            time: barTime,
+            high: Math.max(Number(previous.high ?? price), price),
+            low: Math.min(Number(previous.low ?? price), price),
+            close: price,
+          }
+        : {
+            time: barTime,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume: 0,
+            tickVolume: 0,
+          }
+      this.dispatchBarToSubscribers(key, resolution, streamId, bar)
+    }
   }
 
   /** Run trade overlay after BWC paints (coalesced to one rAF per frame). */
@@ -1235,7 +1331,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         this.offCandles = this.mds.on('candles', (msg) => {
           const streamId = String(msg.id || '')
           const res = String(msg.r || '')
-          const resKey = this.keyFor(streamId, res)
           const vol = msg.v != null ? Number(msg.v) : 0
           const bar = this.normalizeLiveBar(
             {
@@ -1249,7 +1344,12 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             },
             res
           )
-          this.dispatchBarToSubscribers(resKey, res, streamId, bar)
+          const routes = this.candleSubscriptionKeys(streamId).filter(
+            ({ resolution }) => resolution === res
+          )
+          for (const { key } of routes) {
+            this.dispatchBarToSubscribers(key, res, streamId, bar)
+          }
         })
       }
     }
@@ -1267,6 +1367,19 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         if (subId != null) {
           this.mds.unsubscribe(subId)
           this.subIdByKey.delete(key)
+        }
+        const streamId = this.parseResKey(key)?.streamId
+        const streamStillUsed =
+          streamId != null &&
+          [...this.subIdByKey.keys()].some(
+            (activeKey) => this.parseResKey(activeKey)?.streamId === streamId
+          )
+        if (streamId && !streamStillUsed) {
+          const bookSubIds = this.bookSubIdsByStream.get(streamId)
+          if (bookSubIds?.length) {
+            for (const bookSubId of bookSubIds) this.mds.unsubscribe(bookSubId)
+          }
+          this.bookSubIdsByStream.delete(streamId)
         }
         this.logSymbol(
           'unsubscribeBars:lastListener',

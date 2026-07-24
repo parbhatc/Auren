@@ -22,7 +22,6 @@ import {
   writeMdsAutoReconnect,
 } from './mdsReconnectPrefs'
 import { resolveMdsSubscribeTicker } from './tradeseaMdsSymbols'
-import { DEFAULT_PRACTICE_CHART_SYMBOL } from '../../constants/practice'
 
 /** MDS frame type constants (mdsWorker) */
 const F_BEST_BID_ASK = 1
@@ -31,12 +30,14 @@ const F_DEPTH = 4
 const F_CANDLES = 5
 const F_QUOTES = 6
 const F_TTV = 7
+const F_MARKET_MODE = 8
 
 /** Wire buckets (match app.tradesea.ai DOM: bidAskDef + ttvDef; not panelDom / panelBestBidAsk). */
 export const MDS_BUCKET_LTP = 'ltpDef'
 export const MDS_BUCKET_BEST_BID_ASK = 'bidAskDef'
 export const MDS_BUCKET_MARKET_DEPTH = 'marketDepthDef'
 export const MDS_BUCKET_TTV = 'ttvDef'
+export const MDS_BUCKET_MARKET_MODE = 'marketModeDef'
 
 export type TradeseaMdsMessage =
   | { f: 5; id: string; r: string; t: number; o: number; h: number; l: number; c: number; v?: number }
@@ -45,7 +46,8 @@ export type TradeseaMdsMessage =
   | { f: 4; id: string; a?: [number, number][]; b?: [number, number][]; u?: number }
   | { f: 6; id: string; p?: number; ap?: number; bp?: number; as?: number; bs?: number; [key: string]: unknown }
   | { f: 7; id: string; v?: [number, number][]; u?: number }
-  | { f: 0; c?: string; m?: string }
+  | { f: 8; id: string; reason?: string; mode?: string }
+  | { f: 0; id?: string; c?: string; m?: string }
 
 type MdsEventMap = {
   candles: Extract<TradeseaMdsMessage, { f: 5 }>
@@ -54,6 +56,7 @@ type MdsEventMap = {
   depth: Extract<TradeseaMdsMessage, { f: 4 }>
   quotes: Extract<TradeseaMdsMessage, { f: 6 }>
   ttv: Extract<TradeseaMdsMessage, { f: 7 }>
+  marketMode: Extract<TradeseaMdsMessage, { f: 8 }>
   message: TradeseaMdsMessage
   connection: MdsConnectionState
   autoReconnect: boolean
@@ -318,7 +321,7 @@ export class TradeseaMdsClient {
     this.emit('autoReconnect', enabled)
   }
 
-  /** True when ltp + bid/ask + quotes + ttv (and depth when entitled) are on the wire for `symbol`. */
+  /** True when the official chart/book stream set is on the wire for `symbol`. */
   hasBookSubscriptionsFor(symbol: string): boolean {
     const sym = String(symbol || '').trim()
     if (!sym) return false
@@ -326,6 +329,7 @@ export class TradeseaMdsClient {
     let bestBidAsk = false
     let quotes = false
     let ttv = false
+    let marketMode = false
     let depth = !this.depthSubscribeAllowed
     for (const payload of this.activeSubs.values()) {
       if (!payload.symbols.includes(sym)) continue
@@ -342,6 +346,9 @@ export class TradeseaMdsClient {
         case 'ttv':
           ttv = true
           break
+        case 'marketMode':
+          marketMode = true
+          break
         case 'depth':
           depth = true
           break
@@ -349,7 +356,7 @@ export class TradeseaMdsClient {
           break
       }
     }
-    return ltp && bestBidAsk && quotes && ttv && depth
+    return ltp && bestBidAsk && quotes && ttv && marketMode && depth
   }
 
   /** Re-open MDS after upstream has time to release the previous socket. */
@@ -557,7 +564,7 @@ export class TradeseaMdsClient {
           : (parsed as TradeseaMdsMessage)
         if (!msg || typeof msg.f !== 'number') return
         if (msg.f === 0) {
-          const err = msg as { c?: string; m?: string }
+          const err = msg as { id?: string; c?: string; m?: string }
           const key = `${err.c || ''}:${err.m || ''}`
           if (!this.loggedMdsErrors.has(key)) {
             this.loggedMdsErrors.add(key)
@@ -567,7 +574,12 @@ export class TradeseaMdsClient {
             } else if (/ERR_SUB_NOT_FOUND/i.test(text) && /depth|marketDepth|panelDom/i.test(text)) {
               this.dropDepthSubscriptionsLocal()
             } else if (!/ERR_SUB_NOT_FOUND/i.test(text)) {
-              console.warn('[TradeseaMdsClient] MDS error:', text, err.c ? `(${err.c})` : '')
+              console.warn(
+                '[TradeseaMdsClient] MDS error:',
+                text,
+                err.c ? `(${err.c})` : '',
+                err.id ? `symbol=${err.id}` : ''
+              )
             }
           }
           return
@@ -579,6 +591,9 @@ export class TradeseaMdsClient {
         else if (msg.f === F_DEPTH) this.emit('depth', msg as MdsEventMap['depth'])
         else if (msg.f === F_QUOTES) this.emit('quotes', msg as MdsEventMap['quotes'])
         else if (msg.f === F_TTV) this.emit('ttv', msg as MdsEventMap['ttv'])
+        else if (msg.f === F_MARKET_MODE) {
+          this.emit('marketMode', msg as MdsEventMap['marketMode'])
+        }
       } catch {
         /* non-json frame */
       }
@@ -784,12 +799,14 @@ export class TradeseaMdsClient {
       return subscribe()
     }
 
-    // Match Tradesea: ltp + bidAsk + quotes + ttv on connect; f:4 only when entitled (delayed).
+    // Match Tradesea: ltp + bidAsk + quotes + ttv + marketMode;
+    // f:4 only when entitled (delayed).
     this.bootstrapSubIds = [
       ensure('ltp', () => this.subscribeLtp(symbols)),
       ensure('bestBidAsk', () => this.subscribeBestBidAsk(symbols)),
       ensure('quotes', () => this.subscribeQuotes(symbols)),
       ensure('ttv', () => this.subscribeTtv(symbols)),
+      ensure('marketMode', () => this.subscribeMarketMode(symbols)),
       ...(this.depthSubscribeAllowed
         ? [ensure('depth', () => this.subscribeDepth(symbols))]
         : []),
@@ -828,12 +845,10 @@ export class TradeseaMdsClient {
       return
     }
 
-    const fallbackSymbols = [
-      resolveMdsSubscribeTicker(DEFAULT_PRACTICE_CHART_SYMBOL, this.marketDepthEntitled),
-    ]
-    this.setBootstrap({ symbols: fallbackSymbols, resolution: this.bootstrap?.resolution || '1' })
-    this.applyBootstrap(false)
-    this.logWs('Resubscribed', { streams: this.activeSubs.size, defaultSymbol: fallbackSymbols[0] })
+    // A restored multi-pane layout has not registered its symbols yet. Wait
+    // for subscribeBars instead of leaking a default MNQ stream into the
+    // session; each pane will register its own complete stream set.
+    this.logWs('Resubscribed', { streams: 0 })
     this.emit('resubscribed', undefined as MdsEventMap['resubscribed'])
   }
 
@@ -881,6 +896,10 @@ export class TradeseaMdsClient {
 
   subscribeTtv(symbols: string[], bucket = MDS_BUCKET_TTV): number {
     return this.addSubscription({ kind: 'ttv', symbols, bucket })
+  }
+
+  subscribeMarketMode(symbols: string[], bucket = MDS_BUCKET_MARKET_MODE): number {
+    return this.addSubscription({ kind: 'marketMode', symbols, bucket })
   }
 
   isConnected(): boolean {

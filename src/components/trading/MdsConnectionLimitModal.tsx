@@ -11,12 +11,12 @@ export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnec
   if (!isOpen) return null
 
   const shell = isDark
-    ? 'bg-[#0f172a] border-[#334155] shadow-[0_24px_64px_rgba(0,0,0,0.55)]'
+    ? 'bg-[#18181B] border-[#3F3F46] shadow-[0_24px_64px_rgba(0,0,0,0.7)]'
     : 'bg-white border-slate-200 shadow-2xl shadow-slate-300/40'
 
-  const titleClass = isDark ? 'text-[#e6edf3]' : 'text-slate-800'
-  const bodyClass = isDark ? 'text-[#94a3b8]' : 'text-slate-500'
-  const iconWrap = isDark ? 'bg-amber-500/10' : 'bg-amber-50'
+  const titleClass = isDark ? 'text-[#FAFAFA]' : 'text-slate-800'
+  const bodyClass = isDark ? 'text-[#A1A1AA]' : 'text-slate-500'
+  const iconWrap = isDark ? 'bg-amber-500/15 ring-1 ring-amber-500/20' : 'bg-amber-50'
   const iconClass = isDark ? 'text-amber-400' : 'text-amber-600'
 
   return createPortal(
@@ -27,7 +27,7 @@ export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnec
       aria-labelledby="mds-connection-limit-title"
       aria-describedby="mds-connection-limit-desc"
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" aria-hidden />
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" aria-hidden />
 
       <div
         className={`relative z-10 w-full max-w-md rounded-2xl border p-6 sm:p-7 flex flex-col items-center gap-4 animate-slide-down ${shell}`}
@@ -51,7 +51,7 @@ export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnec
         <div
           className={`w-full rounded-xl border px-3.5 py-2.5 text-xs leading-snug text-center ${
             isDark
-              ? 'border-[#334155] bg-[#020617]/60 text-[#64748b]'
+              ? 'border-[#27272A] bg-[#09090B] text-[#71717A]'
               : 'border-slate-200 bg-slate-50 text-slate-500'
           }`}
         >
@@ -61,7 +61,11 @@ export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnec
         <button
           type="button"
           onClick={onRefresh}
-          className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white shadow-md shadow-violet-500/25 transition hover:from-violet-500 hover:to-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
+          className={`mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 ${
+            isDark
+              ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7] focus-visible:ring-white/40'
+              : 'bg-[#18181B] text-white hover:bg-[#27272A] focus-visible:ring-black/30'
+          }`}
         >
           <RefreshCw className="h-4 w-4" aria-hidden />
           Refresh

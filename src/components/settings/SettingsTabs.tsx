@@ -12,7 +12,7 @@ class SettingsTabs extends Component<SettingsTabsProps> {
       { path: ROUTES.SETTINGS, label: t('settings.accountTab') },
       { path: ROUTES.PROPS_SETTINGS, label: t('settings.marketDataTab') },
       { path: ROUTES.UTILS_SETTINGS, label: t('practice.hub.settings.utilsTitle') },
-      { path: ROUTES.KEYBOARD_SHORTCUTS_SETTINGS, label: t('practice.hub.settings.shortcutsTitle') },
+      { path: ROUTES.KEYBOARD_SHORTCUTS_SETTINGS, label: t('practice.hub.settings.shortcutsTitle'), desktopOnly: true },
     ]
 
     return (
@@ -32,7 +32,7 @@ class SettingsTabs extends Component<SettingsTabsProps> {
                 key={tab.path}
                 type="button"
                 onClick={() => navigate(tab.path)}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`${tab.desktopOnly ? 'hidden sm:block' : ''} px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive
                     ? isDark
                       ? 'bg-[#FAFAFA] text-[#09090B]'

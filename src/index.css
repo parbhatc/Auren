@@ -173,13 +173,7 @@ html.dark body {
 
 @media (max-width: 1023px) {
   :root {
-    --auren-mobile-nav-bar-height: 2.5rem;
-  }
-
-  @media (display-mode: standalone) {
-    :root {
-      --auren-mobile-nav-bar-height: 3.25rem;
-    }
+    --auren-mobile-nav-bar-height: 4rem;
   }
 
   .auren-mobile-nav-clearance {

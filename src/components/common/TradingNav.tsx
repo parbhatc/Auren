@@ -3,7 +3,6 @@ import { BarChart3, ChevronDown, ChevronLeft, Home, PanelRight, Settings2, Trend
 import { ROUTES, practiceTradePath, practiceTradeStatsPath } from '../../constants/routes'
 import { getPracticeAccountById } from '../../constants/practice'
 import { TradingNavProps } from '../../types/common'
-import { isPwaPinnedNav } from '../../utils/pwa'
 
 /**
  * Trading Navigation Component
@@ -148,27 +147,21 @@ class TradingNav extends Component<TradingNavProps> {
       </nav>
     ) : null
 
-    const pwaNav = isPwaPinnedNav()
-
     const mobileTabClass = (active: boolean) => {
-      const base = pwaNav
-        ? 'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors'
-        : 'relative flex h-full min-w-0 flex-1 items-center justify-center rounded-md transition-colors'
+      const base = 'relative flex min-h-11 min-w-0 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 transition-colors'
       if (active) {
-        return `${base} ${isDark ? 'text-violet-400' : 'text-violet-600'}`
+        return `${base} ${isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-50 text-blue-700'}`
       }
-      return `${base} ${isDark ? 'text-slate-500 active:text-slate-300' : 'text-slate-500 active:text-slate-700'}`
+      return `${base} ${isDark ? 'text-slate-400 active:bg-white/[0.06] active:text-slate-200' : 'text-slate-500 active:bg-slate-100 active:text-slate-800'}`
     }
 
-    const mobileTabLabel = 'max-w-[3.25rem] truncate text-[9px] font-medium leading-none'
+    const mobileTabLabel = 'max-w-full truncate text-[10px] font-semibold leading-none'
 
     const isHomeActive = currentPath === ROUTES.HOME || currentPath.startsWith(`${ROUTES.HOME}?`)
 
     const mobileShell = isDark
       ? 'border-slate-800/80 bg-slate-950'
       : 'border-slate-200/90 bg-white'
-
-    const mobileDivider = isDark ? 'bg-slate-700/60' : 'bg-slate-200'
 
     const renderMobileTab = (
       key: string,
@@ -188,61 +181,46 @@ class TradingNav extends Component<TradingNavProps> {
         aria-current={active ? 'page' : undefined}
         aria-pressed={options?.pressed}
       >
-        {active ? (
-          <span
-            className={`absolute left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full ${
-              pwaNav ? 'top-0.5' : 'bottom-1'
-            } ${isDark ? 'bg-violet-400' : 'bg-violet-600'}`}
-            aria-hidden
-          />
-        ) : null}
         {icon}
-        {pwaNav ? <span className={mobileTabLabel}>{label}</span> : null}
+        <span className={mobileTabLabel}>{label}</span>
       </button>
     )
 
     // Mobile Bottom Nav (positioned by .auren-mobile-bottom-bar wrapper)
     const bottomNav = showMobileNav ? (
       <nav
-        className={`lg:hidden w-full border-t pb-[env(safe-area-inset-bottom,0px)] ${mobileShell}`}
+        className={`lg:hidden w-full border-t pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-10px_30px_rgba(0,0,0,0.18)] ${mobileShell}`}
         aria-label="Practice navigation"
       >
         <div
-          className={`flex items-stretch px-1 ${
-            pwaNav ? 'h-[3.25rem] max-h-[3.25rem]' : 'h-10 max-h-10'
-          }`}
+          className="flex h-16 items-stretch gap-1 px-2 py-1.5"
         >
-          {onToggleNav && !pwaNav ? (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleNav()
-                }}
-                className={`flex h-full w-11 shrink-0 items-center justify-center rounded-md transition-colors ${
-                  isDark
-                    ? 'text-slate-500 active:bg-white/5 active:text-slate-300'
-                    : 'text-slate-500 active:bg-slate-100 active:text-slate-700'
-                }`}
-                aria-label="Hide navigation"
-                title="Hide navigation"
-              >
-                <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
-              </button>
-              <div
-                className={`my-2 w-px shrink-0 ${mobileDivider}`}
-                aria-hidden
-              />
-            </>
+          {onToggleNav ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleNav()
+              }}
+              className={`flex min-h-11 w-12 shrink-0 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 transition-colors ${
+                isDark
+                  ? 'text-slate-500 active:bg-white/[0.06] active:text-slate-200'
+                  : 'text-slate-500 active:bg-slate-100 active:text-slate-800'
+              }`}
+              aria-label="Hide navigation"
+              title="Hide navigation"
+            >
+              <ChevronDown className="h-[18px] w-[18px] shrink-0" aria-hidden />
+              <span className={mobileTabLabel}>Hide</span>
+            </button>
           ) : null}
 
-          <div className="flex min-w-0 flex-1 items-stretch">
+          <div className="flex min-w-0 flex-1 items-stretch gap-1">
             {(isPracticeTrade || isLiveTrade) &&
               renderMobileTab(
                 'home',
                 'Home',
-                <Home className="h-4 w-4 shrink-0" strokeWidth={isHomeActive ? 2.25 : 2} />,
+                <Home className="h-[19px] w-[19px] shrink-0" strokeWidth={isHomeActive ? 2.25 : 2} />,
                 () => handleNavigate(mobileHomePath),
                 isHomeActive
               )}
@@ -254,7 +232,7 @@ class TradingNav extends Component<TradingNavProps> {
                 return renderMobileTab(
                   item.path,
                   item.label,
-                  <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.25 : 2} />,
+                  <Icon className="h-[19px] w-[19px] shrink-0" strokeWidth={active ? 2.25 : 2} />,
                   () => handleNavigate(item.path),
                   active
                 )
@@ -264,7 +242,7 @@ class TradingNav extends Component<TradingNavProps> {
                 'order',
                 'Order',
                 <PanelRight
-                  className="h-4 w-4 shrink-0"
+                  className="h-[19px] w-[19px] shrink-0"
                   strokeWidth={practiceOrderActive ? 2.25 : 2}
                 />,
                 onPracticeOrder,
@@ -276,7 +254,7 @@ class TradingNav extends Component<TradingNavProps> {
                 'settings',
                 'Settings',
                 <Settings2
-                  className="h-4 w-4 shrink-0"
+                  className="h-[19px] w-[19px] shrink-0"
                   strokeWidth={practiceSettingsActive ? 2.25 : 2}
                 />,
                 onPracticeSettings,

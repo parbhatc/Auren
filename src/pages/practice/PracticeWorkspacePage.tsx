@@ -66,12 +66,19 @@ export default function PracticeWorkspacePage() {
   const [size, setSize] = useState<PracticeAccountSize>(25000)
   const [displayName, setDisplayName] = useState(() => generatePracticeAccountName('eval', 25000))
   const [rules, setRules] = useState<PracticeAccountRules>(() => defaultRules('eval', 25000))
+  const [activeTab, setActiveTab] = useState<'accounts' | 'create'>('accounts')
+  const [customizeOpen, setCustomizeOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<PracticeAccount | null>(null)
 
   const marketData = useMemo(() => getPracticeMarketDataSettings(), [accounts])
+  const planDefaults = useMemo(() => defaultRules(mode, size), [mode, size])
+  const planIsCustom = useMemo(
+    () => JSON.stringify(rules) !== JSON.stringify(planDefaults),
+    [planDefaults, rules],
+  )
 
   const sync = () => setAccounts(getPracticeAccounts())
 
@@ -111,6 +118,8 @@ export default function PracticeWorkspacePage() {
       const account = await createPracticeAccount(mode, size, rules, displayName)
       localStorage.setItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID, account.id)
       sync()
+      setCustomizeOpen(false)
+      setActiveTab('accounts')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not create the practice account.')
     } finally {
@@ -177,47 +186,136 @@ export default function PracticeWorkspacePage() {
 
         {error ? <div role="alert" className={`mb-5 flex items-start gap-2 rounded-lg border p-3 text-sm ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />{error}</div> : null}
 
+        <div
+          role="tablist"
+          aria-label="Practice account workspace"
+          className={`mb-6 grid grid-cols-2 rounded-xl border p-1 sm:inline-grid sm:min-w-80 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-[#F4F4F5]'}`}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'accounts'}
+            onClick={() => setActiveTab('accounts')}
+            className={`min-h-11 rounded-lg px-5 text-sm font-semibold transition-colors ${activeTab === 'accounts' ? isDark ? 'bg-[#FAFAFA] text-[#09090B]' : 'bg-white text-[#09090B] shadow-sm' : muted}`}
+          >
+            Accounts <span className="ml-1 text-xs opacity-70">{accounts.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'create'}
+            onClick={() => setActiveTab('create')}
+            className={`min-h-11 rounded-lg px-5 text-sm font-semibold transition-colors ${activeTab === 'create' ? isDark ? 'bg-[#FAFAFA] text-[#09090B]' : 'bg-white text-[#09090B] shadow-sm' : muted}`}
+          >
+            Create
+          </button>
+        </div>
+
+        {activeTab === 'create' ? (
         <section className={`mb-7 rounded-xl border p-4 sm:p-5 ${surface}`} aria-labelledby="create-practice-title">
           <div className="mb-4">
             <h2 id="create-practice-title" className={`text-base font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Create an account</h2>
             <p className={`mt-1 text-sm ${muted}`}>Use standard guardrails for the selected account type and balance.</p>
           </div>
-          <label className={`mb-4 block text-xs font-medium ${muted}`}>
-            Account name
-            <span className={`ml-2 font-normal ${muted}`}>Shown in the terminal account selector</span>
-            <input
-              type="text"
-              value={displayName}
-              maxLength={64}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => setDisplayName(event.target.value)}
-              className={`mt-2 ${inputClass}`}
-            />
-          </label>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] lg:items-end">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)] lg:items-end">
+            <label className={`block text-xs font-medium ${muted}`}>
+              Account name
+              <span className={`ml-2 font-normal ${muted}`}>Shown in the terminal account selector</span>
+              <input
+                type="text"
+                value={displayName}
+                maxLength={64}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => setDisplayName(event.target.value)}
+                className={`mt-2 ${inputClass}`}
+              />
+            </label>
             <div>
               <span className={`mb-2 block text-xs font-medium ${muted}`}>Account type</span>
               <div className={`grid grid-cols-2 rounded-lg border p-1 ${isDark ? 'border-[#3F3F46] bg-[#09090B]' : 'border-[#E4E4E7] bg-[#F4F4F5]'}`}>
                 {(['eval', 'funded'] as PracticeAccountMode[]).map((item) => <button key={item} type="button" aria-pressed={mode === item} onClick={() => setMode(item)} className={`rounded-md px-3 py-2 text-sm font-medium capitalize ${mode === item ? isDark ? 'bg-[#FAFAFA] text-[#09090B]' : 'bg-[#18181B] text-white' : muted}`}>{item === 'eval' ? 'Evaluation' : 'Funded'}</button>)}
               </div>
             </div>
-            <div>
-              <span className={`mb-2 block text-xs font-medium ${muted}`}>Starting balance</span>
-              <div className="grid grid-cols-3 gap-2">
-                {PRACTICE_ACCOUNT_SIZES.map((item) => <button key={item} type="button" aria-pressed={size === item} onClick={() => setSize(item)} className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${size === item ? isDark ? 'border-blue-500 bg-blue-500/15 text-blue-400' : 'border-blue-600 bg-blue-50 text-blue-700' : `${surface} ${muted}`}`}>{item / 1000}K</button>)}
-              </div>
-            </div>
-            <button type="button" onClick={() => void createAccount()} disabled={busy === 'create'} className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold disabled:opacity-50 ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}>
-              {busy === 'create' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={1.75} />} Create account
-            </button>
           </div>
-          <details className={`mt-5 rounded-lg border ${isDark ? 'border-[#27272A] bg-[#121215]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}>
-            <summary className={`flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
-              <span className="inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-blue-500" strokeWidth={1.75} /> Customize rules</span>
-              <span className={`text-xs font-normal ${muted}`}>Plan defaults loaded</span>
-            </summary>
-            <div className={`border-t p-4 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+          <div className="mt-6">
+            <div className="mb-3">
+              <h3 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Choose your practice plan</h3>
+              <p className={`mt-1 text-xs ${muted}`}>No fees or payments—just select the limits you want to practice with.</p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              {PRACTICE_ACCOUNT_SIZES.map((item) => {
+                const selected = size === item
+                const cardRules = selected ? rules : defaultRules(mode, item)
+                const rows = [
+                  ['Profit target', mode === 'eval' ? money.format(cardRules.profitTarget ?? 0) : 'No target'],
+                  ['Maximum loss', money.format(cardRules.maxLoss)],
+                  ['Drawdown type', cardRules.drawdownType === 'eod' ? 'End of day' : 'Intraday'],
+                  ['Consistency', mode === 'eval' && cardRules.consistencyPct != null ? `${cardRules.consistencyPct}%` : 'None'],
+                  ['Daily loss limit', cardRules.lockoutEnabled ? money.format(cardRules.dailyLossLimit ?? 0) : 'None'],
+                  ['Maximum size', `${cardRules.maxMinis} minis / ${cardRules.maxMicros} micros`],
+                ]
+
+                return (
+                  <article
+                    key={item}
+                    className={`relative overflow-hidden rounded-xl border transition-all ${selected ? isDark ? 'border-blue-500 bg-blue-500/[0.07] ring-1 ring-blue-500/40' : 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500/30' : isDark ? 'border-[#27272A] bg-[#121215] hover:border-[#52525B]' : 'border-[#E4E4E7] bg-white hover:border-[#A1A1AA]'}`}
+                  >
+                    {selected ? <div className="absolute inset-x-0 top-0 h-1 bg-blue-500" /> : null}
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setSize(item)}
+                      className="w-full p-5 text-left"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">Practice plan</p>
+                          <h4 className={`mt-2 text-2xl font-semibold tracking-tight ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>{item / 1000}K {mode === 'eval' ? 'Evaluation' : 'Funded'}</h4>
+                          <p className={`mt-1 text-xs ${muted}`}>{money.format(item)} simulated buying power</p>
+                        </div>
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${selected ? 'border-blue-500 bg-blue-500 text-white' : isDark ? 'border-[#3F3F46] text-[#A1A1AA]' : 'border-[#D4D4D8] text-[#52525B]'}`}>
+                          {selected ? 'Selected' : 'Select'}
+                        </span>
+                      </div>
+                      <div className={`mt-5 border-t ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+                        {rows.map(([label, value]) => (
+                          <div key={label} className={`flex min-h-11 items-center justify-between gap-4 border-b py-2.5 text-sm last:border-b-0 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+                            <span className={muted}>{label}</span>
+                            <span className={`text-right font-semibold tabular-nums ${isDark ? 'text-[#E4E4E7]' : 'text-[#27272A]'}`}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                    {selected ? (
+                      <div className={`flex items-center justify-between gap-3 border-t px-5 py-4 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}>
+                        <span className={`text-xs font-medium ${planIsCustom ? 'text-amber-500' : muted}`}>{planIsCustom ? 'Custom rules applied' : 'Standard rules'}</span>
+                        <button
+                          type="button"
+                          aria-expanded={customizeOpen}
+                          onClick={() => setCustomizeOpen((open) => !open)}
+                          className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold ${surface} ${isDark ? 'text-[#FAFAFA] hover:bg-[#27272A]' : 'text-[#09090B] hover:bg-[#F4F4F5]'}`}
+                        >
+                          <SlidersHorizontal className="h-3.5 w-3.5 text-blue-500" strokeWidth={1.75} />
+                          {customizeOpen ? 'Done editing' : 'Edit rules'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+          {customizeOpen ? <div className={`mt-5 rounded-xl border p-4 ${isDark ? 'border-[#3F3F46] bg-[#121215]' : 'border-[#D4D4D8] bg-[#FAFAFA]'}`}>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Custom rules</h4>
+                  <p className={`mt-0.5 text-xs ${muted}`}>Changes apply only to this new account.</p>
+                </div>
+                <button type="button" onClick={() => setRules(planDefaults)} disabled={!planIsCustom} className={`rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40 ${isDark ? 'text-blue-400 hover:bg-blue-500/10' : 'text-blue-700 hover:bg-blue-50'}`}>
+                  Restore defaults
+                </button>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {mode === 'eval' ? <label className={`text-xs font-medium ${muted}`}>Profit target ($)<input inputMode="decimal" type="number" min="1" step="50" value={rules.profitTarget ?? ''} onChange={(event) => setNumberRule('profitTarget', event.target.value)} className={`mt-2 ${inputClass}`} /></label> : null}
                 <label className={`text-xs font-medium ${muted}`}>Maximum loss ($)<input inputMode="decimal" type="number" min="1" step="50" value={rules.maxLoss} onChange={(event) => setNumberRule('maxLoss', event.target.value)} className={`mt-2 ${inputClass}`} /></label>
@@ -237,9 +335,19 @@ export default function PracticeWorkspacePage() {
                   <label className={`text-xs font-medium ${muted}`}>Maximum trades / day<input inputMode="numeric" type="number" min="1" step="1" placeholder="No limit" value={rules.maxTradesPerDay ?? ''} onChange={(event) => setNumberRule('maxTradesPerDay', event.target.value, true)} className={`mt-2 ${inputClass}`} /></label>
                 </div> : null}
               </div>
+            </div> : null}
+          <div className={`mt-5 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${isDark ? 'border-[#27272A] bg-[#121215]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}>
+            <div>
+              <p className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>{size / 1000}K {mode === 'eval' ? 'Evaluation' : 'Funded'} selected</p>
+              <p className={`mt-1 text-xs ${muted}`}>Creates a simulated account immediately. No purchase or fee.</p>
             </div>
-          </details>
+            <button type="button" onClick={() => void createAccount()} disabled={busy === 'create'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold disabled:opacity-50 ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}>
+              {busy === 'create' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={1.75} />} Create practice account
+            </button>
+          </div>
         </section>
+        ) : (
+          <>
 
         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <h2 className={`text-base font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Your accounts <span className={`ml-1 text-sm font-normal ${muted}`}>{accounts.length}</span></h2>
@@ -252,7 +360,10 @@ export default function PracticeWorkspacePage() {
           <div className={`rounded-xl border border-dashed px-6 py-14 text-center ${isDark ? 'border-[#3F3F46] bg-[#18181B]' : 'border-[#D4D4D8] bg-white'}`}>
             <ShieldCheck className={`mx-auto h-7 w-7 ${muted}`} strokeWidth={1.5} />
             <h3 className={`mt-3 text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>No practice accounts yet</h3>
-            <p className={`mt-1 text-sm ${muted}`}>Choose Evaluation or Funded above to create your first account.</p>
+            <p className={`mt-1 text-sm ${muted}`}>Create an Evaluation or Funded account to begin practicing.</p>
+            <button type="button" onClick={() => setActiveTab('create')} className={`mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${isDark ? 'bg-[#FAFAFA] text-[#09090B]' : 'bg-[#18181B] text-white'}`}>
+              <Plus className="h-4 w-4" strokeWidth={1.75} /> Create account
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -288,6 +399,8 @@ export default function PracticeWorkspacePage() {
               )
             })}
           </div>
+        )}
+          </>
         )}
       </main>
 

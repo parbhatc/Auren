@@ -1,14 +1,35 @@
 /** Map UI symbol to production MDS/UDF ticker (e.g. NQ → CME:NQ). */
+const FUTURES_MONTH_CODES = 'FGHJKMNQUVXZ'
+
+function toTradeseaStreamRoot(symbol: string): string {
+  const upper = String(symbol || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const match = upper.match(new RegExp(`^([A-Z0-9]+?)[${FUTURES_MONTH_CODES}]\\d{1,4}$`))
+  return match?.[1] || upper
+}
+
+function normalizeQualifiedTicker(ticker: string, delayed: boolean): string {
+  const match = ticker.match(/^([A-Za-z]+)(?:-([Dd][Ee][Ll][Aa][Yy][Ee][Dd]))?:(.+)$/)
+  if (!match) return ticker
+  const product = toTradeseaStreamRoot(match[3])
+  const venue =
+    /^(?:GC|MGC|SI|SIL)$/.test(product)
+      ? 'COMEX'
+      : /^(?:CL|MCL)$/.test(product)
+        ? 'NYMEX'
+        : /^(?:YM|MYM)$/.test(product)
+          ? 'CBOT'
+          : match[1].toUpperCase()
+  return `${venue}${delayed ? '-Delayed' : ''}:${product}`
+}
+
 export function toTradeseaProdTicker(symbol: string): string {
   const trimmed = symbol.trim()
   if (!trimmed) return 'CME:NQ'
   if (trimmed.includes(':')) {
-    const match = trimmed.match(/^([A-Za-z]+)-([Dd][Ee][Ll][Aa][Yy][Ee][Dd]):(.+)$/)
-    if (match) return `${match[1].toUpperCase()}:${match[3].trim().toUpperCase()}`
-    return trimmed
+    return normalizeQualifiedTicker(trimmed, false)
   }
 
-  const upper = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const upper = toTradeseaStreamRoot(trimmed)
   if (/^MNQ/.test(upper)) return 'CME:MNQ'
   if (/^MES/.test(upper)) return 'CME:MES'
   if (/^M2K/.test(upper)) return 'CME:M2K'
@@ -28,14 +49,10 @@ export function toTradeseaDelayedTicker(symbol: string): string {
   const trimmed = symbol.trim()
   if (!trimmed) return 'CME-Delayed:NQ'
   if (trimmed.includes(':')) {
-    const delayedMatch = trimmed.match(/^([A-Za-z]+)-([Dd][Ee][Ll][Aa][Yy][Ee][Dd]):(.+)$/)
-    if (delayedMatch) return `${delayedMatch[1].toUpperCase()}-Delayed:${delayedMatch[3].trim().toUpperCase()}`
-    const prodMatch = trimmed.match(/^([A-Za-z]+):(.+)$/)
-    if (prodMatch) return `${prodMatch[1].toUpperCase()}-Delayed:${prodMatch[2].trim().toUpperCase()}`
-    return trimmed
+    return normalizeQualifiedTicker(trimmed, true)
   }
 
-  const upper = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const upper = toTradeseaStreamRoot(trimmed)
   if (/^MNQ/.test(upper)) return 'CME-Delayed:MNQ'
   if (/^MES/.test(upper)) return 'CME-Delayed:MES'
   if (/^M2K/.test(upper)) return 'CME-Delayed:M2K'
