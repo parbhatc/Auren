@@ -12,7 +12,7 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
-    "betterweightchartpro": "github:parbhatc/BetterweightChartPro#fa96a59081484b3d8fd6f0227796f30e8b057378",
+    "betterweightchartpro": "github:parbhatc/BetterweightChartPro#9ad4e6660e5ac23ea6728334b61322b691dbb7a4",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.559.0",
