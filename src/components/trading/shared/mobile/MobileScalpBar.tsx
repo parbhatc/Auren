@@ -50,14 +50,14 @@ function CompactQuickTrade({
       <button
         type="button"
         onClick={onExpand}
-        className={`absolute right-0.5 top-0.5 z-10 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 touch-manipulation ${iconBtn}`}
+        className={`absolute left-0.5 top-0.5 z-10 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-md p-1.5 touch-manipulation ${iconBtn}`}
         aria-label="Expand quick trade"
         title="Expand quick trade"
       >
         <ChevronUp className="h-4 w-4" aria-hidden />
       </button>
 
-      <div className="flex items-center gap-1 pr-10">
+      <div className="flex items-center gap-1 pl-10">
         <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" dockCompact />
 
         <MobileQtyStepper props={props} isDark={isDark} disabled={tradeDisabled} />

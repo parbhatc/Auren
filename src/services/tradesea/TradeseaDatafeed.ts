@@ -47,6 +47,7 @@ export type { TradeseaMarketBook } from './tradeseaMarketBook'
 const HISTORY_CACHE_TTL_MS = 90_000
 const HISTORY_MAX_RETRIES = 4
 const HISTORY_RETRY_BASE_MS = 1_200
+const HISTORY_REQUEST_TIMEOUT_MS = 15_000
 /** Wait for MDS resubscribeAll before verifying book subs. */
 const MDS_OPEN_BOOK_VERIFY_MS = 450
 
@@ -910,13 +911,30 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   ): Promise<UdfHistoryResponse> {
     const stale = this.historyCache.get(cacheKey)?.data
     const url = this.proxyUdfUrl('history', new URLSearchParams(params))
-    const res = await fetch(url, {
-      headers: {
-        ...getAuthHeaders(),
-        Accept: 'application/json',
-      },
-    })
-    const text = await res.text()
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), HISTORY_REQUEST_TIMEOUT_MS)
+    let res: Response
+    let text: string
+    try {
+      res = await fetch(url, {
+        headers: {
+          ...getAuthHeaders(),
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      })
+      text = await res.text()
+    } catch (err) {
+      if (stale) return stale
+      if (controller.signal.aborted) {
+        throw new Error(
+          `History request timed out after ${Math.round(HISTORY_REQUEST_TIMEOUT_MS / 1000)} seconds`
+        )
+      }
+      throw err
+    } finally {
+      clearTimeout(timeout)
+    }
     let data: UdfHistoryResponse | null = null
     try {
       data = text ? (JSON.parse(text) as UdfHistoryResponse) : null

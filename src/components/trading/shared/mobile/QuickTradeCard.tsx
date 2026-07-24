@@ -184,17 +184,17 @@ export function QuickTradeCard({
 
   const mobileToolbarRow = (
     <div className="flex min-w-0 items-center gap-1">
-      <div className="shrink-0">
-        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" dockCompact />
-      </div>
-      <div className="min-w-0 flex-1">{presetQtyStrip}</div>
       {headerActions ? (
         <div
-          className={`flex shrink-0 items-center gap-0.5 border-l pl-1 ml-0.5 ${mobileToolbarDivider}`}
+          className={`mr-0.5 flex shrink-0 items-center gap-0.5 border-r pr-1 ${mobileToolbarDivider}`}
         >
           {headerActions}
         </div>
       ) : null}
+      <div className="shrink-0">
+        <PadTradeSymbolPicker props={props} disabled={tradeDisabled} placement="above" dockCompact />
+      </div>
+      <div className="min-w-0 flex-1">{presetQtyStrip}</div>
     </div>
   )
 
