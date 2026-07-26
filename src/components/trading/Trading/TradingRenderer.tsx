@@ -51,7 +51,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private mdsConnectionCleanups: (() => void)[] = []
 
   state: TradingRendererState = {
-    selectedSymbol: 'MNQ',
+    selectedSymbol: 'NQ',
     tradePadSymbol: null,
     contractQuantity: 1 as number | string,
     selectedAccount: this.props.selectedAccount || 'Account 1',
@@ -423,7 +423,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   private getTradePadRoot(): string {
-    return this.state.tradePadSymbol || this.state.selectedSymbol || 'MNQ'
+    return this.state.tradePadSymbol || this.state.selectedSymbol || 'NQ'
   }
 
   private resolveTradePadStreamLabel(datafeed?: TradeseaDatafeed | null): string {
@@ -432,7 +432,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   private resolveChartStreamLabel(datafeed?: TradeseaDatafeed | null): string {
-    const root = this.state.selectedSymbol || 'MNQ'
+    const root = this.state.selectedSymbol || 'NQ'
     return datafeed?.resolveStreamInstrument?.(`CME:${root}`) ?? `CME:${root}`
   }
 
@@ -637,7 +637,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           marketDataLive,
           chartSymbolLabel,
           chartSymbolHint,
-          chartProductRoot: this.state.selectedSymbol || 'MNQ',
+          chartProductRoot: this.state.selectedSymbol || 'NQ',
           padRoot,
           contractQuantity,
           activeFirm,

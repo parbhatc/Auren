@@ -392,6 +392,12 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   /** Mark price for bracket drag — prefer visible chart bar when products match. */
   private getMarkForBracketClose(cacheKey: string): number | null {
+    const resolved = this.resolveCachePosition(cacheKey)
+    const contracts = Number(resolved?.position?.contracts)
+    if (contracts) {
+      const executable = this.tradeHandler.getPositionMarkPrice(cacheKey, contracts)
+      if (executable != null && Number.isFinite(executable)) return executable
+    }
     if (this.positionBelongsOnActiveChart(cacheKey)) {
       const lastBar = this.getDatafeed()?.getLastBarForChart?.(this.chart)
       const close = lastBar?.close
@@ -610,14 +616,28 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (price == null || !Number.isFinite(price)) return
 
     const streamKey = this.normalizeStreamKey(streamId)
+    let positionMarkChanged = false
     for (const [cacheKey, position] of this.cache.entries()) {
       if (!position?.contracts) continue
       const posStream = this.normalizeStreamKey(this.streamForCacheKey(cacheKey))
       if (posStream !== streamKey) continue
+      const executable = this.tradeHandler.getPositionMarkPrice(
+        cacheKey,
+        Number(position.contracts)
+      )
+      if (executable != null) {
+        position.line?.updatePositionLine?.(
+          Number(position.entry),
+          executable,
+          Number(position.contracts)
+        )
+        positionMarkChanged = true
+      }
       this.mergeOverlayBracketsIntoCache(cacheKey)
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
     }
+    if (positionMarkChanged) this.tradeHandler.refreshUnrealizedPl()
   }
 
   private streamForCacheKey(cacheKey: string): string {
@@ -1115,11 +1135,15 @@ export class PracticeTradeCache extends ChartTradeCache {
 
 
   onFlattenAllPosition() {
-    this.flattenAllAtMarket((symbol) => this.tradeHandler.getMarkPriceForPositionKey(symbol))
+    this.flattenAllAtMarket((symbol, contracts) =>
+      this.tradeHandler.getPositionMarkPrice(symbol, contracts)
+    )
   }
 
   /** Close every open position at market using per-symbol marks (e.g. NQ while chart is MNQ). */
-  flattenAllAtMarket(getMark: (cacheKey: string) => number | null): void {
+  flattenAllAtMarket(
+    getMark: (cacheKey: string, contracts: number) => number | null
+  ): void {
     const datafeed = this.getDatafeed()
     const lastBar = datafeed?.getLastBarForChart?.(this.chart)
     const chartFallback = lastBar?.close ?? null
@@ -1130,7 +1154,9 @@ export class PracticeTradeCache extends ChartTradeCache {
       const qty = Math.abs(Number(position.contracts))
       if (qty <= 0) continue
       const mark =
-        getMark(symbol) ?? chartFallback ?? Number(position.entry)
+        getMark(symbol, Number(position.contracts)) ??
+        chartFallback ??
+        Number(position.entry)
       this.onClosePosition(symbol, qty, mark, exitTime)
     }
 

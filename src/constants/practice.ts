@@ -50,8 +50,8 @@ export const PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT = PRACTICE_CONTRACT_QTY_PRE
 
 /** Quick Trade / DOM contract root symbols (CME product codes). */
 export const PRACTICE_CONTRACT_SYMBOL_PRESETS = [
-  'MNQ',
   'NQ',
+  'MNQ',
   'MES',
   'ES',
   'MGC',
@@ -65,7 +65,7 @@ export const PRACTICE_CONTRACT_SYMBOL_PRESETS = [
 ] as const
 
 /** Default TradingView chart ticker when practice has no saved layout/symbol. */
-export const DEFAULT_PRACTICE_CHART_SYMBOL = 'CME:MNQ'
+export const DEFAULT_PRACTICE_CHART_SYMBOL = 'CME:NQ'
 
 export const PRACTICE_PROP_FIRMS = PRACTICE_PROP_FIRM_CONFIGS.map(({ id, displayName }) => ({
   id,

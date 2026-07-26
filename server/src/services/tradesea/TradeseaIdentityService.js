@@ -15,6 +15,7 @@ const DISCOVERY_ORIGIN = 'https://prod-discovery.tradesea.ai'
 
 const IDENTITY_HOST = 'prod-identity.tradesea.ai'
 const UM_PREFIX = '/um'
+const ACCOUNTS_CACHE_TTL_MS = 10_000
 
 const TRADESEA_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
@@ -139,6 +140,10 @@ function isArchivedTradeseaAccount(account) {
 }
 
 class TradeseaIdentityService {
+  constructor() {
+    this.rawAccountsCache = new Map()
+  }
+
   async generateOtp(email, resend = false) {
     const { statusCode, body } = await apiRequest('POST', '/v1/login/generate-otp', {
       email,
@@ -392,18 +397,45 @@ class TradeseaIdentityService {
       return []
     }
 
-    const response = await this.proxyIdentityRequest(
+    const cacheKey = crypto
+      .createHash('sha256')
+      .update(String(tokens.accessToken))
+      .digest('hex')
+    const now = Date.now()
+    const cached = this.rawAccountsCache.get(cacheKey)
+    if (cached && cached.expires > now) {
+      return cached.promise
+    }
+
+    for (const [key, entry] of this.rawAccountsCache) {
+      if (entry.expires <= now) this.rawAccountsCache.delete(key)
+    }
+    if (this.rawAccountsCache.size >= 20) {
+      this.rawAccountsCache.delete(this.rawAccountsCache.keys().next().value)
+    }
+
+    const promise = this.proxyIdentityRequest(
       tokens,
       'GET',
       '/eum/v1/accountsWithDetails'
-    )
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new Error(apiErrorMessage(response.body, 'Could not load Tradesea accounts'))
+    ).then((response) => {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw new Error(apiErrorMessage(response.body, 'Could not load Tradesea accounts'))
+      }
+      return this.parseAccountsBody(response.body)
+        .map((account) => this.normalizeAccount(account))
+        .filter((account) => !this.isNexusDevAccount(account))
+    })
+    const entry = { expires: now + ACCOUNTS_CACHE_TTL_MS, promise }
+    this.rawAccountsCache.set(cacheKey, entry)
+    try {
+      return await promise
+    } catch (error) {
+      if (this.rawAccountsCache.get(cacheKey) === entry) {
+        this.rawAccountsCache.delete(cacheKey)
+      }
+      throw error
     }
-
-    return this.parseAccountsBody(response.body)
-      .map((account) => this.normalizeAccount(account))
-      .filter((account) => !this.isNexusDevAccount(account))
   }
 
   async fetchAccounts(tokens) {

@@ -47,7 +47,7 @@ export type { TradeseaMarketBook } from './tradeseaMarketBook'
 const HISTORY_CACHE_TTL_MS = 90_000
 const HISTORY_MAX_RETRIES = 4
 const HISTORY_RETRY_BASE_MS = 1_200
-const HISTORY_REQUEST_TIMEOUT_MS = 15_000
+const HISTORY_REQUEST_TIMEOUT_MS = 12_000
 /** Wait for MDS resubscribeAll before verifying book subs. */
 const MDS_OPEN_BOOK_VERIFY_MS = 450
 
@@ -94,7 +94,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private marketBookWired = false
   private offMarketBook: Array<() => void> = []
   private bookSubIdsByStream = new Map<string, number[]>()
-  private historyFetchChain: Promise<unknown> = Promise.resolve()
+  private historyFetchChains = new Map<string, Promise<unknown>>()
   private historyInflight = new Map<string, Promise<UdfHistoryResponse>>()
   private historyCache = new Map<string, { expires: number; data: UdfHistoryResponse }>()
   private chartResetCallback: (() => void) | null = null
@@ -866,13 +866,26 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return HISTORY_RETRY_BASE_MS * 2 ** attempt
   }
 
-  /** Serialize UDF history calls — TradingView + studies can trigger many parallel getBars. */
-  private enqueueHistoryFetch<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.historyFetchChain.then(fn, fn)
-    this.historyFetchChain = run.then(
+  /**
+   * Serialize loads for one symbol/resolution, but never let a stale request
+   * from the previous timeframe block the newly selected timeframe.
+   */
+  private enqueueHistoryFetch<T>(
+    queueKey: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.historyFetchChains.get(queueKey) ?? Promise.resolve()
+    const run = previous.then(fn, fn)
+    const tail = run.then(
       () => undefined,
       () => undefined
     )
+    this.historyFetchChains.set(queueKey, tail)
+    void tail.finally(() => {
+      if (this.historyFetchChains.get(queueKey) === tail) {
+        this.historyFetchChains.delete(queueKey)
+      }
+    })
     return run
   }
 
@@ -895,7 +908,13 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     const inflight = this.historyInflight.get(cacheKey)
     if (inflight) return inflight
 
-    const promise = this.enqueueHistoryFetch(() => this.fetchHistoryUdfOnce(params, cacheKey))
+    const queueKey = [
+      params.get('symbol') || '',
+      params.get('resolution') || '1',
+    ].join('|')
+    const promise = this.enqueueHistoryFetch(queueKey, () =>
+      this.fetchHistoryUdfOnce(params, cacheKey)
+    )
     this.historyInflight.set(cacheKey, promise)
     try {
       return await promise

@@ -167,11 +167,11 @@ function loadBwcSavedSymbol(): string | null {
 /**
  * BWC's symbol picker requires a string during boot. A non-empty boot symbol
  * overrides BWC's own saved-symbol restore, so when no symbol prop is given
- * (practice mode) prefer the saved pane symbol; MNQ only for fresh layouts.
+ * (practice mode) prefer the saved pane symbol; NQ only for fresh layouts.
  */
 function resolveInitialSymbol(symbolProp: string | undefined): string {
   const trimmed = String(symbolProp || '').trim()
-  if (!trimmed) return loadBwcSavedSymbol() || 'MNQ'
+  if (!trimmed) return loadBwcSavedSymbol() || 'NQ'
   return chartSymbolToProductRoot(trimmed) || trimmed
 }
 

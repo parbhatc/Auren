@@ -144,3 +144,41 @@ test('parses the identity accountsWithDetails response shape', () => {
   assert.equal(accounts[0].name, 'LFE025-TEST')
   assert.equal(accounts[0].userId, 'stream-user-id')
 })
+
+test('coalesces account discovery during a burst of history proxy requests', async () => {
+  const originalProxyIdentityRequest = TradeseaIdentityService.proxyIdentityRequest
+  TradeseaIdentityService.rawAccountsCache.clear()
+  let calls = 0
+  TradeseaIdentityService.proxyIdentityRequest = async () => {
+    calls += 1
+    return {
+      statusCode: 200,
+      body: {
+        status: 'success',
+        data: [
+          {
+            id: 'account-id',
+            broker: 'LucidTrading',
+            accountName: 'LFE025-TEST',
+            type: 'live',
+            userId: 'stream-user-id',
+          },
+        ],
+      },
+    }
+  }
+
+  try {
+    const tokens = { accessToken: 'burst-token', refreshToken: '' }
+    const [first, second] = await Promise.all([
+      TradeseaIdentityService.fetchRawAccounts(tokens),
+      TradeseaIdentityService.fetchRawAccounts(tokens),
+    ])
+    assert.equal(calls, 1)
+    assert.equal(first[0]?.id, 'account-id')
+    assert.deepEqual(second, first)
+  } finally {
+    TradeseaIdentityService.proxyIdentityRequest = originalProxyIdentityRequest
+    TradeseaIdentityService.rawAccountsCache.clear()
+  }
+})

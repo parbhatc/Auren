@@ -305,7 +305,9 @@ class ChartTradeCache {
       if(totalContracts === 0 || (isLong && totalContracts < 1) || (!isLong && totalContracts > 0)){
         const reopenContracts = totalContracts
         if (Math.abs(position.contracts) >= 1) {
-          this.handleClosePosition(position, lastBarClose, lastBarTime)
+          // An opposing market order executes at its supplied fill (bid for a
+          // sell, ask for a buy), not at the chart's last-traded candle close.
+          this.handleClosePosition(position, price, lastBarTime)
         } else {
           this.clearPositionLocal(position)
         }

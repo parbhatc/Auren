@@ -138,7 +138,7 @@ export default function TradePanel(props: TradePanelProps) {
     subscribeMarketBook,
     ensureMarketBook,
     releaseMarketBook,
-    chartSymbol = 'CME:MNQ',
+    chartSymbol = 'CME:NQ',
   } = props
 
   const mobileSheet = fullWidth && hideDetach
