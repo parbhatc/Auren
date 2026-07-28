@@ -32,6 +32,8 @@ export class BacktesterTradeHandler {
   private replayPaneSyncRaf: number | null = null
   private nextCandleInFlight: boolean = false
   private nextCandleTimeout: NodeJS.Timeout | null = null
+  /** A select-bar jump uses bars already loaded in BWC, so its ack must not refetch them. */
+  private pendingSelectedBarAnchorSec: number | null = null
   /** Assigned by the host view to refresh position/P&L UI after trade actions. */
   onPositionUpdate?: () => void
   onUnrealizedPnLUpdate?: (pnl: number) => void
@@ -410,6 +412,13 @@ export class BacktesterTradeHandler {
     client?.setCallbacks({
       onReplayResponse: async (data: { type: string; time: string }) => {
         const anchorSec = this.parseReplayResponseTime(data.time)
+        if (this.pendingSelectedBarAnchorSec != null) {
+          const selectedAnchorSec = this.pendingSelectedBarAnchorSec
+          this.pendingSelectedBarAnchorSec = null
+          this.syncWidgetReplayCursor(anchorSec ?? selectedAnchorSec)
+          console.log('[Backtester Trade Handler] Replayed to: ' + data.time)
+          return
+        }
         await this.reloadChartAfterSessionAnchor({
           preserveViewport: true,
           playbackAnchorSec: anchorSec ?? undefined,
@@ -808,11 +817,18 @@ export class BacktesterTradeHandler {
 
     const unixSec = Number(rawTime) > 1e12 ? Math.floor(Number(rawTime) / 1000) : Math.floor(Number(rawTime))
 
+    // The selected candle is already present in the chart. Move the host replay
+    // cursor over that data in place so the exact visible range is retained.
+    this.pendingSelectedBarAnchorSec = unixSec
+    this.syncWidgetReplayCursor(unixSec)
+
     if (this.client?.isConnected()) {
       this.client.send({
         type: 'replay',
         time: unixSec,
       })
+    } else {
+      this.pendingSelectedBarAnchorSec = null
     }
 
     this.logPlaybackAction('select_bar', { time: unixSec, index: payload.index })

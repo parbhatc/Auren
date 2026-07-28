@@ -517,21 +517,19 @@ class BacktesterWebSocket extends WebSocketBase {
         // Bars to emit are identical for every uid in the group — compute once.
         let framesToSend = bars
         if (!nativeSubMinute) {
-          let barsToAggregate = bars
-          if (subRes !== '1') {
-            // Aggregate the COMPLETE window from the candle containing the pre-step
-            // cursor through the replay wall, loaded straight from the (memory-cached)
-            // CSV data. Rebuilding from the WS bar cache broke two ways: the forming
-            // candle's head (bars before the replay session started stepping) may
-            // only live in the HTTP history service's cache — re-aggregating without
-            // it corrupts the candle's open/high/low — and stale cached step bars
-            // couldn't complete the previous candle after an unaligned cursor.
-            const candleStartMs = alignBarOpenSec(baseSec, resolution) * 1000
-            const windowBars = state.barCache.loadRange(symbol, candleStartMs - 1, loadToMs, { csvResolution: '1m' })
-            barsToAggregate = windowBars.filter(
-              (bar) => bar.time >= candleStartMs && bar.time <= loadToMs,
-            )
-          }
+          // Rebuild the complete window from the pre-step candle, even for 1m.
+          // loadForward is strictly after cursorSec, so a 30s -> 1m switch at
+          // 09:38:00 otherwise appends 09:39 without completing 09:38 first.
+          const candleStartMs = alignBarOpenSec(baseSec, resolution) * 1000
+          const windowBars = state.barCache.loadRange(
+            symbol,
+            candleStartMs - 1,
+            loadToMs,
+            { csvResolution: '1m' },
+          )
+          const barsToAggregate = windowBars.filter(
+            (bar) => bar.time >= candleStartMs && bar.time <= loadToMs,
+          )
           framesToSend = aggregateBars(barsToAggregate, resolution).filter(
             (bar) => bar.time <= capMs,
           )

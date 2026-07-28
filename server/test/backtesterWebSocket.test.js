@@ -104,3 +104,60 @@ test('step before session initialization is acknowledged without throwing', () =
     { type: 'nextCandleAck', cursorSec: 1234, emitted: 0 },
   ])
 })
+
+test('1m step after a 30s-aligned cursor completes the current minute before appending the next', () => {
+  const replay = new BacktesterWebSocket({ csvLoader: {} })
+  const client = { id: 'socket-30s-to-1m', userId: 'user' }
+  const cursorSec = 1_800_000_000
+  const targetSec = cursorSec + 60
+  const currentBar = {
+    time: cursorSec * 1000,
+    open: 100,
+    high: 103,
+    low: 99,
+    close: 102,
+    volume: 10,
+  }
+  const nextBar = {
+    time: targetSec * 1000,
+    open: 102,
+    high: 104,
+    low: 101,
+    close: 103,
+    volume: 12,
+  }
+
+  replay.onSubscribeBars(createSocket(), {
+    symbol: 'NQ',
+    resolution: '1',
+    subscriberUID: 'one-minute-sub',
+  }, client)
+
+  const state = replay.getClientState(client)
+  state.cursor = new Date(cursorSec * 1000)
+  state.barCache = {
+    last: state.cursor,
+    getNewest: () => null,
+    loadForward: () => [nextBar],
+    loadRange: () => [currentBar, nextBar],
+    addBars: () => {},
+    clearAll: () => {},
+  }
+
+  const ws = createSocket()
+  replay.onNextCandle(ws, {
+    playbackTimeframe: '1',
+    cursorSec,
+    stepSec: 60,
+    targetSec,
+  }, client)
+
+  const message = ws.sent.find((item) => item.type === 'realtimeBars')
+  assert.ok(message)
+  assert.equal(message.subscriberUID, 'one-minute-sub')
+  assert.deepEqual(
+    message.candles.map((bar) => bar.time),
+    [currentBar.time, nextBar.time],
+  )
+  assert.equal(message.candles[0].close, currentBar.close)
+})
