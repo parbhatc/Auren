@@ -16,6 +16,7 @@ import {
   type CsvDataWsSource,
   resolveDataManagementTab,
 } from './csvDataPrefs'
+import { chartResolutionToCsvFolder } from './csvDataTimeframes'
 import { getSymbolTicker } from './symbolTickers'
 
 const BacktesterDataManagementWrapper = () => {
@@ -317,9 +318,9 @@ const BacktesterDataManagementWrapper = () => {
     }
   }, [activeTab, wsConnected])
 
-  const loadCsvInventory = async () => {
+  const loadCsvInventory = async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
     try {
-      setLoadingCsvInventory(true)
+      if (showLoading) setLoadingCsvInventory(true)
       const response = await backtesterAPI.getCsvInventory()
       if (response.success) {
         setCsvInventory(response.inventory || [])
@@ -328,7 +329,7 @@ const BacktesterDataManagementWrapper = () => {
       console.error('Error loading CSV inventory:', err)
       toast.error('Failed to load CSV inventory')
     } finally {
-      setLoadingCsvInventory(false)
+      if (showLoading) setLoadingCsvInventory(false)
     }
   }
 
@@ -374,7 +375,7 @@ const BacktesterDataManagementWrapper = () => {
         if (data.success) {
           toast.success(data.message || `Download completed for ${storageSymbol}`)
           setTimeout(async () => {
-            await loadCsvInventory()
+            await loadCsvInventory({ showLoading: false })
           }, 500)
         } else {
           toast.error(data.error || 'Download failed')
@@ -411,9 +412,14 @@ const BacktesterDataManagementWrapper = () => {
         })
 
         if (data.success) {
-          toast.success(data.message || `Update completed for ${storageSymbol}`)
+          const datasetLabel = `${storageSymbol} ${chartResolutionToCsvFolder(resolution)}`
+          toast.success(
+            data.message
+              ? `${datasetLabel}: ${data.message}`
+              : `${datasetLabel}: Update completed`
+          )
           setTimeout(async () => {
-            await loadCsvInventory()
+            await loadCsvInventory({ showLoading: false })
           }, 500)
         } else {
           toast.error(data.error || 'Update failed')
@@ -452,7 +458,7 @@ const BacktesterDataManagementWrapper = () => {
         if (data.success) {
           toast.success(data.message || `Overwrite completed for ${storageSymbol}`)
           setTimeout(async () => {
-            await loadCsvInventory()
+            await loadCsvInventory({ showLoading: false })
           }, 500)
         } else {
           toast.error(data.error || 'Overwrite failed')

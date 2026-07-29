@@ -357,10 +357,15 @@ export class BacktesterTradeHandler {
       clearTimeout(this.nextCandleTimeout)
       this.nextCandleTimeout = null
     }
-    if (data.emitted === 0) {
-      // Both sides advanced to the same target; keep the pane cursor in sync.
-      this.scheduleSyncAllPanesReplayCursor()
+    if (Number.isFinite(Number(data.cursorSec))) {
+      // The server may move past a market/data gap (for example NQ 16:59 ->
+      // 18:00). Its acknowledged wall is authoritative over the requested wall.
+      this.datafeed?.setPlaybackAnchorSec?.(
+        Math.floor(Number(data.cursorSec)),
+        this.resolvePlaybackStepResolution() as ResolutionString,
+      )
     }
+    this.scheduleSyncAllPanesReplayCursor()
   }
 
   /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
@@ -880,6 +885,7 @@ export class BacktesterTradeHandler {
         cursorSec: Math.floor(current),
         targetSec: Math.floor(targetSec),
         playbackTimeframe: stepResolution,
+        chartSymbol: this.resolveChartSymbol(),
       })
     } else {
       this.nextCandleInFlight = false

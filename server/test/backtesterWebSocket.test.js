@@ -161,3 +161,70 @@ test('1m step after a 30s-aligned cursor completes the current minute before app
   )
   assert.equal(message.candles[0].close, currentBar.close)
 })
+
+test('next candle skips the NQ maintenance gap from 4:59 PM to 6:00 PM', () => {
+  const cursorSec = 1_785_272_340
+  const requestedTargetSec = cursorSec + 60
+  const nextTradingSec = 1_785_276_000
+  const currentBar = {
+    time: cursorSec * 1000,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100.5,
+    volume: 10,
+  }
+  const nextBar = {
+    time: nextTradingSec * 1000,
+    open: 101,
+    high: 102,
+    low: 100,
+    close: 101.5,
+    volume: 12,
+  }
+  const replay = new BacktesterWebSocket({
+    csvLoader: {
+      loadForward: () => [nextBar],
+    },
+  })
+  const client = { id: 'socket-maintenance-gap', userId: 'user' }
+
+  replay.onSubscribeBars(createSocket(), {
+    symbol: 'NQ',
+    resolution: '1',
+    subscriberUID: 'nq-one-minute',
+  }, client)
+
+  const state = replay.getClientState(client)
+  state.cursor = new Date(cursorSec * 1000)
+  state.barCache = {
+    last: state.cursor,
+    getNewest: () => currentBar.time,
+    loadForward: () => [nextBar],
+    loadRange: () => [currentBar, nextBar],
+    addBars: () => {},
+    clearAll: () => {},
+  }
+
+  const ws = createSocket()
+  replay.onNextCandle(ws, {
+    playbackTimeframe: '1',
+    chartSymbol: 'NQ',
+    cursorSec,
+    stepSec: 60,
+    targetSec: requestedTargetSec,
+  }, client)
+
+  const message = ws.sent.find((item) => item.type === 'realtimeBars')
+  const ack = ws.sent.find((item) => item.type === 'nextCandleAck')
+  assert.ok(message)
+  assert.deepEqual(
+    message.candles.map((bar) => bar.time),
+    [currentBar.time, nextBar.time],
+  )
+  assert.deepEqual(ack, {
+    type: 'nextCandleAck',
+    cursorSec: nextTradingSec,
+    emitted: 2,
+  })
+})

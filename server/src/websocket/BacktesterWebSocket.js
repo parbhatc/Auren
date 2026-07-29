@@ -404,7 +404,7 @@ class BacktesterWebSocket extends WebSocketBase {
       let baseSec = cursorSec != null ? Math.floor(Number(cursorSec)) : Math.floor(last.getTime() / 1000)
       if (!Number.isFinite(baseSec)) baseSec = Math.floor(last.getTime() / 1000)
 
-      const targetWallSec = targetSec != null && Number.isFinite(Number(targetSec))
+      const requestedTargetWallSec = targetSec != null && Number.isFinite(Number(targetSec))
         ? Math.floor(Number(targetSec))
         : baseSec + stepWallSec
 
@@ -418,6 +418,36 @@ class BacktesterWebSocket extends WebSocketBase {
           }
           groups.get(key).uids.push(uid)
       }
+
+      // Next means the next available trading candle, not the next empty wall
+      // clock slot. Probe the active chart's source data so maintenance breaks,
+      // weekends, and other data gaps are crossed in one click.
+      let targetWallSec = requestedTargetWallSec
+      const primarySymbol =
+        String(data?.chartSymbol || '').trim() ||
+        groups.values().next().value?.symbol ||
+        ''
+      if (primarySymbol && typeof this.csvLoader?.loadForward === 'function') {
+        const sourceOpts = {
+          csvResolution: csvFolderForChartResolution(stepResolution),
+        }
+        const nextSourceBar = this.csvLoader.loadForward(
+          primarySymbol,
+          baseSec * 1000,
+          1,
+          sourceOpts,
+        )[0]
+        const nextSourceSec = nextSourceBar?.time != null
+          ? Math.floor(Number(nextSourceBar.time) / 1000)
+          : null
+        if (nextSourceSec != null && Number.isFinite(nextSourceSec)) {
+          if (nextSourceSec > targetWallSec) targetWallSec = nextSourceSec
+        } else {
+          // Stay at the final available candle instead of drifting beyond data.
+          targetWallSec = baseSec
+        }
+      }
+      const skippedGap = targetWallSec > requestedTargetWallSec
 
       for (const group of groups.values()) {
         const { symbol, resolution, uids } = group
@@ -434,7 +464,7 @@ class BacktesterWebSocket extends WebSocketBase {
         // no bar before the next full minute). Emits ONE candle stamped at the chart
         // candle open, folded from finer bars whose open time is in [candleStart, targetWall).
         const subResSec = resolutionToSeconds(subRes)
-        if (!nativeSubMinute && stepWallSec > 0 && stepWallSec < subResSec) {
+        if (!skippedGap && !nativeSubMinute && stepWallSec > 0 && stepWallSec < subResSec) {
           const fineOpts = { csvResolution: csvFolderForChartResolution(stepResolution) }
           const candleStartSec = alignBarOpenSec(targetWallSec - 1, subRes)
           const candleStartMs = candleStartSec * 1000
