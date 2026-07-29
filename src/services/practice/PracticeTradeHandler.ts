@@ -44,6 +44,8 @@ export class PracticeTradeHandler {
   private marketBookUnsub: (() => void) | null = null
   private uplRefreshRaf: number | null = null
   private uplDeferredWhilePan: number | null = null
+  private uplPanFlushScheduled = false
+  private uplRefreshDeferredWhilePan = false
   private blownEnforcing = false
   private blownModalShown = false
   private passedModalShown = false
@@ -96,7 +98,13 @@ export class PracticeTradeHandler {
     if (this.upl === rounded) return
     if (isBwcChartPanning()) {
       this.uplDeferredWhilePan = rounded
-      whenBwcPanEnds(() => this.flushDeferredUnrealizedPl())
+      if (!this.uplPanFlushScheduled) {
+        this.uplPanFlushScheduled = true
+        whenBwcPanEnds(() => {
+          this.uplPanFlushScheduled = false
+          this.flushDeferredUnrealizedPl()
+        })
+      }
       return
     }
     this.upl = rounded
@@ -259,6 +267,17 @@ export class PracticeTradeHandler {
 
   /** Sum UP&L for every open position (any symbol), not only the active chart. */
   refreshUnrealizedPl(): void {
+    if (isBwcChartPanning()) {
+      if (!this.uplRefreshDeferredWhilePan) {
+        this.uplRefreshDeferredWhilePan = true
+        whenBwcPanEnds(() => {
+          this.uplRefreshDeferredWhilePan = false
+          this.refreshUnrealizedPl()
+        })
+      }
+      return
+    }
+
     const cache = this.tradeCache
     const prevUpl = this.upl
     if (!cache?.hasAnyOpenPosition()) {

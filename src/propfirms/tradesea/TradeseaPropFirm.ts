@@ -12,7 +12,12 @@ import { propsAPI } from '../../api/props.api'
 
 import { tradeseaAPI, TradeseaAccount } from '../../api/tradesea.api'
 
-import { getPracticeSettings, getPracticeMarketDataSettings } from '../../constants/practice'
+import {
+  getPracticeSettings,
+  getPracticeMarketDataSettings,
+  savePracticeMarketDataSettings,
+  updateFirmMarketDataSelection,
+} from '../../constants/practice'
 import { getTradeTradeseaAccount, saveTradeTradeseaAccount } from '../../constants/trade'
 
 import { FormattedAccount } from '../../utils/marketAccountDisplay'
@@ -549,26 +554,42 @@ export class TradeseaPropFirm extends PropFirmBase {
     }
 
     const settings = getPracticeSettings()
-    let marketId =
+    const requestedMarketId =
       this.practiceAccountId || settings.accountId || sim.marketDataAccountId || ''
 
     this.accountsLoading = true
     try {
-      if (!marketId) {
-        const error: Error & { type?: string } = new Error(
-          'No market data account selected. Choose one on the Practice hub.'
-        )
-        error.type = 'no_accounts'
-        throw error
-      }
       const result = await tradeseaAPI.getAccounts()
-      if (!result.connected) {
-        throw new Error(result.message || 'Market data not connected')
+      if (!result.connected || !result.accounts?.length) {
+        throw new Error(
+          result.message ||
+            'No supported market data accounts found. Connect in Settings → Market data.'
+        )
       }
-      const market = result.accounts?.find((a) => a.id === marketId)
+      const savedMarket = result.accounts.find((account) => account.id === requestedMarketId)
+      // A single discovered account is unambiguous and safe to repair
+      // automatically. With multiple accounts, require the user's explicit
+      // choice instead of silently switching Practice to another feed.
+      const market = savedMarket ?? (result.accounts.length === 1 ? result.accounts[0] : null)
       if (!market) {
-        throw new Error('Market data account not found. Update it on the Practice hub.')
+        throw new Error(
+          'The saved Practice market data account is no longer available. Choose an available account on the Practice page.'
+        )
       }
+
+      if (
+        market.id !== settings.accountId ||
+        (market.label || market.id) !== settings.accountLabel
+      ) {
+        const nextSettings = updateFirmMarketDataSelection(settings, 'tradesea', {
+          accountId: market.id,
+          accountLabel: market.label || market.id,
+        })
+        await savePracticeMarketDataSettings(nextSettings)
+      }
+
+      this.practiceAccountId = market.id
+      this.practiceAccountLabel = market.label || market.id
       this.accounts = [market]
       this.selectedAccountId = market.id
       const displayName = getPracticeAccountDisplayTitle(sim)

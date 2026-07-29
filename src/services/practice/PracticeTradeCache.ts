@@ -616,28 +616,17 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (price == null || !Number.isFinite(price)) return
 
     const streamKey = this.normalizeStreamKey(streamId)
-    let positionMarkChanged = false
+    let matchingPosition = false
     for (const [cacheKey, position] of this.cache.entries()) {
       if (!position?.contracts) continue
       const posStream = this.normalizeStreamKey(this.streamForCacheKey(cacheKey))
       if (posStream !== streamKey) continue
-      const executable = this.tradeHandler.getPositionMarkPrice(
-        cacheKey,
-        Number(position.contracts)
-      )
-      if (executable != null) {
-        position.line?.updatePositionLine?.(
-          Number(position.entry),
-          executable,
-          Number(position.contracts)
-        )
-        positionMarkChanged = true
-      }
+      matchingPosition = true
       this.mergeOverlayBracketsIntoCache(cacheKey)
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
     }
-    if (positionMarkChanged) this.tradeHandler.refreshUnrealizedPl()
+    if (matchingPosition) this.tradeHandler.refreshUnrealizedPl()
   }
 
   private streamForCacheKey(cacheKey: string): string {

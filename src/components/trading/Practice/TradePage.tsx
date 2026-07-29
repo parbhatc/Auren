@@ -16,7 +16,6 @@ import {
   refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../../constants/practice'
-import { firmUsesBrokerAccounts } from '../../../propfirms/MarketDataConnection'
 import {
   computeDrawdownFloor,
   evaluatePracticeRules,
@@ -74,11 +73,6 @@ function TradePageInner() {
     const md = getPracticeMarketDataSettings()
     const marketFirmId = normalizePracticePropFirmId(md.propFirmId)
     const activeMarketFirm = propFirmRegistry.find((firm) => firm.id === marketFirmId) as any
-    if (firmUsesBrokerAccounts(marketFirmId) && !md.accountId) {
-      setValidationError(t('practice.page.noAccountSelected'))
-      return
-    }
-
     if (!activeMarketFirm) {
       setValidationError(t('practice.page.loadFailed'))
       return
@@ -238,7 +232,18 @@ function TradePageInner() {
           }`}
         >
           <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{validationError}</p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.PRACTICE)}
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
+                isDark
+                  ? 'bg-blue-500 text-white hover:bg-blue-400'
+                  : 'bg-blue-600 text-white hover:bg-blue-500'
+              }`}
+            >
+              Change market data
+            </button>
             <button
               type="button"
               onClick={() => navigate(ROUTES.PRACTICE)}

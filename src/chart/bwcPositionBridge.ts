@@ -301,6 +301,13 @@ export class BwcPositionBridge {
 
     const createBrackets = opts.createBrackets !== false
     const current = overlay.getPosition()
+    const unchanged =
+      current?.entry === entry &&
+      current.qty === contracts &&
+      (!createBrackets ||
+        (current.stopLoss === stopLoss && current.takeProfit === takeProfit))
+    if (unchanged) return
+
     const sameSide =
       current &&
       current.qty !== 0 &&
@@ -308,7 +315,11 @@ export class BwcPositionBridge {
 
     this.suppressChartEvents = true
     try {
-      if (sameSide && overlay.modifyPosition) {
+      if (
+        sameSide &&
+        overlay.modifyPosition &&
+        (current.entry !== entry || current.qty !== contracts)
+      ) {
         await overlay.modifyPosition({ entry, qty: contracts })
       } else if (
         !current ||

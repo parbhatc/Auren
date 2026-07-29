@@ -20,7 +20,6 @@ import {
   getPracticeAccounts,
   getPracticeAccountDisplayTitle,
   getPracticeAccountMetaLabel,
-  getPracticeMarketDataSettings,
   PRACTICE_STORAGE_KEYS,
   refreshPracticeFromApi,
   resetPracticeAccount,
@@ -38,6 +37,7 @@ import {
 } from '../../services/practice/practicePlans'
 import ProductHeader from '../../components/layout/ProductHeader'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import PracticeMarketDataSelector from '../../components/trading/Practice/PracticeMarketDataSelector'
 
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -73,7 +73,6 @@ export default function PracticeWorkspacePage() {
   const [error, setError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<PracticeAccount | null>(null)
 
-  const marketData = useMemo(() => getPracticeMarketDataSettings(), [accounts])
   const planDefaults = useMemo(() => defaultRules(mode, size), [mode, size])
   const planIsCustom = useMemo(
     () => JSON.stringify(rules) !== JSON.stringify(planDefaults),
@@ -180,7 +179,7 @@ export default function PracticeWorkspacePage() {
             <p className={`mt-2 max-w-2xl text-sm ${muted}`}>Create a simulated account, choose its plan, then press Play to open the protected trading terminal.</p>
           </div>
           <button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium ${surface} ${isDark ? 'text-[#FAFAFA] hover:bg-[#27272A]' : 'text-[#09090B] hover:bg-[#F4F4F5]'}`}>
-            <Database className="h-4 w-4" strokeWidth={1.75} aria-hidden /> Market data <ChevronRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+            <Database className="h-4 w-4" strokeWidth={1.75} aria-hidden /> Connection settings <ChevronRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </button>
         </div>
 
@@ -210,6 +209,11 @@ export default function PracticeWorkspacePage() {
             Create
           </button>
         </div>
+
+        <PracticeMarketDataSelector
+          isDark={isDark}
+          onOpenConnectionSettings={() => navigate(ROUTES.PROPS_SETTINGS)}
+        />
 
         {activeTab === 'create' ? (
         <section className={`mb-7 rounded-xl border p-4 sm:p-5 ${surface}`} aria-labelledby="create-practice-title">
@@ -349,9 +353,8 @@ export default function PracticeWorkspacePage() {
         ) : (
           <>
 
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className={`text-base font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Your accounts <span className={`ml-1 text-sm font-normal ${muted}`}>{accounts.length}</span></h2>
-          <span className={`break-words text-xs sm:text-right ${muted}`}>{marketData.accountLabel ? `Connected: ${marketData.accountLabel}` : 'Market data not selected'}</span>
         </div>
 
         {loading && accounts.length === 0 ? (

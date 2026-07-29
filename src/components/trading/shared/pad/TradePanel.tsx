@@ -13,6 +13,7 @@ import { DomTab } from './tabs/DomTab'
 import { OrderTab } from './tabs/OrderTab'
 import type { TradePanelProps } from './types'
 import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../../../utils/bwcPan'
 
 export type { TradePanelProps, OrderSide, BracketOptions, OrderSubmitOptions } from './types'
 export type {
@@ -216,25 +217,56 @@ export default function TradePanel(props: TradePanelProps) {
   useEffect(() => {
     const sub = subscribeMarketBookRef.current
     if (!sub) return
+    let active = true
+    let bookDeferredWhilePan = false
+    let ltpDeferredWhilePan = false
     const scheduleBookTick = () => {
+      if (!active) return
+      if (isBwcChartPanning()) {
+        if (!bookDeferredWhilePan) {
+          bookDeferredWhilePan = true
+          whenBwcPanEnds(() => {
+            bookDeferredWhilePan = false
+            scheduleBookTick()
+          })
+        }
+        return
+      }
       if (bookTickRafRef.current != null) return
       bookTickRafRef.current = requestAnimationFrame(() => {
         bookTickRafRef.current = null
+        if (!active) return
         setBookTick((n) => n + 1)
       })
     }
     const scheduleLtpTick = () => {
+      if (!active) return
+      if (isBwcChartPanning()) {
+        if (!ltpDeferredWhilePan) {
+          ltpDeferredWhilePan = true
+          whenBwcPanEnds(() => {
+            ltpDeferredWhilePan = false
+            scheduleLtpTick()
+          })
+        }
+        return
+      }
       if (ltpTickRafRef.current != null) return
       ltpTickRafRef.current = requestAnimationFrame(() => {
         ltpTickRafRef.current = null
+        if (!active) return
         setLtpTick((n) => n + 1)
       })
     }
-    return sub((_streamId, kind) => {
+    const unsubscribe = sub((_streamId, kind) => {
       // LTP lives inside the book snapshot — always refresh book; ltpTick for LTP-only UI.
       scheduleBookTick()
       if (kind === 'ltp') scheduleLtpTick()
     })
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [chartSymbol, accountId])
   useEffect(() => {
     return () => {
