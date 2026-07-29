@@ -21,6 +21,7 @@ type ConditionType =
   | 'timeframe_time'
   | 'liquidity_sweep'
   | 'pda_delivery'
+  | 'smt'
   | 'text'
   | 'number'
 
@@ -64,7 +65,8 @@ type ReplayJournalDraft = {
 
 const TIMEFRAMES = ['30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1D']
 const PDA_TYPES = ['FVG', 'Inversion FVG', 'Order Block', 'Breaker Block', 'Mitigation Block', 'Rejection Block', 'Liquidity Void', 'Other PDA']
-const VALID_TYPES: ConditionType[] = ['boolean', 'time', 'timeframe', 'timeframe_time', 'liquidity_sweep', 'pda_delivery', 'text', 'number']
+const VALID_TYPES: ConditionType[] = ['boolean', 'time', 'timeframe', 'timeframe_time', 'liquidity_sweep', 'pda_delivery', 'smt', 'text', 'number']
+const SMT_COMPARE_SYMBOLS = ['ES', 'NQ', 'YM', 'RTY']
 
 const blankRiskLeg = (): JournalRiskLeg => ({ mode: 'none', value: '', price: '', basis: '', timeframe: '' })
 const blankRiskPlan = (): JournalRiskPlan => ({
@@ -586,6 +588,132 @@ function IfvgConditionField({
   </div>
 }
 
+function SmtConditionField({
+  condition,
+  value,
+  setValue,
+  inputClass,
+  isDark,
+  cursorClock,
+  chartResolution,
+  primarySymbol,
+}: {
+  condition: PlaybookCondition
+  value: string | boolean | undefined
+  setValue: (value: string | boolean) => void
+  inputClass: string
+  isDark: boolean
+  cursorClock: string
+  chartResolution: string
+  primarySymbol: string
+}) {
+  const [storedTimeframe = '', confirmedTime = '', storedDirection = '', storedCompare = ''] =
+    String(value || '').split(/\s*@\s*/, 4)
+  const primaryRoot =
+    String(primarySymbol || '')
+      .toUpperCase()
+      .replace(/^.*:/, '')
+      .match(/^[A-Z]+/)?.[0] || 'Chart'
+  const defaultCompare =
+    SMT_COMPARE_SYMBOLS.find((symbol) => symbol !== primaryRoot) || 'ES'
+  const [timeframe, setTimeframe] = useState(
+    storedTimeframe || timeframeLabel(chartResolution),
+  )
+  const [direction, setDirection] = useState(storedDirection)
+  const [compareSymbol, setCompareSymbol] = useState(storedCompare || defaultCompare)
+  const availableCompareSymbols = SMT_COMPARE_SYMBOLS.filter(
+    (symbol) => symbol !== primaryRoot,
+  )
+
+  const capture = () => {
+    if (!timeframe || !direction || !compareSymbol) return
+    setValue(`${timeframe} @ ${cursorClock} @ ${direction} @ ${compareSymbol}`)
+  }
+
+  return (
+    <div className="space-y-2">
+      {confirmedTime && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${
+            isDark
+              ? 'border-[#27272A] bg-[#18181B]'
+              : 'border-[#E4E4E7] bg-[#FAFAFA]'
+          }`}
+        >
+          <div>
+            <p
+              className={`text-xs font-medium ${
+                isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
+              }`}
+            >
+              {storedDirection === 'bullish' ? 'Bullish' : 'Bearish'} SMT ·{' '}
+              {primaryRoot}/{storedCompare}
+            </p>
+            <p className="mt-0.5 text-[10px] text-[#71717A]">
+              {storedTimeframe} · confirmed at {confirmedTime} after candle close
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label={`Clear ${condition.label}`}
+            onClick={() => setValue('')}
+            className="h-8 w-8 shrink-0 rounded-lg text-[#71717A] hover:bg-red-500/10 hover:text-red-500"
+          >
+            <Trash2 className="mx-auto h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      <p className="text-[10px] leading-4 text-[#71717A]">
+        Bullish SMT means the chart market makes the lower low; bearish SMT means
+        it makes the higher high. Confirm only after the pivot candle closes.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <select
+          aria-label={`${condition.label} timeframe`}
+          value={timeframe}
+          onChange={(event) => setTimeframe(event.target.value)}
+          className={inputClass}
+        >
+          <option value="">Timeframe</option>
+          {TIMEFRAMES.map((tf) => (
+            <option key={tf}>{tf}</option>
+          ))}
+        </select>
+        <select
+          aria-label={`${condition.label} comparison symbol`}
+          value={compareSymbol}
+          onChange={(event) => setCompareSymbol(event.target.value)}
+          className={inputClass}
+        >
+          {availableCompareSymbols.map((symbol) => (
+            <option key={symbol}>{symbol}</option>
+          ))}
+        </select>
+        <select
+          aria-label={`${condition.label} direction`}
+          value={direction}
+          onChange={(event) => setDirection(event.target.value)}
+          className={inputClass}
+        >
+          <option value="">SMT direction</option>
+          <option value="bullish">Bullish · lower-low divergence</option>
+          <option value="bearish">Bearish · higher-high divergence</option>
+        </select>
+      </div>
+      <button
+        type="button"
+        disabled={!timeframe || !direction || !compareSymbol}
+        onClick={capture}
+        className={`h-9 w-full rounded-lg px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+          isDark ? 'bg-[#FAFAFA] text-[#09090B]' : 'bg-[#18181B] text-white'
+        }`}
+      >
+        Confirm SMT at close · {cursorClock}
+      </button>
+    </div>
+  )
+}
+
 function ConditionField({
   condition,
   value,
@@ -598,6 +726,7 @@ function ConditionField({
   availableBars,
   chartResolution,
   defaultBias,
+  primarySymbol,
 }: {
   condition: PlaybookCondition
   value: string | boolean | undefined
@@ -610,6 +739,7 @@ function ConditionField({
   availableBars: ReplayJournalSnapshot['availableBars']
   chartResolution: string
   defaultBias: 'long' | 'short'
+  primarySymbol: string
 }) {
   if (condition.type === 'boolean') {
     return (
@@ -641,6 +771,10 @@ function ConditionField({
 
   if (condition.type === 'pda_delivery') {
     return <PdaDeliveryField condition={condition} value={value} setValue={setValue} inputClass={inputClass} isDark={isDark} cursorClock={cursorClock} availableBars={availableBars} chartResolution={chartResolution} />
+  }
+
+  if (condition.type === 'smt') {
+    return <SmtConditionField condition={condition} value={value} setValue={setValue} inputClass={inputClass} isDark={isDark} cursorClock={cursorClock} chartResolution={chartResolution} primarySymbol={primarySymbol} />
   }
 
   if (condition.type === 'number') return <input type="number" aria-label={condition.label} value={String(value || '')} onChange={(event) => setValue(event.target.value)} className={`${inputClass} w-full`} />
@@ -820,7 +954,7 @@ export default function ReplayJournalCapture({ isDark, session, navigate, getSna
           <div className="flex-1 overflow-y-auto p-4 sm:p-5">
             <section className={`rounded-xl border p-3 sm:p-4 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}><div className="flex flex-wrap items-center justify-between gap-2"><div><p className={`text-xs font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>{snapshotLabel}</p><p className="mt-1 text-[11px] text-[#71717A]">{snapshot?.symbol} · {snapshot?.chartResolution || 'chart TF'} · {snapshot?.cursorDateTime} · H {snapshot?.barHigh || '—'} / L {snapshot?.barLow || '—'}</p></div>{executionSnapshot && <button type="button" onClick={() => applySnapshot(snapshot?.kind === 'cursor' ? executionSnapshot : getSnapshot(false))} className="h-8 rounded-lg border border-blue-500/30 px-2.5 text-[11px] font-medium text-blue-500">Use {snapshot?.kind === 'cursor' ? 'execution' : 'current cursor'}</button>}</div><details className="mt-3"><summary className="cursor-pointer text-[11px] font-medium text-[#71717A]">Edit automatic execution details</summary><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-6"><FieldShell label="Side"><select aria-label="Replay journal side" value={snapshot?.side || 'long'} onChange={(event) => setSnapshot((current) => current ? { ...current, side: event.target.value as 'long' | 'short' } : current)} className={`${inputClass} mt-1 w-full`}><option value="long">Long</option><option value="short">Short</option></select></FieldShell><FieldShell label="Entry"><input aria-label="Replay journal entry price" inputMode="decimal" value={snapshot?.entryPrice || ''} onChange={(event) => setSnapshot((current) => current ? { ...current, entryPrice: event.target.value } : current)} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Close"><input aria-label="Replay journal close price" inputMode="decimal" value={snapshot?.closePrice || ''} onChange={(event) => setSnapshot((current) => current ? { ...current, closePrice: event.target.value } : current)} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Size"><input aria-label="Replay journal size" inputMode="decimal" value={snapshot?.size || ''} onChange={(event) => setSnapshot((current) => current ? { ...current, size: event.target.value } : current)} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Net P&L"><input aria-label="Replay journal pnl" inputMode="decimal" value={snapshot?.pnl || ''} onChange={(event) => setSnapshot((current) => current ? { ...current, pnl: event.target.value } : current)} className={`${inputClass} mt-1 w-full`} /></FieldShell><FieldShell label="Outcome"><select aria-label="Replay journal outcome" value={snapshot?.outcome || 'planned'} onChange={(event) => setSnapshot((current) => current ? { ...current, outcome: event.target.value as JournalEntryRecord['outcome'] } : current)} className={`${inputClass} mt-1 w-full`}><option value="planned">Planned / missed</option><option value="win">Win</option><option value="loss">Loss</option><option value="breakeven">Breakeven</option></select></FieldShell></div></details></section>
 
-            <section className="mt-5"><div className="flex items-end justify-between gap-3"><div><h3 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>What happened?</h3><p className="mt-1 text-xs text-[#71717A]">Tap a choice as each confluence appears. Replay supplies the time and candle prices.</p></div>{strategies.length > 0 && <div className="relative min-w-48"><select aria-label="Replay journal playbook" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setResponses({}) }} className={`${inputClass} w-full appearance-none pr-8`}>{strategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-[#71717A]" /></div>}</div>{strategies.length === 0 ? <div className={`mt-3 rounded-xl border p-4 text-xs ${isDark ? 'border-[#3F3F46] text-[#A1A1AA]' : 'border-[#D4D4D8] text-[#52525B]'}`}>No playbooks are available. <button type="button" onClick={() => navigate('/analytics')} className="font-semibold text-blue-500">Create a playbook</button> first so replay capture stays strategy-driven.</div> : <div className="mt-3 space-y-3">{conditions.length === 0 ? <p className="rounded-lg border border-[#3F3F46] p-3 text-xs text-[#71717A]">This playbook has no conditions yet. You can still finish a replay journal using its automatic execution.</p> : conditions.map((condition) => <fieldset key={condition.id} className={`rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><legend className={`px-1 text-xs font-semibold ${isDark ? 'text-[#D4D4D8]' : 'text-[#27272A]'}`}>{condition.label}</legend><ConditionField condition={condition} value={responses[condition.label]} setValue={(value) => setResponses((current) => ({ ...current, [condition.label]: value }))} inputClass={inputClass} isDark={isDark} cursorClock={cursorClock} cursorHigh={snapshot?.barHigh || ''} cursorLow={snapshot?.barLow || ''} availableBars={snapshot?.availableBars || []} chartResolution={snapshot?.chartResolution || '1'} defaultBias={snapshot?.side || 'long'} /></fieldset>)}</div>}</section>
+            <section className="mt-5"><div className="flex items-end justify-between gap-3"><div><h3 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>What happened?</h3><p className="mt-1 text-xs text-[#71717A]">Tap a choice as each confluence appears. Replay supplies the time and candle prices.</p></div>{strategies.length > 0 && <div className="relative min-w-48"><select aria-label="Replay journal playbook" value={strategyId} onChange={(event) => { setStrategyId(event.target.value); setResponses({}) }} className={`${inputClass} w-full appearance-none pr-8`}>{strategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-[#71717A]" /></div>}</div>{strategies.length === 0 ? <div className={`mt-3 rounded-xl border p-4 text-xs ${isDark ? 'border-[#3F3F46] text-[#A1A1AA]' : 'border-[#D4D4D8] text-[#52525B]'}`}>No playbooks are available. <button type="button" onClick={() => navigate('/analytics')} className="font-semibold text-blue-500">Create a playbook</button> first so replay capture stays strategy-driven.</div> : <div className="mt-3 space-y-3">{conditions.length === 0 ? <p className="rounded-lg border border-[#3F3F46] p-3 text-xs text-[#71717A]">This playbook has no conditions yet. You can still finish a replay journal using its automatic execution.</p> : conditions.map((condition) => <fieldset key={condition.id} className={`rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><legend className={`px-1 text-xs font-semibold ${isDark ? 'text-[#D4D4D8]' : 'text-[#27272A]'}`}>{condition.label}</legend><ConditionField condition={condition} value={responses[condition.label]} setValue={(value) => setResponses((current) => ({ ...current, [condition.label]: value }))} inputClass={inputClass} isDark={isDark} cursorClock={cursorClock} cursorHigh={snapshot?.barHigh || ''} cursorLow={snapshot?.barLow || ''} availableBars={snapshot?.availableBars || []} chartResolution={snapshot?.chartResolution || '1'} defaultBias={snapshot?.side || 'long'} primarySymbol={snapshot?.symbol || ''} /></fieldset>)}</div>}</section>
 
             <details className={`mt-5 rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><summary className={`cursor-pointer text-xs font-semibold ${isDark ? 'text-[#D4D4D8]' : 'text-[#27272A]'}`}><span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-blue-500" />Optional risk, targets, and notes</span></summary><div className="mt-4 space-y-3"><div className={`rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><RiskEditor label="Stop loss" value={riskPlan.stopLoss} onChange={(stopLoss) => setRiskPlan((current) => ({ ...current, stopLoss }))} inputClass={inputClass} /></div><div className={`rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><label className={`mb-3 flex items-center justify-between text-xs font-semibold ${isDark ? 'text-[#D4D4D8]' : 'text-[#27272A]'}`}><span>Move to breakeven</span><input type="checkbox" role="switch" aria-label="Breakeven enabled" checked={riskPlan.breakEven.enabled} onChange={(event) => setRiskPlan((current) => ({ ...current, breakEven: { ...current.breakEven, enabled: event.target.checked, mode: event.target.checked && current.breakEven.mode === 'none' ? 'dynamic' : current.breakEven.mode } }))} className="h-4 w-4 accent-blue-600" /></label>{riskPlan.breakEven.enabled && <RiskEditor label="Breakeven" value={riskPlan.breakEven} onChange={(breakEven) => setRiskPlan((current) => ({ ...current, breakEven: { ...current.breakEven, ...breakEven } }))} inputClass={inputClass} />}</div><div className={`rounded-xl border p-3 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}><RiskEditor label="Take profit" value={riskPlan.takeProfit} onChange={(takeProfit) => setRiskPlan((current) => ({ ...current, takeProfit }))} inputClass={inputClass} /></div><FieldShell label="Review notes"><textarea aria-label="Replay journal notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional context about the setup or management…" className={`${inputClass} mt-1 h-auto min-h-20 w-full resize-y py-2`} /></FieldShell></div></details>
             {error && <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-500" role="alert">{error}</p>}

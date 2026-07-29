@@ -215,9 +215,12 @@ class Renderer extends Component<UtilsSettingsProps> {
               aria-checked={replayJournalEnabled}
               aria-label="Replay journaling"
               onClick={this.handleReplayJournalToggle}
-              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full border transition-colors ${replayJournalEnabled ? 'border-blue-500 bg-blue-500' : isDark ? 'border-[#3F3F46] bg-[#27272A]' : 'border-[#D4D4D8] bg-[#E4E4E7]'}`}
+              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isDark ? 'focus-visible:ring-offset-[#09090B]' : 'focus-visible:ring-offset-white'} ${replayJournalEnabled ? 'border-blue-500 bg-blue-500' : isDark ? 'border-[#3F3F46] bg-[#27272A]' : 'border-[#D4D4D8] bg-[#E4E4E7]'}`}
             >
-              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${replayJournalEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute left-1 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform duration-200 ${replayJournalEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+              />
             </button>
           </div>
         </div>

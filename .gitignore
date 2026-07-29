@@ -57,8 +57,15 @@ Thumbs.db
 .cursor/
 *.cursor/
 
-# Local deploy tooling (untracked)
-scripts/deploy/
+# VPS deploy tooling (tracked); credentials and installed packages stay local
+scripts/deploy/*
+!scripts/deploy/.env.example
+!scripts/deploy/README.md
+!scripts/deploy/package.json
+!scripts/deploy/run.mjs
+!scripts/deploy/server/
+scripts/deploy/server/*
+!scripts/deploy/server/*.sh
 
 # Scratch / local scripts
 update.sh

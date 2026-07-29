@@ -3,16 +3,17 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
-    "dev:https": "node scripts/dev-https.mjs",
-    "build": "tsc && vite build",
+    "update:bwc": "node scripts/update-bwc.mjs",
+    "dev": "npm run update:bwc && vite --port 3000",
+    "dev:https": "npm run update:bwc && node scripts/dev-https.mjs",
+    "build": "npm run update:bwc && tsc && vite build",
     "preview": "vite preview --port 3000",
     "test": "npm run test --prefix server"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "axios": "^1.13.2",
-    "betterweightchartpro": "github:parbhatc/BetterweightChartPro#9ad4e6660e5ac23ea6728334b61322b691dbb7a4",
+    "betterweightchartpro": "github:parbhatc/BetterweightChartPro#main",
     "dayjs": "^1.11.19",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.559.0",
