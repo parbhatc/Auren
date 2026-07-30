@@ -457,6 +457,26 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.historyCache.clear()
   }
 
+  /** Release every MDS listener when an account switch replaces this datafeed. */
+  dispose(): void {
+    this.teardownCandleStreams()
+    if (this.mdsOpenTimer) {
+      clearTimeout(this.mdsOpenTimer)
+      this.mdsOpenTimer = null
+    }
+    for (const off of this.offMarketBook.splice(0)) {
+      off()
+    }
+    this.marketBookWired = false
+    this.quoteBookListenerInstalled = false
+    this.quoteSubs.clear()
+    this.lastDispatchedQuote.clear()
+    this.bookSubIdsByStream.clear()
+    this.tradeHandler = null
+    this.chartResetCallback = null
+    this.chartSymbolChangeRequest = null
+  }
+
   /** Drop candle WS subs + listener maps before BWC remount (e.g. MDS reconnect). */
   teardownCandleStreams(): void {
     if (this.tradeBarRaf != null) {

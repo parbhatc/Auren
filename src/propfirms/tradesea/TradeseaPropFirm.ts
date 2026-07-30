@@ -679,20 +679,34 @@ export class TradeseaPropFirm extends PropFirmBase {
   }
 
   async connectStreamsForSelectedAccount(): Promise<void> {
-    if (!this.selectedAccountId) return
-    if (this.connectStreamsPromise) {
-      return this.connectStreamsPromise
-    }
+    while (this.selectedAccountId) {
+      const accountId = this.selectedAccountId
+      const activeConnect = this.connectStreamsPromise
+      if (activeConnect) {
+        await activeConnect
+        continue
+      }
+      if (this.chartServices?.accountId === accountId && this.streamsReady) {
+        return
+      }
 
-    this.connectStreamsPromise = this.runConnectStreamsForSelectedAccount()
-    try {
-      await this.connectStreamsPromise
-    } finally {
-      this.connectStreamsPromise = null
+      const connect = this.runConnectStreamsForSelectedAccount(accountId)
+      this.connectStreamsPromise = connect
+      try {
+        await connect
+      } finally {
+        if (this.connectStreamsPromise === connect) {
+          this.connectStreamsPromise = null
+        }
+      }
+
+      // A selection made while the previous account was connecting must get
+      // its own stream session instead of inheriting the completed old one.
+      if (this.selectedAccountId === accountId) return
     }
   }
 
-  private async runConnectStreamsForSelectedAccount(): Promise<void> {
+  private async runConnectStreamsForSelectedAccount(accountId: string): Promise<void> {
     this.streamsLoading = true
     this.streamsError = null
     this.streamsReady = false
@@ -700,7 +714,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     try {
 
       const switchingAccount =
-        this.chartServices && this.chartServices.accountId !== this.selectedAccountId
+        this.chartServices && this.chartServices.accountId !== accountId
 
       if (switchingAccount) {
         if (this.chartServices?.mds) {
@@ -709,8 +723,8 @@ export class TradeseaPropFirm extends PropFirmBase {
         this.chartServices = null
       }
 
-      this.chartServices = await prepareTradeseaChartServices(
-          this.selectedAccountId,
+      const nextServices = await prepareTradeseaChartServices(
+          accountId,
           {
             mds: this.mdsClient,
             trades: this.tradesClient,
@@ -727,11 +741,16 @@ export class TradeseaPropFirm extends PropFirmBase {
           },
           { connectTrades: !this.practiceMode }
         )
+      if (this.selectedAccountId !== accountId) {
+        teardownTradeseaChartServices(nextServices)
+        return
+      }
+      this.chartServices = nextServices
       debugPracticeChartSymbol('TradeseaPropFirm.connectStreams', {
         practiceMode: this.practiceMode,
         bootstrapSymbol: this.chartSymbol,
         chartSymbolSyncedFromTv: this.chartSymbolSyncedFromTv,
-        accountId: this.selectedAccountId,
+        accountId,
       }, { force: true })
 
       const handler = this.getHandler()
@@ -751,7 +770,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
       }
 
-      const account = this.accounts.find((a) => a.id === this.selectedAccountId)
+      const account = this.accounts.find((a) => a.id === accountId)
 
       const hasTradesWs =
         !this.practiceMode &&
@@ -776,17 +795,19 @@ export class TradeseaPropFirm extends PropFirmBase {
 
     } catch (err: unknown) {
 
-      this.streamsError =
-
-        err instanceof Error ? err.message : 'Failed to connect market data'
+      if (this.selectedAccountId === accountId) {
+        this.streamsError =
+          err instanceof Error ? err.message : 'Failed to connect market data'
+      }
 
       console.error('[TradeseaPropFirm] stream connect failed:', err)
 
     } finally {
 
-      this.streamsLoading = false
-
-      this.onDataReady?.()
+      if (this.selectedAccountId === accountId) {
+        this.streamsLoading = false
+        this.onDataReady?.()
+      }
 
     }
 

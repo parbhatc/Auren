@@ -382,6 +382,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       accounts,
       this.state.selectedAccount,
       this.state.selectedSymbol,
+      firm?.chartServices?.accountId ?? 'no-stream-account',
+      firm?.streamsReady ? 1 : 0,
       this.hasOpenPositionNow() ? 1 : 0,
       (this.getHandler() as { pendingOrders?: unknown[] } | null)?.pendingOrders?.length ?? 0,
     ].join('|')
@@ -795,12 +797,13 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
               selectedLiveAccountLabel={selectedAccount}
               onSelectLiveAccount={(accountId, displayName) => {
                 const oldAccount = selectedAccount
-                this.setState({ selectedAccount: displayName }, () => {
-                  if (oldAccount !== displayName) {
-                    TradingHandler.logAccountChange(oldAccount, displayName)
-                    updatePropFirmAccount(accountId)
-                  }
-                })
+                if (oldAccount !== displayName) {
+                  TradingHandler.logAccountChange(oldAccount, displayName)
+                  // Change the firm identity first so this render cannot keep
+                  // the Order/DOM panel bound to the disconnected old datafeed.
+                  updatePropFirmAccount(accountId)
+                }
+                this.setState({ selectedAccount: displayName })
               }}
               onRefreshLiveAccounts={onRefreshPracticeAccount}
               liveRefreshing={practiceRefreshing}
