@@ -7,9 +7,7 @@ import {
   toChartExecutionTimeSeconds,
 } from './tradeseaExecutions'
 import {
-  calcTradeseaTickPnL,
   calcAccountUnrealizedPl,
-  signedContractsFromPosition,
 } from './tradeseaPnL'
 import { isBwcChartPanning } from '../../utils/bwcPan'
 import { TradeseaDatafeed, type TradeseaMarketBook } from './TradeseaDatafeed'
@@ -27,6 +25,7 @@ export class TradeseaTradeHandler {
   private executionsPaintGeneration = 0
   tradeCache: TradeseaTradeCache | null = null
   private streamSyncTimer: ReturnType<typeof setTimeout> | null = null
+  private marketBookUnsub: (() => void) | null = null
   /** Fired when candle-driven UP&L changes (account bar). */
   onUnrealizedPnLUpdate?: (upl: number) => void
 
@@ -50,7 +49,23 @@ export class TradeseaTradeHandler {
       chartDatafeed ??
       this.propFirm.chartServices?.datafeed ??
       null
+    this.marketBookUnsub?.()
+    this.marketBookUnsub = null
     df?.setTradeHandler(this)
+    if (df?.subscribeMarketBook) {
+      this.marketBookUnsub = df.subscribeMarketBook((streamId, kind) => {
+        if (kind !== 'ltp' && kind !== 'bbo') return
+        const book = df.getMarketBookForStream(streamId)
+        const mark =
+          book?.last ??
+          (book?.bestBid != null && book?.bestAsk != null
+            ? (book.bestBid + book.bestAsk) / 2
+            : book?.bestBid ?? book?.bestAsk)
+        if (mark != null && Number.isFinite(mark)) {
+          this.updateUnrealizedFromMark(mark, streamId)
+        }
+      })
+    }
     debugTradeseaUpl('handler:attach', {
       force: true,
       tradeHandlerSet: Boolean(df),
@@ -81,56 +96,36 @@ export class TradeseaTradeHandler {
     const { total: streamTotal, counted: streamCounted } = calcAccountUnrealizedPl(
       this.propFirm.positions,
       (instrument) => {
+        const book = datafeed?.getMarketBookForChart?.(instrument)
+        const instrumentMark =
+          book?.last ??
+          (book?.bestBid != null && book?.bestAsk != null
+            ? (book.bestBid + book.bestAsk) / 2
+            : book?.bestBid ?? book?.bestAsk)
+        if (instrumentMark != null && Number.isFinite(instrumentMark)) {
+          return instrumentMark
+        }
         if (instrumentsMatch(instrument, activeInstrument)) return markPrice
         return null
       },
       (instrument) => ({
         tickSize:
-          datafeed?.getTickSize?.(activeSymbol) ??
           datafeed?.getTickSize?.(instrument) ??
+          (instrumentsMatch(instrument, activeInstrument)
+            ? datafeed?.getTickSize?.(activeSymbol)
+            : undefined) ??
           tickSize,
         tickValue:
-          datafeed?.getTickValue?.(activeSymbol) ??
           datafeed?.getTickValue?.(instrument) ??
+          (instrumentsMatch(instrument, activeInstrument)
+            ? datafeed?.getTickValue?.(activeSymbol)
+            : undefined) ??
           tickValue,
       }),
       { chartMark: markPrice, chartInstrument: activeInstrument }
     )
 
-    let total = streamTotal
-    let counted = streamCounted
-
-    if (!counted) {
-      const cacheSnap = this.tradeCache?.getChartPositionSnapshot()
-      if (cacheSnap && cacheSnap.entry != null && cacheSnap.contracts) {
-        total = calcTradeseaTickPnL(
-          cacheSnap.entry,
-          markPrice,
-          cacheSnap.contracts,
-          tickSize,
-          tickValue
-        )
-        counted = true
-      }
-    }
-
-    if (!counted) {
-      const matches = findPositionsForInstrument(this.propFirm.positions, activeInstrument)
-      const sources = matches.length
-        ? matches
-        : this.propFirm.positions.filter((p) => Math.abs(p.qty ?? 0) > 0)
-
-      for (const pos of sources) {
-        const entry = pos.avgPrice
-        if (entry == null) continue
-        const contracts = signedContractsFromPosition(pos)
-        if (!contracts) continue
-        total += calcTradeseaTickPnL(entry, markPrice, contracts, tickSize, tickValue)
-        counted = true
-      }
-    }
-
-    if (!counted) {
+    if (!streamCounted) {
       debugTradeseaUpl('calc:none', {
         force: true,
         markPrice,
@@ -148,13 +143,14 @@ export class TradeseaTradeHandler {
       return
     }
 
+    const total = streamTotal
     debugTradeseaUpl('calc', {
       markPrice,
       chartSymbol: activeSymbol,
       chartInstrument: activeInstrument,
       streamCounted,
       streamTotal,
-      counted,
+      counted: streamCounted,
       total,
       positionsCount: this.propFirm.positions.length,
       tickSize,
@@ -282,15 +278,25 @@ export class TradeseaTradeHandler {
   }
 
   getActiveMarkPrice(chartSymbol?: string): number | null {
-    const book = this.getActiveMarketBook(chartSymbol)
+    const requestedSymbol = this.getChartSymbol(chartSymbol)
+    const book = this.getActiveMarketBook(requestedSymbol)
     if (book?.last != null) return book.last
-    try {
-      const chart = this.widget?.chart?.()
-      const datafeed = this.propFirm.chartServices?.datafeed
-      const lastBar = chart && datafeed?.getLastBarForChart?.(chart)
-      if (lastBar?.close != null) return lastBar.close
-    } catch {
-      /* chart not ready */
+
+    const widgetSymbol = this.getChartSymbol()
+    const requestedIsChart =
+      instrumentsMatch(
+        this.resolveInstrument(requestedSymbol),
+        this.resolveInstrument(widgetSymbol)
+      )
+    if (requestedIsChart) {
+      try {
+        const chart = this.widget?.chart?.()
+        const datafeed = this.propFirm.chartServices?.datafeed
+        const lastBar = chart && datafeed?.getLastBarForChart?.(chart)
+        if (lastBar?.close != null) return lastBar.close
+      } catch {
+        /* chart not ready */
+      }
     }
     if (book?.bestBid != null && book?.bestAsk != null) {
       return (book.bestBid + book.bestAsk) / 2

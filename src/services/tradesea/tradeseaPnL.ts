@@ -84,7 +84,7 @@ export function calcAccountUnrealizedPl(
   options?: { chartMark?: number; chartInstrument?: string }
 ): { total: number; counted: boolean } {
   let total = 0
-  let counted = false
+  let countedRows = 0
   const chartMark = options?.chartMark
   const chartInstrument = options?.chartInstrument || ''
 
@@ -92,13 +92,15 @@ export function calcAccountUnrealizedPl(
     .map((row) => parseTradeseaPosition(row))
     .filter((p): p is TradeseaPosition => Boolean(p?.qty))
 
-  const singleOpen = openRows.length === 1
-
   for (const pos of openRows) {
     const instrument = String(pos.instrument || chartInstrument || '')
     let mark = instrument ? markByInstrument(instrument) : null
     if ((mark == null || !Number.isFinite(mark)) && chartMark != null) {
-      if (!instrument || instrumentsMatch(instrument, chartInstrument) || singleOpen) {
+      // A chart mark is only valid for that exact instrument. In particular,
+      // NQ and MNQ often trade near each other, but have different prices and
+      // contract multipliers. Never borrow the chart mark merely because this
+      // is the account's only open position.
+      if (!instrument || instrumentsMatch(instrument, chartInstrument)) {
         mark = chartMark
       }
     }
@@ -107,8 +109,14 @@ export function calcAccountUnrealizedPl(
 
     const { tickSize, tickValue } = tickForInstrument(instrument || chartInstrument)
     total += calcPositionUnrealizedPl(pos, mark, tickSize, tickValue)
-    counted = true
+    countedRows += 1
   }
 
-  return { total, counted }
+  // Account UP&L must be all-or-nothing. Publishing a partial sum while one
+  // instrument is still waiting for its own book would temporarily erase that
+  // position from the account total.
+  return {
+    total,
+    counted: openRows.length > 0 && countedRows === openRows.length,
+  }
 }

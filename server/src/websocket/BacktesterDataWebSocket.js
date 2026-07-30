@@ -981,6 +981,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         const symbolDir = path.join(this.csvDir, normalizedSymbol)
         if (fs.existsSync(symbolDir)) {
           fs.rmSync(symbolDir, { recursive: true, force: true })
+          this.server?.csvLoader?.invalidateSymbolData?.(normalizedSymbol)
           console.log(`[backtester-data WS] Deleted directory: ${symbolDir}`)
         }
 
@@ -1019,6 +1020,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
           if (fs.existsSync(symbolDir)) {
             this.sendProgress(null, 'reset', normalizedSymbol, 'tradingview', 0, 'Deleting existing data...')
             fs.rmSync(symbolDir, { recursive: true, force: true })
+            this.server?.csvLoader?.invalidateSymbolData?.(normalizedSymbol)
             console.log(`[backtester-data WS] Deleted directory: ${symbolDir}`)
           }
 

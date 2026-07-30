@@ -662,10 +662,13 @@ export class PracticeTradeHandler {
     }
   }
 
-  getActiveMarketBook(): PracticeMarketBook | null {
+  getActiveMarketBook(symbolKey?: string): PracticeMarketBook | null {
     const datafeed = this.propFirm.chartServices?.datafeed as PracticeChartDatafeed | undefined
     if (!datafeed?.getMarketBookForChart) return null
-    return datafeed.getMarketBookForChart(this.getChartSymbol())
+    const symbol = symbolKey?.trim()
+      ? this.resolveStreamLabel(symbolKey)
+      : this.getChartSymbol()
+    return datafeed.getMarketBookForChart(symbol)
   }
 
   private resolveStreamLabel(productOrKey: string): string {
@@ -762,8 +765,8 @@ export class PracticeTradeHandler {
   }
 
   /** Last trade / MDS LTP for the active chart symbol. */
-  getActiveMarkPrice(): number | null {
-    return this.getMarkPrice(this.getChartSymbol())
+  getActiveMarkPrice(symbolKey?: string): number | null {
+    return this.getMarkPrice(symbolKey?.trim() || this.getChartSymbol())
   }
 
   private getDomPositionContextFor(symbolKey: string): DomPositionContext | null {

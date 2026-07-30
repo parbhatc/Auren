@@ -121,6 +121,35 @@ class CSVLoader {
     resolveMonthFilePath(symbol, year, monthName, resolution = DEFAULT_CSV_RESOLUTION) {
         return resolveBacktesterMonthPath(this.csvDir, symbol, year, monthName, resolution);
     }
+
+    /**
+     * Drop one cached CSV month after data management rewrites its file.
+     * Without this, replay can keep an hour-old in-memory month and reject a
+     * newly downloaded trading day even though the inventory sees it on disk.
+     */
+    invalidateMonthData(symbol, year, month, csvResolution = DEFAULT_CSV_RESOLUTION) {
+        const monthName = this.getMonthName(month);
+        const resolutionCache = this.monthCache?.[symbol]?.[csvResolution];
+        const yearCache = resolutionCache?.[year];
+        if (!yearCache || !Object.prototype.hasOwnProperty.call(yearCache, monthName)) {
+            return;
+        }
+
+        delete yearCache[monthName];
+        if (Object.keys(yearCache).length === 0) delete resolutionCache[year];
+        if (Object.keys(resolutionCache).length === 0) delete this.monthCache[symbol][csvResolution];
+        if (Object.keys(this.monthCache[symbol]).length === 0) delete this.monthCache[symbol];
+    }
+
+    invalidateSymbolData(symbol, csvResolution = null) {
+        if (!this.monthCache?.[symbol]) return;
+        if (csvResolution == null) {
+            delete this.monthCache[symbol];
+            return;
+        }
+        delete this.monthCache[symbol][csvResolution];
+        if (Object.keys(this.monthCache[symbol]).length === 0) delete this.monthCache[symbol];
+    }
     
     // Load candles for a specific time range
     loadBars(symbol, fromMs, toMs, opts = {}) {

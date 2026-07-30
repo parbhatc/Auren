@@ -137,7 +137,7 @@ class TradeseaDataHandler {
       const totalFiles = Object.keys(barsByMonth).length
 
       for (const key of Object.keys(barsByMonth).sort()) {
-        const { year, monthName, bars } = barsByMonth[key]
+        const { year, month, monthName, bars } = barsByMonth[key]
         
         ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
         const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
@@ -147,6 +147,12 @@ class TradeseaDataHandler {
         })
         
         fs.writeFileSync(filePath, csvLines.join('\n'), 'utf8')
+        this.ws.server?.csvLoader?.invalidateMonthData?.(
+          normalizedSymbol,
+          year,
+          month,
+          DEFAULT_CSV_RESOLUTION,
+        )
         filesWritten++
 
         this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0, `Written ${filesWritten}/${totalFiles} files...`)
@@ -342,7 +348,7 @@ class TradeseaDataHandler {
       const totalFiles = Object.keys(barsByMonth).length
 
       for (const key of Object.keys(barsByMonth).sort()) {
-        const { year, monthName, bars } = barsByMonth[key]
+        const { year, month, monthName, bars } = barsByMonth[key]
         
         ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
         const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
@@ -379,6 +385,12 @@ class TradeseaDataHandler {
         })
         
         fs.writeFileSync(filePath, allLines.join('\n'), 'utf8')
+        this.ws.server?.csvLoader?.invalidateMonthData?.(
+          normalizedSymbol,
+          year,
+          month,
+          DEFAULT_CSV_RESOLUTION,
+        )
         
         // Only count files that actually had new candles
         if (newCandlesInFile > 0) {

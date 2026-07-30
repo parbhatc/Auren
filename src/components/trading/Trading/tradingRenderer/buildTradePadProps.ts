@@ -66,9 +66,11 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     if (tradeHandler && 'getActiveMarketBook' in tradeHandler) {
       return (
         tradeHandler as {
-          getActiveMarketBook: () => ReturnType<TradeseaDatafeed['getMarketBookForChart']>
+          getActiveMarketBook: (
+            symbol?: string
+          ) => ReturnType<TradeseaDatafeed['getMarketBookForChart']>
         }
-      ).getActiveMarketBook()
+      ).getActiveMarketBook(chartSymbolLabel)
     }
     return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null
   }
@@ -150,7 +152,9 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     markPrice: (() => {
       if (!tradeHandler || !('getActiveMarkPrice' in tradeHandler)) return null
       try {
-        return (tradeHandler as { getActiveMarkPrice: () => number | null }).getActiveMarkPrice()
+        return (
+          tradeHandler as { getActiveMarkPrice: (symbol?: string) => number | null }
+        ).getActiveMarkPrice(chartSymbolLabel)
       } catch {
         return null
       }
@@ -159,9 +163,11 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       if (tradeHandler && 'getActiveMarketBook' in tradeHandler) {
         const fromHandler = (
           tradeHandler as {
-            getActiveMarketBook: () => ReturnType<TradeseaDatafeed['getMarketBookForChart']>
+            getActiveMarketBook: (
+              symbol?: string
+            ) => ReturnType<TradeseaDatafeed['getMarketBookForChart']>
           }
-        ).getActiveMarketBook()
+        ).getActiveMarketBook(chartSymbolLabel)
         if (fromHandler) return fromHandler
       }
       return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null

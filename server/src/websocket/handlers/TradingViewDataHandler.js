@@ -443,7 +443,7 @@ class TradingViewDataHandler {
     const totalFiles = Object.keys(barsByMonth).length
 
     for (const key of Object.keys(barsByMonth).sort()) {
-      const { year, monthName, bars } = barsByMonth[key]
+      const { year, month, monthName, bars } = barsByMonth[key]
       
       ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year, csvResolution)
       const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
@@ -494,6 +494,13 @@ class TradingViewDataHandler {
         fs.writeFileSync(filePath, csvLines.join('\n'), 'utf8')
         totalNewCandles += bars.length
       }
+
+      this.ws.server?.csvLoader?.invalidateMonthData?.(
+        normalizedSymbol,
+        year,
+        month,
+        csvResolution,
+      )
       
       filesWritten++
       if (action === 'update') {
