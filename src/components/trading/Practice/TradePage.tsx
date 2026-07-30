@@ -103,15 +103,7 @@ function TradePageInner() {
       })
       await activeMarketFirm.onValidateSuccess()
       if (activeMarketFirm.practiceTradeHandler) {
-        activeMarketFirm.practiceTradeHandler.onAccountUpdated = () => {
-          void refreshPracticeFromApi().then(() => {
-            const acc = getPracticeAccountById(practiceAccountId || '') || null
-            setPracticeAccount(acc)
-            if (acc?.status === 'blown') setShowBlownModal(true)
-            else if (acc?.status === 'passed') setShowPassedModal(true)
-            setUpdateTrigger((n) => n + 1)
-          })
-        }
+        activeMarketFirm.practiceTradeHandler.onAccountUpdated = undefined
         activeMarketFirm.practiceTradeHandler.onUnrealizedPnLUpdate = () => {
           const h = activeMarketFirm.practiceTradeHandler
           if (!h) return
@@ -169,14 +161,23 @@ function TradePageInner() {
 
     const onAccountsChanged = () => {
       const acc = getPracticeAccountById(practiceAccountId || '')
-      setPracticeAccount(acc)
       if (acc?.status === 'blown') {
+        setPracticeAccount(acc)
         setShowBlownModal(true)
       } else if (acc?.status === 'passed') {
+        setPracticeAccount(acc)
         setShowPassedModal(true)
         setValidationError(null)
+      } else {
+        // Position mutations already patch the shared account cache. Keep the
+        // trading workspace mounted when only ordinary account fields change;
+        // its header and trade pad subscribe to that cache independently.
+        setPracticeAccount((current) =>
+          current?.id === acc?.id && current?.status === acc?.status
+            ? current
+            : acc
+        )
       }
-      setUpdateTrigger((n) => n + 1)
     }
     window.addEventListener('practiceAccountsChanged', onAccountsChanged)
 

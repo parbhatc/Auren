@@ -27,6 +27,21 @@ import { useThrottledTick } from '../../../../../hooks/useThrottledTick'
 
 /** Must match LadderRow minHeight (22px row + 1px separator). */
 const DOM_ROW_HEIGHT_PX = 23
+const DOM_RENDER_OVERSCAN_ROWS = 8
+
+function domVisibleRange(
+  rowCount: number,
+  scrollTop: number,
+  viewportHeight: number
+): { start: number; end: number } {
+  if (rowCount <= 0) return { start: 0, end: 0 }
+  const firstVisible = Math.max(0, Math.floor(scrollTop / DOM_ROW_HEIGHT_PX))
+  const visibleCount = Math.max(1, Math.ceil(viewportHeight / DOM_ROW_HEIGHT_PX))
+  return {
+    start: Math.max(0, firstVisible - DOM_RENDER_OVERSCAN_ROWS),
+    end: Math.min(rowCount, firstVisible + visibleCount + DOM_RENDER_OVERSCAN_ROWS),
+  }
+}
 
 export function DomTab({
   props,
@@ -96,10 +111,48 @@ export function DomTab({
 
   const maxVol = useMemo(() => Math.max(1, ...rows.map((r) => r.tradeVolume)), [rows])
   const ladderRef = useRef<HTMLDivElement>(null)
+  const visibleRangeRafRef = useRef<number | null>(null)
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 })
   const [ltpCenterLocked, setLtpCenterLocked] = useState(true)
   const programmaticScrollRef = useRef(false)
   const pendingCenterRef = useRef(true)
   const lastFollowedLtpRef = useRef<number | null>(null)
+
+  const updateVisibleRange = useCallback(
+    (scrollTopOverride?: number) => {
+      const el = ladderRef.current
+      if (!el) return
+      const next = domVisibleRange(
+        rows.length,
+        scrollTopOverride ?? el.scrollTop,
+        el.clientHeight
+      )
+      setVisibleRange((current) =>
+        current.start === next.start && current.end === next.end ? current : next
+      )
+    },
+    [rows.length]
+  )
+
+  const scheduleVisibleRangeUpdate = useCallback(() => {
+    if (visibleRangeRafRef.current != null) return
+    visibleRangeRafRef.current = requestAnimationFrame(() => {
+      visibleRangeRafRef.current = null
+      updateVisibleRange()
+    })
+  }, [updateVisibleRange])
+
+  useLayoutEffect(() => {
+    updateVisibleRange()
+  }, [updateVisibleRange])
+
+  useEffect(() => {
+    return () => {
+      if (visibleRangeRafRef.current != null) {
+        cancelAnimationFrame(visibleRangeRafRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     setLtpCenterLocked(true)
@@ -111,16 +164,6 @@ export function DomTab({
     const el = ladderRef.current
     if (!el || !rows.length) return false
 
-    const ltpRow = el.querySelector('[data-dom-ltp="true"]') as HTMLElement | null
-    if (ltpRow) {
-      programmaticScrollRef.current = true
-      ltpRow.scrollIntoView({ block: 'center', inline: 'nearest' })
-      requestAnimationFrame(() => {
-        programmaticScrollRef.current = false
-      })
-      return true
-    }
-
     const ltp = ltpPrice ?? resolveDomLtpPrice(book, tickSize, effectiveFallbackLast)
     const ltpIdx =
       ltp != null
@@ -129,15 +172,17 @@ export function DomTab({
     if (ltpIdx < 0) return false
 
     programmaticScrollRef.current = true
-    el.scrollTop = Math.max(
+    const nextScrollTop = Math.max(
       0,
       ltpIdx * DOM_ROW_HEIGHT_PX - el.clientHeight / 2 + DOM_ROW_HEIGHT_PX / 2
     )
+    el.scrollTop = nextScrollTop
+    updateVisibleRange(nextScrollTop)
     requestAnimationFrame(() => {
       programmaticScrollRef.current = false
     })
     return true
-  }, [rows, book, tickSize, effectiveFallbackLast, ltpPrice])
+  }, [rows, book, tickSize, effectiveFallbackLast, ltpPrice, updateVisibleRange])
 
   const toggleLtpCenterLock = useCallback(() => {
     setLtpCenterLocked((locked) => {
@@ -164,12 +209,13 @@ export function DomTab({
     const el = ladderRef.current
     if (!el) return
     const onScroll = () => {
+      scheduleVisibleRangeUpdate()
       if (!ltpCenterLocked || programmaticScrollRef.current) return
       setLtpCenterLocked(false)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [hideDomLadder, ltpCenterLocked])
+  }, [hideDomLadder, ltpCenterLocked, scheduleVisibleRangeUpdate])
 
   const placeDomOrder = useCallback(
     (side: OrderSide, price: number) => {
@@ -216,6 +262,10 @@ export function DomTab({
   const askLabel = ask != null ? formatDomPrice(ask, tickSize) : '—'
   const positionUplFmt =
     positionUpl != null ? formatStatMoney(positionUpl, { decimals: 2 }) : null
+  const visibleRows = rows.slice(visibleRange.start, visibleRange.end)
+  const topSpacerHeight = visibleRange.start * DOM_ROW_HEIGHT_PX
+  const bottomSpacerHeight =
+    Math.max(0, rows.length - visibleRange.end) * DOM_ROW_HEIGHT_PX
 
   return (
     <div
@@ -288,7 +338,8 @@ export function DomTab({
           compact ? 'max-h-[36vh]' : ''
         } ${domPosition ? 'min-w-[280px]' : 'min-w-[260px]'}`}
       >
-        {rows.map((row) => {
+        {topSpacerHeight > 0 ? <div aria-hidden style={{ height: topSpacerHeight }} /> : null}
+        {visibleRows.map((row) => {
           const isLtp = ltpPrice != null && Math.abs(row.price - ltpPrice) < eps
           const isAboveLtp = ltpPrice != null && row.price > ltpPrice + eps
           const isBelowLtp = ltpPrice != null && row.price < ltpPrice - eps
@@ -327,6 +378,9 @@ export function DomTab({
             </div>
           )
         })}
+        {bottomSpacerHeight > 0 ? (
+          <div aria-hidden style={{ height: bottomSpacerHeight }} />
+        ) : null}
       </div>
         </>
       )}

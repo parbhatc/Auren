@@ -15,6 +15,9 @@ import type { TradePanelProps } from './types'
 import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
 import { isBwcChartPanning, whenBwcPanEnds } from '../../../../utils/bwcPan'
 
+/** DOM depth is readable and responsive at 12–13Hz; raw MDS can exceed 60Hz. */
+const MARKET_BOOK_UI_INTERVAL_MS = 80
+
 export type { TradePanelProps, OrderSide, BracketOptions, OrderSubmitOptions } from './types'
 export type {
   TradePanelProps as PracticeTradePanelProps,
@@ -212,68 +215,72 @@ export default function TradePanel(props: TradePanelProps) {
   const subscribeMarketBookRef = useRef(subscribeMarketBook)
   subscribeMarketBookRef.current = subscribeMarketBook
 
-  const bookTickRafRef = useRef<number | null>(null)
-  const ltpTickRafRef = useRef<number | null>(null)
+  const marketUiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const marketUiRafRef = useRef<number | null>(null)
+  const pendingBookTickRef = useRef(false)
+  const pendingLtpTickRef = useRef(false)
   useEffect(() => {
     const sub = subscribeMarketBookRef.current
     if (!sub) return
     let active = true
-    let bookDeferredWhilePan = false
-    let ltpDeferredWhilePan = false
-    const scheduleBookTick = () => {
+    let deferredWhilePan = false
+
+    const flushMarketUi = () => {
+      marketUiTimerRef.current = null
+      if (!active || marketUiRafRef.current != null) return
+      marketUiRafRef.current = requestAnimationFrame(() => {
+        marketUiRafRef.current = null
+        if (!active) return
+        const updateBook = pendingBookTickRef.current
+        const updateLtp = pendingLtpTickRef.current
+        pendingBookTickRef.current = false
+        pendingLtpTickRef.current = false
+        if (updateBook) setBookTick((n) => n + 1)
+        if (updateLtp) setLtpTick((n) => n + 1)
+      })
+    }
+
+    const scheduleMarketUi = (kind: 'book' | 'ltp') => {
       if (!active) return
+      if (kind === 'book') pendingBookTickRef.current = true
+      else pendingLtpTickRef.current = true
       if (isBwcChartPanning()) {
-        if (!bookDeferredWhilePan) {
-          bookDeferredWhilePan = true
+        if (!deferredWhilePan) {
+          deferredWhilePan = true
           whenBwcPanEnds(() => {
-            bookDeferredWhilePan = false
-            scheduleBookTick()
+            deferredWhilePan = false
+            if (pendingBookTickRef.current || pendingLtpTickRef.current) {
+              scheduleMarketUi('book')
+            }
           })
         }
         return
       }
-      if (bookTickRafRef.current != null) return
-      bookTickRafRef.current = requestAnimationFrame(() => {
-        bookTickRafRef.current = null
-        if (!active) return
-        setBookTick((n) => n + 1)
-      })
+      if (marketUiTimerRef.current != null || marketUiRafRef.current != null) return
+      marketUiTimerRef.current = setTimeout(flushMarketUi, MARKET_BOOK_UI_INTERVAL_MS)
     }
-    const scheduleLtpTick = () => {
-      if (!active) return
-      if (isBwcChartPanning()) {
-        if (!ltpDeferredWhilePan) {
-          ltpDeferredWhilePan = true
-          whenBwcPanEnds(() => {
-            ltpDeferredWhilePan = false
-            scheduleLtpTick()
-          })
-        }
-        return
-      }
-      if (ltpTickRafRef.current != null) return
-      ltpTickRafRef.current = requestAnimationFrame(() => {
-        ltpTickRafRef.current = null
-        if (!active) return
-        setLtpTick((n) => n + 1)
-      })
-    }
+
     const unsubscribe = sub((_streamId, kind) => {
-      // LTP lives inside the book snapshot — always refresh book; ltpTick for LTP-only UI.
-      scheduleBookTick()
-      if (kind === 'ltp') scheduleLtpTick()
+      // Keep execution/bracket handling on raw MDS; only React's visual snapshot
+      // is coalesced so the large DOM ladder cannot starve chart frames.
+      scheduleMarketUi('book')
+      if (kind === 'ltp') scheduleMarketUi('ltp')
     })
     return () => {
       active = false
       unsubscribe()
+      if (marketUiTimerRef.current != null) {
+        clearTimeout(marketUiTimerRef.current)
+        marketUiTimerRef.current = null
+      }
+      if (marketUiRafRef.current != null) {
+        cancelAnimationFrame(marketUiRafRef.current)
+        marketUiRafRef.current = null
+      }
+      pendingBookTickRef.current = false
+      pendingLtpTickRef.current = false
     }
   }, [chartSymbol, accountId])
-  useEffect(() => {
-    return () => {
-      if (bookTickRafRef.current != null) cancelAnimationFrame(bookTickRafRef.current)
-      if (ltpTickRafRef.current != null) cancelAnimationFrame(ltpTickRafRef.current)
-    }
-  }, [])
 
   useEffect(() => {
     ensureMarketBook?.()

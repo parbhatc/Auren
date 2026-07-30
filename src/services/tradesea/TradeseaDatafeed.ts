@@ -47,7 +47,13 @@ export type { TradeseaMarketBook } from './tradeseaMarketBook'
 const HISTORY_CACHE_TTL_MS = 90_000
 const HISTORY_MAX_RETRIES = 4
 const HISTORY_RETRY_BASE_MS = 1_200
-const HISTORY_REQUEST_TIMEOUT_MS = 12_000
+/**
+ * Keep UDF history requests page-sized. BetterweightChartPro will prepend
+ * additional pages when indicators need more depth; asking Tradesea for
+ * thousands of one-minute bars in one response can take long enough to stall
+ * the initial chart load.
+ */
+const HISTORY_MAX_BARS_PER_REQUEST = 500
 /** Wait for MDS resubscribeAll before verifying book subs. */
 const MDS_OPEN_BOOK_VERIFY_MS = 450
 
@@ -930,8 +936,6 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   ): Promise<UdfHistoryResponse> {
     const stale = this.historyCache.get(cacheKey)?.data
     const url = this.proxyUdfUrl('history', new URLSearchParams(params))
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), HISTORY_REQUEST_TIMEOUT_MS)
     let res: Response
     let text: string
     try {
@@ -940,19 +944,11 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           ...getAuthHeaders(),
           Accept: 'application/json',
         },
-        signal: controller.signal,
       })
       text = await res.text()
     } catch (err) {
       if (stale) return stale
-      if (controller.signal.aborted) {
-        throw new Error(
-          `History request timed out after ${Math.round(HISTORY_REQUEST_TIMEOUT_MS / 1000)} seconds`
-        )
-      }
       throw err
-    } finally {
-      clearTimeout(timeout)
     }
     let data: UdfHistoryResponse | null = null
     try {
@@ -1250,7 +1246,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     const to = this.alignBarTimeSec(Math.floor(periodParams.to), String(resolution)) + barSec
     const estimatedBars = Math.ceil((to - from) / barSec) + 2
     const countback = Math.min(
-      5000,
+      HISTORY_MAX_BARS_PER_REQUEST,
       periodParams.countBack != null
         ? Math.max(1, periodParams.countBack)
         : Math.max(301, estimatedBars)

@@ -65,10 +65,15 @@ export function usePracticeLockout(practiceAccountId: string | undefined) {
 
   useEffect(() => {
     void sync()
-    const onChange = () => void sync()
+    const onChange = () => {
+      if (!practiceAccountId) return
+      const nextAccount = getPracticeAccountById(practiceAccountId)
+      setAccount(nextAccount)
+      if (nextAccount) setLockout(evaluatePracticeLockout(nextAccount))
+    }
     window.addEventListener('practiceAccountsChanged', onChange)
     return () => window.removeEventListener('practiceAccountsChanged', onChange)
-  }, [sync])
+  }, [practiceAccountId, sync])
 
   useEffect(() => {
     if (lockout?.until && !lockoutExpired(lockout.until)) {

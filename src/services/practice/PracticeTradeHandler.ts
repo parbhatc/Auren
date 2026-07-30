@@ -34,6 +34,9 @@ import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
 
+/** Keep quote-driven P&L/risk UI responsive without running it on every MDS packet. */
+const UPL_REFRESH_MIN_INTERVAL_MS = 120
+
 export class PracticeTradeHandler {
   tradeCache: PracticeTradeCache | null = null
   private pendingOrders: PracticePendingOrder[] = []
@@ -43,6 +46,8 @@ export class PracticeTradeHandler {
   private accountWs: PracticeAccountWsClient | null = null
   private marketBookUnsub: (() => void) | null = null
   private uplRefreshRaf: number | null = null
+  private uplRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  private uplLastRefreshAt = 0
   private uplDeferredWhilePan: number | null = null
   private uplPanFlushScheduled = false
   private uplRefreshDeferredWhilePan = false
@@ -239,6 +244,14 @@ export class PracticeTradeHandler {
   dispose(): void {
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
+    if (this.uplRefreshTimer != null) {
+      clearTimeout(this.uplRefreshTimer)
+      this.uplRefreshTimer = null
+    }
+    if (this.uplRefreshRaf != null) {
+      cancelAnimationFrame(this.uplRefreshRaf)
+      this.uplRefreshRaf = null
+    }
     this.disconnectAccountWs?.()
     this.disconnectAccountWs = null
     this.accountWs = null
@@ -429,20 +442,34 @@ export class PracticeTradeHandler {
     }
   }
 
-  private scheduleRefreshUnrealizedPl(): void {
+  scheduleRefreshUnrealizedPl(): void {
     if (isBwcChartPanning()) {
       whenBwcPanEnds(() => this.scheduleRefreshUnrealizedPl())
       return
     }
-    if (this.uplRefreshRaf != null) return
-    this.uplRefreshRaf = requestAnimationFrame(() => {
-      this.uplRefreshRaf = null
-      if (isBwcChartPanning()) {
-        whenBwcPanEnds(() => this.refreshUnrealizedPl())
-        return
-      }
-      this.refreshUnrealizedPl()
-    })
+    if (this.uplRefreshRaf != null || this.uplRefreshTimer != null) return
+
+    const scheduleFrame = () => {
+      this.uplRefreshTimer = null
+      if (this.uplRefreshRaf != null) return
+      this.uplRefreshRaf = requestAnimationFrame(() => {
+        this.uplRefreshRaf = null
+        if (isBwcChartPanning()) {
+          whenBwcPanEnds(() => this.scheduleRefreshUnrealizedPl())
+          return
+        }
+        this.uplLastRefreshAt = performance.now()
+        this.refreshUnrealizedPl()
+      })
+    }
+
+    const elapsed = performance.now() - this.uplLastRefreshAt
+    const delay = Math.max(0, UPL_REFRESH_MIN_INTERVAL_MS - elapsed)
+    if (delay > 0) {
+      this.uplRefreshTimer = setTimeout(scheduleFrame, delay)
+    } else {
+      scheduleFrame()
+    }
   }
 
   /** Place a working limit (Join Bid / Join Ask / chart limit / order tab limit). */
@@ -635,7 +662,7 @@ export class PracticeTradeHandler {
   }
 
   updateUnrealizedFromMark(_markPrice: number, _chartSymbol?: string): void {
-    this.refreshUnrealizedPl()
+    this.scheduleRefreshUnrealizedPl()
   }
 
   onAllPositionsClosed(): void {

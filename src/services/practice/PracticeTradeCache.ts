@@ -519,13 +519,28 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (isBwcChartPanning()) return
     for (const id of this.reconcileTimers) clearTimeout(id)
     this.reconcileTimers = []
-    for (const ms of [0, 200, 600, 1500, 3000]) {
-      this.reconcileTimers.push(
-        setTimeout(() => {
-          this.reconcilePositionLines()
-        }, ms)
-      )
+
+    const retries = [0, 200, 600, 1500, 3000]
+    const run = (index: number) => {
+      const previous = index > 0 ? retries[index - 1] : 0
+      const timer = setTimeout(() => {
+        this.reconcileTimers = this.reconcileTimers.filter((id) => id !== timer)
+        this.reconcilePositionLines()
+        if (this.needsPositionLineReconcile() && index + 1 < retries.length) {
+          run(index + 1)
+        }
+      }, retries[index] - previous)
+      this.reconcileTimers.push(timer)
     }
+    run(0)
+  }
+
+  private needsPositionLineReconcile(): boolean {
+    for (const [cacheKey, position] of this.cache.entries()) {
+      if (!position?.contracts || !this.positionBelongsOnActiveChart(cacheKey)) continue
+      if (!this.positionChartLinesReady(position.line)) return true
+    }
+    return false
   }
 
   private positionBelongsOnActiveChart(cacheKey: string): boolean {
@@ -626,7 +641,7 @@ export class PracticeTradeCache extends ChartTradeCache {
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
     }
-    if (matchingPosition) this.tradeHandler.refreshUnrealizedPl()
+    if (matchingPosition) this.tradeHandler.scheduleRefreshUnrealizedPl()
   }
 
   private streamForCacheKey(cacheKey: string): string {
@@ -982,8 +997,11 @@ export class PracticeTradeCache extends ChartTradeCache {
 
 
 
-  protected onPositionUplChange(pnl: number): void {
-    this.tradeHandler.setUnrealizedPl(pnl)
+  protected onPositionUplChange(_pnl: number): void {
+    // Market-book ticks already carry the freshest mark for every open
+    // instrument. Coalesce this duplicate chart-bar signal into the same
+    // account-wide refresh instead of publishing a second React update stream.
+    this.tradeHandler.scheduleRefreshUnrealizedPl()
   }
 
   protected onLiveBracketBar(
