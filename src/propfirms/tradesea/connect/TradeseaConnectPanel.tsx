@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import axios from 'axios'
 import { tradeseaAPI } from '../../../api/tradesea.api'
 import { t } from '../../../utils/translator'
 import type { TradeseaConnectPanelProps } from '../../types/tradesea'
@@ -7,6 +8,15 @@ import BasePropFirm from '../../connect/BasePropFirm'
 import BaseEmailOTPFirm from '../../connect/BaseEmailOTPFirm'
 import { savePropFirmCredentials, savePropFirmToken } from '../../connect/utils/savePropFirmCredentials'
 import TradeseaAdvancedTokens from './TradeseaAdvancedTokens'
+
+function connectionErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const upstream = error.response?.data as { error?: unknown; message?: unknown } | undefined
+    const message = upstream?.error ?? upstream?.message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 export default function TradeseaConnectPanel({
   isDark,
@@ -76,7 +86,7 @@ export default function TradeseaConnectPanel({
       setOtpStep(true)
       onSuccess(resend ? t('props.tradesea.otpResent') : t('props.tradesea.otpSent'))
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('props.tradesea.otpSendFailed'))
+      onError(connectionErrorMessage(err, t('props.tradesea.otpSendFailed')))
     } finally {
       setSendingOtp(false)
     }
@@ -108,7 +118,7 @@ export default function TradeseaConnectPanel({
       setOtp('')
       onSuccess(t('props.tradesea.connected'))
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : t('props.tradesea.verifyFailed'))
+      onError(connectionErrorMessage(err, t('props.tradesea.verifyFailed')))
     } finally {
       setVerifying(false)
     }

@@ -4,12 +4,26 @@ import zlib from 'node:zlib'
 
 import TradeseaIdentityService, {
   decodeTradeseaResponse,
+  getTradeseaCaCertificates,
 } from '../src/services/tradesea/TradeseaIdentityService.js'
 
 const successJson = '{"status":"success"}'
 
 test('decodes an ordinary Tradesea JSON response', () => {
   assert.equal(decodeTradeseaResponse(Buffer.from(successJson)), successJson)
+})
+
+test('combines bundled and operating-system CAs without disabling TLS verification', () => {
+  const calls = []
+  const certificates = getTradeseaCaCertificates({
+    getCACertificates(type) {
+      calls.push(type)
+      return type === 'default' ? ['bundled-ca', 'shared-ca'] : ['system-ca', 'shared-ca']
+    },
+  })
+
+  assert.deepEqual(calls, ['default', 'system'])
+  assert.deepEqual(certificates, ['bundled-ca', 'shared-ca', 'system-ca'])
 })
 
 test('strips a UTF-8 BOM from a Tradesea JSON response', () => {

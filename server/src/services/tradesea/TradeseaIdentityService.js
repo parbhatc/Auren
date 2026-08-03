@@ -1,5 +1,6 @@
 import https from 'https'
 import crypto from 'crypto'
+import tls from 'node:tls'
 import zlib from 'zlib'
 import {
   getStreamEndpoints,
@@ -19,6 +20,18 @@ const ACCOUNTS_CACHE_TTL_MS = 10_000
 
 const TRADESEA_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+
+export function getTradeseaCaCertificates(tlsApi = tls) {
+  if (typeof tlsApi.getCACertificates !== 'function') return undefined
+  const bundled = tlsApi.getCACertificates('default') || []
+  const system = tlsApi.getCACertificates('system') || []
+  return [...new Set([...bundled, ...system])]
+}
+
+const trustedCaCertificates = getTradeseaCaCertificates()
+const TRADESEA_HTTPS_AGENT = trustedCaCertificates?.length
+  ? new https.Agent({ ca: trustedCaCertificates, keepAlive: true })
+  : undefined
 
 export function decodeTradeseaResponse(buffer, contentEncoding = '') {
   const encoding = String(contentEncoding || '')
@@ -65,6 +78,7 @@ function apiRequest(method, endpoint, body) {
         hostname: IDENTITY_HOST,
         path: `${UM_PREFIX}${endpoint}`,
         method,
+        agent: TRADESEA_HTTPS_AGENT,
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
@@ -100,7 +114,10 @@ function apiRequest(method, endpoint, body) {
         res.on('error', () => reject(new Error('Could not read the Tradesea response')))
       }
     )
-    req.on('error', () => reject(new Error('Could not reach Tradesea')))
+    req.on('error', (error) => {
+      const detail = error?.code || error?.message
+      reject(new Error(detail ? `Could not reach Tradesea (${detail})` : 'Could not reach Tradesea'))
+    })
     req.setTimeout(15_000, () => {
       req.destroy()
       reject(new Error('Tradesea request timed out'))
