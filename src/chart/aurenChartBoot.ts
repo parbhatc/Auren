@@ -40,7 +40,7 @@ function getSdk(): Promise<BwcSdk> {
 export async function registerAurenChartIndicators(): Promise<void> {
   if (registered) return
   const sdk = await getSdk()
-  const [fvg, levels, panels, customSetups, paperFeed] = await Promise.all([
+  const [fvg, levels, panels, customSetups] = await Promise.all([
     runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/fvg/FvgIndicator.js')),
     runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/levels/LevelsIndicator.js')),
     runtimeImport<{ registerTestingInputPanels: () => void }>(
@@ -49,15 +49,15 @@ export async function registerAurenChartIndicators(): Promise<void> {
     runtimeImport<{ default: unknown }>(
       withDevCacheBust('/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js')
     ),
-    runtimeImport<{
-      startPaperFeedPolling: (intervalMs?: number) => void
-      subscribePaperFeed: (listener: () => void) => () => void
-    }>(withDevCacheBust('/auren-indicators/custom-setups/paperFeed.js')),
   ])
   sdk.registerIndicator(fvg.default)
   sdk.registerIndicator(levels.default)
   sdk.registerIndicator(customSetups.default)
   panels.registerTestingInputPanels()
+  const paperFeed = customSetups as typeof customSetups & {
+    startPaperFeedPolling: (intervalMs?: number) => void
+    subscribePaperFeed: (listener: () => void) => () => void
+  }
   paperFeed.startPaperFeedPolling(2000)
   paperFeedPromise = Promise.resolve(paperFeed)
   registered = true

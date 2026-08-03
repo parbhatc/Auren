@@ -35,6 +35,7 @@ test('paper snapshot exposes the live position and completed Setup 1-8 trades', 
   assert.equal(snapshot.trades[0].setupId, 7)
   assert.equal(snapshot.trades[0].status, 'CLOSED')
   assert.equal(snapshot.trades[0].pnl, 239)
+  assert.equal(snapshot.totalTrades, 1)
 })
 
 test('paper snapshot falls back to audited historical trades for localhost', () => {
@@ -57,4 +58,27 @@ test('paper snapshot falls back to audited historical trades for localhost', () 
   assert.equal(snapshot.trades[0].entryTime, '2026-07-31T14:00:00.000Z')
   assert.equal(snapshot.trades[0].exitTime, '2026-07-31T14:05:00.000Z')
   assert.equal(snapshot.trades[0].pnl, 239)
+})
+
+test('paper snapshot pages completed trades from newest to oldest without changing order', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-custom-setups-pages-'))
+  const tradeLogPath = path.join(dir, 'trades.csv')
+  fs.writeFileSync(tradeLogPath, [
+    'setup_id,side,entry,stop,target,qty,entry_time,exit,exit_time,reason,pnl,risk_usd',
+    '1,LONG,100,90,120,1,2026-08-01T14:00:00.000Z,120,2026-08-01T14:05:00.000Z,TARGET,39,21',
+    '2,LONG,200,190,220,1,2026-08-02T14:00:00.000Z,220,2026-08-02T14:05:00.000Z,TARGET,39,21',
+    '3,LONG,300,290,320,1,2026-08-03T14:00:00.000Z,320,2026-08-03T14:05:00.000Z,TARGET,39,21',
+  ].join('\n'))
+
+  const service = new CustomSetupsPaperService({
+    statePath: path.join(dir, 'missing-account.json'),
+    tradeLogPath,
+    historicalPath: path.join(dir, 'missing-history.csv'),
+  })
+  const newest = service.snapshot(2, 0)
+  const oldest = service.snapshot(2, 2)
+
+  assert.equal(newest.totalTrades, 3)
+  assert.deepEqual(newest.trades.map((trade) => trade.setupId), [2, 3])
+  assert.deepEqual(oldest.trades.map((trade) => trade.setupId), [1])
 })

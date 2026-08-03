@@ -110,9 +110,10 @@ export class CustomSetupsPaperService {
     }
   }
 
-  snapshot(limit = 1000) {
+  snapshot(limit = 1000, offset = 0) {
     const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 1000))
-    const key = `${this.fileVersion(this.statePath)}|${this.fileVersion(this.tradeLogPath)}|${this.fileVersion(this.historicalPath)}|${normalizedLimit}`
+    const normalizedOffset = Math.max(0, Math.floor(Number(offset) || 0))
+    const key = `${this.fileVersion(this.statePath)}|${this.fileVersion(this.tradeLogPath)}|${this.fileVersion(this.historicalPath)}|${normalizedLimit}|${normalizedOffset}`
     if (this.cache && this.cacheKey === key) return this.cache
 
     let state = null
@@ -124,7 +125,7 @@ export class CustomSetupsPaperService {
     }
     try {
       const rows = parseCsv(fs.readFileSync(this.tradeLogPath, 'utf8'))
-      completed = rows.map((row) => normalizePosition(row, true)).filter(Boolean).slice(-normalizedLimit)
+      completed = rows.map((row) => normalizePosition(row, true)).filter(Boolean)
     } catch {
       completed = []
     }
@@ -133,7 +134,7 @@ export class CustomSetupsPaperService {
     if (completed.length === 0) {
       try {
         const rows = parseCsv(fs.readFileSync(this.historicalPath, 'utf8'))
-        completed = rows.map((row) => normalizePosition(row, true)).filter(Boolean).slice(-normalizedLimit)
+        completed = rows.map((row) => normalizePosition(row, true)).filter(Boolean)
         if (completed.length > 0) source = 'AUDITED_HISTORICAL_FALLBACK'
       } catch {
         completed = []
@@ -141,6 +142,10 @@ export class CustomSetupsPaperService {
     }
 
     const openPosition = normalizePosition(state?.openPosition, false)
+    const totalTrades = completed.length
+    const pageEnd = totalTrades - normalizedOffset
+    const pageStart = Math.max(0, pageEnd - normalizedLimit)
+    completed = pageEnd > 0 ? completed.slice(pageStart, pageEnd) : []
     this.cacheKey = key
     this.cache = {
       available: state != null || completed.length > 0,
@@ -148,6 +153,7 @@ export class CustomSetupsPaperService {
       priority: PRIORITY,
       updatedAt: state?.updatedAt ?? null,
       openPosition,
+      totalTrades,
       trades: completed,
     }
     return this.cache
