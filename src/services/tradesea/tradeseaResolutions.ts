@@ -47,8 +47,21 @@ export const TRADESEA_SECONDS_MULTIPLIERS = ['1', '5', '10', '15', '30', '45']
 /** TradingView `intraday_multipliers` (minutes; 120 = 2h) */
 export const TRADESEA_INTRADAY_MULTIPLIERS = ['1', '2', '3', '5', '10', '15', '30', '60', '120']
 
-export function tradeseaResolutionToSeconds(resolution: string): number {
+/**
+ * BetterweightChartPro uses TradingView's short aliases (D/W/M) when it calls
+ * the datafeed, while Tradesea's UDF and MDS endpoints require explicit
+ * multipliers for calendar resolutions.
+ */
+export function tradeseaWireResolution(resolution: string): string {
   const r = String(resolution).trim().toUpperCase()
+  if (r === 'D') return '1D'
+  if (r === 'W') return '1W'
+  if (r === 'M') return '1M'
+  return r
+}
+
+export function tradeseaResolutionToSeconds(resolution: string): number {
+  const r = tradeseaWireResolution(resolution)
 
   if (r.endsWith('T')) {
     return 1

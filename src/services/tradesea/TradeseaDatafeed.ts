@@ -23,6 +23,7 @@ import {
   TRADESEA_SECONDS_MULTIPLIERS,
   TRADESEA_SUPPORTED_RESOLUTIONS,
   tradeseaResolutionToSeconds,
+  tradeseaWireResolution,
 } from './tradeseaResolutions'
 import {
   TradeseaInstrumentRow,
@@ -748,7 +749,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     params.set('connection-user-id', this.userId)
     params.set('connection-group-id', this.connectionGroupId)
     params.set('symbol', symbol)
-    params.set('resolution', resolution)
+    params.set('resolution', tradeseaWireResolution(resolution))
     params.set('from', String(Math.floor(fromSec)))
     params.set('to', String(Math.floor(toSec)))
     params.set('countback', String(countback))
@@ -1364,7 +1365,10 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     const subId = isNewStream
       ? (() => {
           this.ensureMarketBookSubscription(chartSymbol)
-          const id = this.mds.subscribeCandles([symbol], [String(resolution)])
+          const id = this.mds.subscribeCandles(
+            [symbol],
+            [tradeseaWireResolution(String(resolution))]
+          )
           this.subIdByKey.set(key, id)
           return id
         })()
@@ -1398,7 +1402,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             res
           )
           const routes = this.candleSubscriptionKeys(streamId).filter(
-            ({ resolution }) => resolution === res
+            ({ resolution }) => tradeseaWireResolution(resolution) === res
           )
           for (const { key } of routes) {
             this.dispatchBarToSubscribers(key, res, streamId, bar)

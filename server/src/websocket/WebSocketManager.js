@@ -204,7 +204,13 @@ class WebSocketManager {
         // Call custom connection handler with error handling
         if (serverInfo.onConnection) {
           try {
-            serverInfo.onConnection(ws, req, clientInfo, serverInfo)
+            const connectionResult = serverInfo.onConnection(ws, req, clientInfo, serverInfo)
+            Promise.resolve(connectionResult).catch((error) => {
+              console.error(`[WebSocket Manager] Async error in onConnection handler for "${name}":`, error)
+              if (ws.readyState === ws.OPEN) {
+                ws.close(1011, 'Internal server error')
+              }
+            })
           } catch (error) {
             console.error(`[WebSocket Manager] Error in onConnection handler for "${name}":`, error)
             // Don't close the connection immediately - let it try to work

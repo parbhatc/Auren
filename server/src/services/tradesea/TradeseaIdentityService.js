@@ -33,6 +33,60 @@ const TRADESEA_HTTPS_AGENT = trustedCaCertificates?.length
   ? new https.Agent({ ca: trustedCaCertificates, keepAlive: true })
   : undefined
 
+function trustedJsonRequest(url, { method = 'GET', headers = {}, body = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url)
+    const payload = body == null ? null : String(body)
+    const req = https.request(
+      {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || undefined,
+        path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        method,
+        agent: TRADESEA_HTTPS_AGENT,
+        headers: {
+          ...headers,
+          ...(payload != null &&
+          headers['Content-Length'] == null &&
+          headers['content-length'] == null
+            ? { 'Content-Length': Buffer.byteLength(payload) }
+            : {}),
+        },
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          try {
+            resolve({
+              statusCode: res.statusCode || 0,
+              raw: decodeTradeseaResponse(
+                Buffer.concat(chunks),
+                res.headers?.['content-encoding']
+              ),
+            })
+          } catch {
+            reject(invalidResponseError(res))
+          }
+        })
+        res.on('aborted', () => reject(new Error('Tradesea closed the response early')))
+        res.on('error', () => reject(new Error('Could not read the Tradesea response')))
+      }
+    )
+
+    req.on('error', (error) => {
+      const detail = error?.code || error?.message
+      reject(new Error(detail ? `Could not reach Tradesea (${detail})` : 'Could not reach Tradesea'))
+    })
+    req.setTimeout(15_000, () => {
+      req.destroy()
+      reject(new Error('Tradesea request timed out'))
+    })
+    if (payload != null) req.write(payload)
+    req.end()
+  })
+}
+
 export function decodeTradeseaResponse(buffer, contentEncoding = '') {
   const encoding = String(contentEncoding || '')
     .split(',')[0]
@@ -850,7 +904,7 @@ class TradeseaIdentityService {
     const url = `${DISCOVERY_ORIGIN}${suffix}`
     const cookie = buildAuthCookieHeader(tokens)
 
-    const res = await fetch(url, {
+    const response = await trustedJsonRequest(url, {
       method,
       headers: {
         cookie,
@@ -863,20 +917,19 @@ class TradeseaIdentityService {
         pragma: 'no-cache',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(15_000),
+      body: body ? JSON.stringify(body) : null,
     })
 
-    const raw = await res.text()
+    const raw = response.raw
     let parsed = {}
     try {
       parsed = raw ? JSON.parse(raw) : {}
     } catch {
-      parsed = { s: 'error', errmsg: raw || `Invalid response (${res.status})` }
+      parsed = { s: 'error', errmsg: raw || `Invalid response (${response.statusCode})` }
     }
 
     return {
-      statusCode: res.status,
+      statusCode: response.statusCode,
       body: parsed,
     }
   }
@@ -888,7 +941,7 @@ class TradeseaIdentityService {
 
     const suffix = path.startsWith('/') ? path : `/${path}`
     const cookie = buildAuthCookieHeader(tokens)
-    const res = await fetch(`${IDENTITY_ORIGIN}${suffix}`, {
+    const response = await trustedJsonRequest(`${IDENTITY_ORIGIN}${suffix}`, {
       method,
       headers: {
         cookie,
@@ -901,19 +954,21 @@ class TradeseaIdentityService {
         pragma: 'no-cache',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(15_000),
+      body: body ? JSON.stringify(body) : null,
     })
 
-    const raw = await res.text()
+    const raw = response.raw
     let parsed = {}
     try {
       parsed = raw ? JSON.parse(raw) : {}
     } catch {
-      parsed = { status: 'error', message: raw || `Invalid response (${res.status})` }
+      parsed = {
+        status: 'error',
+        message: raw || `Invalid response (${response.statusCode})`,
+      }
     }
 
-    return { statusCode: res.status, body: parsed }
+    return { statusCode: response.statusCode, body: parsed }
   }
 
   async fetchTradelensV2(tokens, accountId, endpoint, options = {}) {
