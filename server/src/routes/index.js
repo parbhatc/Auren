@@ -12,6 +12,7 @@ import TradeseaRoutes from './TradeseaRoutes.js'
 import PracticeRoutes from './PracticeRoutes.js'
 import BacktesterRoutes from './BacktesterRoutes.js'
 import DebugRoutes from './DebugRoutes.js'
+import CustomSetupsPaperRoutes from './CustomSetupsPaperRoutes.js'
 import RoleController from '../controllers/RoleController.js'
 import Translator from '../utils/Translator.js'
 import { HTTP_STATUS } from '../config/constants.js'
@@ -91,6 +92,10 @@ class Routes {
     // Dev/debug: persisted chart history for indicator debugging
     const debugRoutes = new DebugRoutes()
     this.router.use('/debug', debugRoutes.getRouter())
+
+    // Actual accepted Custom Setups 1-8 live-paper positions and completed trades.
+    const customSetupsPaperRoutes = new CustomSetupsPaperRoutes()
+    this.router.use('/custom-setups-paper', customSetupsPaperRoutes.getRouter())
   }
 
   /**

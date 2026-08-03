@@ -25,6 +25,10 @@ function runtimeImport<T>(url: string): Promise<T> {
 
 let sdkPromise: Promise<BwcSdk> | null = null
 let registered = false
+let paperFeedPromise: Promise<{
+  startPaperFeedPolling: (intervalMs?: number) => void
+  subscribePaperFeed: (listener: () => void) => () => void
+}> | null = null
 
 function getSdk(): Promise<BwcSdk> {
   if (!sdkPromise) {
@@ -36,22 +40,50 @@ function getSdk(): Promise<BwcSdk> {
 export async function registerAurenChartIndicators(): Promise<void> {
   if (registered) return
   const sdk = await getSdk()
-  const [fvg, levels, panels] = await Promise.all([
+  const [fvg, levels, panels, customSetups, paperFeed] = await Promise.all([
     runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/fvg/FvgIndicator.js')),
     runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/levels/LevelsIndicator.js')),
     runtimeImport<{ registerTestingInputPanels: () => void }>(
       withDevCacheBust('/testing/js/indicators/inputPanels.js')
     ),
+    runtimeImport<{ default: unknown }>(
+      withDevCacheBust('/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js')
+    ),
+    runtimeImport<{
+      startPaperFeedPolling: (intervalMs?: number) => void
+      subscribePaperFeed: (listener: () => void) => () => void
+    }>(withDevCacheBust('/auren-indicators/custom-setups/paperFeed.js')),
   ])
   sdk.registerIndicator(fvg.default)
   sdk.registerIndicator(levels.default)
+  sdk.registerIndicator(customSetups.default)
   panels.registerTestingInputPanels()
+  paperFeed.startPaperFeedPolling(2000)
+  paperFeedPromise = Promise.resolve(paperFeed)
   registered = true
 }
 
 export async function bootChart(options?: Record<string, unknown>): Promise<BwcWidget> {
   const sdk = await getSdk()
-  return sdk.bootChart(options)
+  const widget = await sdk.bootChart(options)
+  const feed = paperFeedPromise ? await paperFeedPromise : null
+  const indicatorApi = widget.indicators as {
+    list?: () => Array<{ instanceId: string; defId: string }>
+    patch?: (instanceId: string, patch: Record<string, unknown>) => void
+  } | undefined
+  const unsubscribe = feed?.subscribePaperFeed(() => {
+    for (const instance of indicatorApi?.list?.() ?? []) {
+      if (instance.defId === 'custom-setups-paper') indicatorApi?.patch?.(instance.instanceId, {})
+    }
+  })
+  if (unsubscribe && widget.destroy) {
+    const originalDestroy = widget.destroy.bind(widget)
+    widget.destroy = () => {
+      unsubscribe()
+      originalDestroy()
+    }
+  }
+  return widget
 }
 
 export async function getBwcHostHooks(): Promise<{
