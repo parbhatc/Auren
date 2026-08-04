@@ -12,7 +12,8 @@ function normalizeSymbol(value) {
 }
 
 function normalizeResolution(value, supported) {
-  const resolution = String(value || '1').trim().toUpperCase()
+  const requested = String(value || '1').trim().toUpperCase()
+  const resolution = requested === 'D' ? '1D' : requested === 'W' ? '1W' : requested
   if (!supported.includes(resolution)) throw new TypeError(`Unsupported resolution: ${resolution}`)
   return resolution
 }

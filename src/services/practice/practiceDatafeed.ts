@@ -30,3 +30,23 @@ export function practiceBookBidAsk(book: PracticeMarketBook | null | undefined):
     last: book?.last ?? null,
   }
 }
+
+/** Ignore a stale/outlier LTP when a fresh top of book is available. */
+export function resolvePracticeBookMark(
+  book: PracticeMarketBook | null | undefined,
+  fallback: number | null = null
+): number | null {
+  const { bestBid, bestAsk, last } = practiceBookBidAsk(book)
+  const midpoint =
+    bestBid != null && bestAsk != null && Number.isFinite(bestBid) && Number.isFinite(bestAsk)
+      ? (bestBid + bestAsk) / 2
+      : null
+  const agreesWithMidpoint = (price: number | null): price is number =>
+    price != null &&
+    Number.isFinite(price) &&
+    (midpoint == null || Math.abs(price - midpoint) <= Math.max(1, Math.abs(midpoint) * 0.002))
+
+  if (agreesWithMidpoint(last)) return last
+  if (agreesWithMidpoint(fallback)) return fallback
+  return midpoint ?? (last != null && Number.isFinite(last) ? last : fallback)
+}

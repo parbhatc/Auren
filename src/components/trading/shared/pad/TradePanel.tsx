@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getPracticeAccountById, type PracticeAccount } from '../../../../constants/practice'
 import { getTradePanelSettings } from '../../../../constants/tradePanelSettings'
 import { getMaxContractsForSymbol } from '../../../../services/practice/practiceLimits'
+import { resolvePracticeBookMark } from '../../../../services/practice/practiceDatafeed'
 import { resolvePracticeProductSymbol } from '../../../../services/practice/practiceSymbol'
 import type { TradeseaMarketBook } from '../../../../services/tradesea/tradeseaMarketBook'
 import {
@@ -305,7 +306,7 @@ export default function TradePanel(props: TradePanelProps) {
 
   const product = account ? resolvePracticeProductSymbol(rootSymbol, null) : rootSymbol
   const maxQty = account ? getMaxContractsForSymbol(account.size, product) : 10
-  const marketPrice = book?.last ?? markPrice ?? null
+  const marketPrice = resolvePracticeBookMark(book, markPrice)
   const tradeOffline = !isTradePanelTradingEnabled(props)
   const effectivePanelUi = useMemo(
     () => ({ ...panelUi, ...props.panelUiOverrides }),

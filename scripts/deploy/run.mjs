@@ -36,7 +36,11 @@ const SYNC_FILES = [
   'server/src/websocket/PracticeMarketDataWebSocket.js',
   'server/test/practiceMarketDataWebSocket.test.js',
   'src/propfirms/tradesea/TradeseaPropFirm.ts',
+  'src/components/trading/shared/pad/TradePanel.tsx',
   'src/services/practice/PracticeMarketDatafeed.ts',
+  'src/services/practice/PracticeTradeHandler.ts',
+  'src/services/practice/practiceDatafeed.ts',
+  'src/services/tradesea/TradeseaDatafeed.ts',
   'src/services/tradesea/TradeseaChart.tsx',
 ]
 

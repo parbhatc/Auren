@@ -51,11 +51,19 @@ function normalizeQuote(data) {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : null
   }
+  const bid = number(values.bid)
+  const ask = number(values.ask)
+  let last = number(values.lp)
+  if (last != null && bid != null && ask != null) {
+    const midpoint = (bid + ask) / 2
+    const tolerance = Math.max(1, Math.abs(midpoint) * 0.002)
+    if (Math.abs(last - midpoint) > tolerance) last = null
+  }
   return {
     symbol: String(data?.n || ''),
-    last: number(values.lp),
-    bid: number(values.bid),
-    ask: number(values.ask),
+    last,
+    bid,
+    ask,
     bidSize: number(values.bid_size),
     askSize: number(values.ask_size),
     time: number(values.lp_time),

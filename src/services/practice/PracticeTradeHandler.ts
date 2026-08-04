@@ -8,7 +8,12 @@ import {
 } from '../../constants/practice'
 import { TradeseaPropFirm } from '../../propfirms/tradesea'
 import { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
-import { practiceBookBidAsk, type PracticeChartDatafeed, type PracticeMarketBook } from './practiceDatafeed'
+import {
+  practiceBookBidAsk,
+  resolvePracticeBookMark,
+  type PracticeChartDatafeed,
+  type PracticeMarketBook,
+} from './practiceDatafeed'
 import { PracticeTradeCache } from './PracticeTradeCache'
 import { calcTradeseaTickPnL } from '../tradesea/tradeseaPnL'
 import type { DomPositionContext } from '../tradesea/tradeseaPnL'
@@ -33,9 +38,12 @@ import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
+import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 
 /** Keep quote-driven P&L/risk UI responsive without running it on every MDS packet. */
 const UPL_REFRESH_MIN_INTERVAL_MS = 120
+/** A single malformed market-data tick must never permanently fail an account. */
+const BLOWN_CONFIRMATION_MS = 750
 
 export class PracticeTradeHandler {
   tradeCache: PracticeTradeCache | null = null
@@ -52,6 +60,8 @@ export class PracticeTradeHandler {
   private uplPanFlushScheduled = false
   private uplRefreshDeferredWhilePan = false
   private blownEnforcing = false
+  private blownConfirmationTimer: ReturnType<typeof setTimeout> | null = null
+  private blownCandidateSince: number | null = null
   private blownModalShown = false
   private passedModalShown = false
   /** Suppress per-fill toasts while force-closing on blow. */
@@ -252,6 +262,10 @@ export class PracticeTradeHandler {
       cancelAnimationFrame(this.uplRefreshRaf)
       this.uplRefreshRaf = null
     }
+    if (this.blownConfirmationTimer != null) {
+      clearTimeout(this.blownConfirmationTimer)
+      this.blownConfirmationTimer = null
+    }
     this.disconnectAccountWs?.()
     this.disconnectAccountWs = null
     this.accountWs = null
@@ -362,7 +376,38 @@ export class PracticeTradeHandler {
 
   private checkBlownWhileTrading(): void {
     if (this.blownEnforcing || this.blownModalShown || this.passedModalShown) return
-    if (!this.isAccountBlown()) return
+    if (!this.isAccountBlown()) {
+      this.blownCandidateSince = null
+      if (this.blownConfirmationTimer != null) {
+        clearTimeout(this.blownConfirmationTimer)
+        this.blownConfirmationTimer = null
+      }
+      return
+    }
+
+    const account = this.getAccount()
+    if (account?.status !== 'blown') {
+      const now = Date.now()
+      if (this.blownCandidateSince == null) this.blownCandidateSince = now
+      const remaining = BLOWN_CONFIRMATION_MS - (now - this.blownCandidateSince)
+      if (remaining <= 0) {
+        this.blownCandidateSince = null
+      } else {
+        if (this.blownConfirmationTimer == null) {
+          this.blownConfirmationTimer = setTimeout(() => {
+            this.blownConfirmationTimer = null
+            this.refreshUnrealizedPl()
+          }, remaining)
+        }
+        return
+      }
+    }
+
+    this.blownCandidateSince = null
+    if (this.blownConfirmationTimer != null) {
+      clearTimeout(this.blownConfirmationTimer)
+      this.blownConfirmationTimer = null
+    }
 
     const cache = this.tradeCache
     const hasOpen = cache?.hasAnyOpenPosition() ?? false
@@ -658,9 +703,7 @@ export class PracticeTradeHandler {
   }
 
   private normalizeSymbolKey(symbol: string): string {
-    const s = String(symbol || '').trim()
-    const colon = s.indexOf(':')
-    return (colon >= 0 ? s.slice(colon + 1) : s).toUpperCase()
+    return chartSymbolToProductRoot(symbol)
   }
 
   updateUnrealizedFromMark(_markPrice: number, _chartSymbol?: string): void {
@@ -748,14 +791,21 @@ export class PracticeTradeHandler {
         ? (bestBid + bestAsk) / 2
         : null
 
+    const activeBook = sameAsActiveChart
+      ? datafeed?.getMarketBookForChart?.(chartSym)
+      : null
+    const activeBookMark = resolvePracticeBookMark(activeBook)
+
     if (sameAsActiveChart && barClose != null) {
       if (bookLast != null && this.markPricesAgree(barClose, bookLast)) return bookLast
       if (mid != null && this.markPricesAgree(barClose, mid)) return mid
       return barClose
     }
 
-    if (bookLast != null) return bookLast
-    if (mid != null) return mid
+    if (sameAsActiveChart && activeBookMark != null) return activeBookMark
+
+    const safeBookMark = resolvePracticeBookMark(book)
+    if (safeBookMark != null) return safeBookMark
     if (sameAsActiveChart && barClose != null) return barClose
     return bestBid ?? bestAsk ?? null
   }

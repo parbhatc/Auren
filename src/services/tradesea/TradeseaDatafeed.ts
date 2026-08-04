@@ -345,8 +345,18 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   ): void {
     const streamId = this.streamSymbol(chartSymbol)
     if (!streamId) return
+    const current = this.marketBook.get(streamId)
+    const bid = quote.bid ?? current?.bestBid ?? null
+    const ask = quote.ask ?? current?.bestAsk ?? null
+    let last = quote.last ?? null
+    if (last != null && bid != null && ask != null) {
+      const midpoint = (bid + ask) / 2
+      if (Math.abs(last - midpoint) > Math.max(1, Math.abs(midpoint) * 0.002)) {
+        last = null
+      }
+    }
     this.marketBook.applyQuotes(streamId, {
-      p: quote.last,
+      p: last,
       bp: quote.bid,
       ap: quote.ask,
       bs: quote.bidSize,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 import PracticeMarketDataWebSocket from '../src/websocket/PracticeMarketDataWebSocket.js'
-import TradingViewMarketDataClient, { normalizeSearchResult } from '../src/services/tradingview/TradingViewMarketDataClient.js'
+import TradingViewMarketDataClient, { normalizeQuote, normalizeSearchResult } from '../src/services/tradingview/TradingViewMarketDataClient.js'
 import { getPropFirmDescriptor } from '../src/services/propfirms/PropFirmCatalog.js'
 
 class FakeSocket extends EventEmitter {
@@ -37,6 +37,22 @@ test('TradingView futures search selects the continuous contract', () => {
   })
   assert.equal(result.symbol, 'NQ')
   assert.equal(result.ticker, 'CME_MINI:NQ1!')
+})
+
+test('TradingView quote normalization drops a last price that conflicts with fresh bid and ask', () => {
+  const quote = normalizeQuote({
+    n: 'CME_MINI:MNQ1!',
+    v: { lp: 29214.75, bid: 29742.5, ask: 29742.75, lp_time: 1785862333 },
+  })
+  assert.equal(quote.last, null)
+  assert.equal(quote.bid, 29742.5)
+  assert.equal(quote.ask, 29742.75)
+
+  const valid = normalizeQuote({
+    n: 'CME_MINI:MNQ1!',
+    v: { lp: 29742.5, bid: 29742.5, ask: 29742.75 },
+  })
+  assert.equal(valid.last, 29742.5)
 })
 
 test('TradingView history retries a rate-limited connection and shares identical requests', async () => {
@@ -126,6 +142,34 @@ test('practice market-data stream serves history and symbol-resolution subscript
   const update = await waitFor(socket, (message) => message.type === 'update')
   assert.equal(update.subscriptionId, 'NASDAQ:AAPL#30S')
   stream.unsubscribe(socket, 'NASDAQ:AAPL#30S')
+})
+
+test('practice market-data stream accepts chart daily and weekly aliases', async () => {
+  const calls = []
+  const marketData = {
+    supportedResolutions: ['1D', '1W'],
+    history: async (symbol, options) => {
+      calls.push({ symbol, ...options })
+      return { symbol, interval: options.interval, bars: [], historyExhausted: true }
+    }
+  }
+  const stream = new PracticeMarketDataWebSocket(null, {
+    marketData,
+    resolutions: marketData.supportedResolutions,
+    getUserToken: async () => null,
+  })
+  const socket = new FakeSocket()
+  stream.userIds.set(socket, 1)
+
+  await stream.dispatch(socket, {
+    id: 'daily-history', type: 'history', symbol: 'NASDAQ:AAPL', resolution: 'D', bars: 10
+  })
+  await stream.dispatch(socket, {
+    id: 'weekly-history', type: 'history', symbol: 'NASDAQ:AAPL', resolution: 'W', bars: 10
+  })
+
+  assert.equal(calls[0].interval, '1D')
+  assert.equal(calls[1].interval, '1W')
 })
 
 test('practice market-data stream rejects pane-scoped subscription IDs', async () => {
