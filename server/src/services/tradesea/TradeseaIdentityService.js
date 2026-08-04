@@ -9,10 +9,12 @@ import {
   usesDelayedMarketData,
 } from './TradeseaAccountPolicy.js'
 import { normalizeTradeseaTradeInstrument } from '../../utils/tradeseaInstrument.js'
+import { getPropFirmDescriptor } from '../propfirms/PropFirmCatalog.js'
 
-const TRADESEA_APP_ORIGIN = 'https://app.tradesea.ai'
-const IDENTITY_ORIGIN = 'https://prod-identity.tradesea.ai'
-const DISCOVERY_ORIGIN = 'https://prod-discovery.tradesea.ai'
+const providerConfig = getPropFirmDescriptor('tradesea')
+const TRADESEA_APP_ORIGIN = providerConfig.endpoints.app
+const IDENTITY_ORIGIN = providerConfig.endpoints.identity
+const DISCOVERY_ORIGIN = providerConfig.endpoints.discovery
 
 const IDENTITY_HOST = 'prod-identity.tradesea.ai'
 const UM_PREFIX = '/um'

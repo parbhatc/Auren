@@ -348,9 +348,14 @@ export function getPracticeAccountDisplayTitle(account: PracticeAccount): string
 }
 
 export function getPracticeAccountMetaLabel(account: PracticeAccount): string {
+  let activeFirmId = getPracticeMarketDataSettings().propFirmId || account.propFirmId
+  try {
+    activeFirmId = localStorage.getItem('activePropFirm') || activeFirmId
+  } catch {
+    // Storage is optional.
+  }
   const firm =
-    PRACTICE_PROP_FIRMS.find((f) => f.id === account.propFirmId)?.displayName ||
-    account.propFirmId
+    PRACTICE_PROP_FIRMS.find((f) => f.id === activeFirmId)?.displayName || activeFirmId
   return `${firm} · ${getPracticeAccountLabel(account)}`
 }
 

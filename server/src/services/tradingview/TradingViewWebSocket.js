@@ -780,6 +780,14 @@ class TradingViewWebSocket {
     return this.send(message)
   }
 
+  sendRequestMoreData(seriesId, bars) {
+    if (!this.chartSessionId) return false
+    return this.send({
+      m: 'request_more_data',
+      p: [this.chartSessionId, seriesId, Math.max(1, Math.floor(Number(bars) || 1))]
+    })
+  }
+
   sendReplayCreateSession(replaySessionId) {
     const message = {
       m: 'replay_create_session',

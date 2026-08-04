@@ -4,7 +4,14 @@
 import { PropFirmBase } from './PropFirmBase'
 import { TradeseaPropFirm } from './tradesea'
 
-export const propFirmRegistry: PropFirmBase[] = [new TradeseaPropFirm()]
+export const propFirmRegistry: PropFirmBase[] = [
+  new TradeseaPropFirm(),
+  new TradeseaPropFirm({
+    id: 'tradingview',
+    displayName: 'TradingView',
+    serverManagedPracticeData: true,
+  }),
+]
 
 export function getPropFirmById(id: string): PropFirmBase | undefined {
   return propFirmRegistry.find((firm) => firm.id === id)

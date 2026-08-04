@@ -97,6 +97,10 @@ class Series {
     return modifySent
   }
 
+  requestMoreData(bars = 500) {
+    return this.socket.sendRequestMoreData(this.seriesId, bars)
+  }
+
   /**
    * Change the symbol of the series
    * Calls resolve_symbol with a new symbolRequestId (incremented)

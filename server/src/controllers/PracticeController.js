@@ -1,8 +1,25 @@
 import PracticeService from '../services/PracticeService.js'
 import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
+import practiceMarketData from '../services/practiceMarketData/PracticeMarketDataProviderRegistry.js'
 
 class PracticeController {
+  async getMarketDataConfig(req, res) {
+    try {
+      const descriptor = practiceMarketData.descriptor
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        data: {
+          streamPath: descriptor?.transport?.clientGatewayPath,
+          searchPath: descriptor?.transport?.clientSearchPath,
+          supportedResolutions: practiceMarketData.supportedResolutions,
+        },
+      })
+    } catch (error) {
+      ErrorHandler.handleServerError(res, error)
+    }
+  }
+
   async getMarketData(req, res) {
     try {
       const data = await PracticeService.getMarketData(req.user.id)

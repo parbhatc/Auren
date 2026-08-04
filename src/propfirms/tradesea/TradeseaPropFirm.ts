@@ -84,9 +84,18 @@ import {
 
 export class TradeseaPropFirm extends PropFirmBase {
 
-  readonly id = 'tradesea'
+  readonly id: string
 
-  readonly displayName = 'Market data'
+  readonly displayName: string
+
+  private readonly serverManagedPracticeData: boolean
+
+  constructor(options: { id?: string; displayName?: string; serverManagedPracticeData?: boolean } = {}) {
+    super()
+    this.id = options.id || 'tradesea'
+    this.displayName = options.displayName || 'Market data'
+    this.serverManagedPracticeData = Boolean(options.serverManagedPracticeData)
+  }
 
 
 
@@ -285,6 +294,8 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
   async validate(): Promise<{ success: boolean; type?: string; message?: string }> {
+
+    if (this.serverManagedPracticeData) return { success: true }
 
     const response = await propsAPI.getPropFirm('tradesea')
 
@@ -559,6 +570,38 @@ export class TradeseaPropFirm extends PropFirmBase {
 
     this.accountsLoading = true
     try {
+      if (this.serverManagedPracticeData) {
+        const marketId = this.id
+        const displayName = getPracticeAccountDisplayTitle(sim)
+        this.practiceAccountId = marketId
+        this.practiceAccountLabel = this.displayName
+        this.accounts = [{
+          id: marketId,
+          label: this.displayName,
+          propFirm: this.id,
+          propFirmDisplayName: this.displayName,
+          accountType: 'practice',
+          userId: 'practice-market-data',
+        }]
+        this.selectedAccountId = marketId
+        this.formattedAccounts = [{
+          accountId: 1,
+          displayName,
+          templateName: 'Practice',
+          accountName: displayName,
+          isIneligible: false,
+          isCombine: false,
+          isExpress: false,
+          account: { id: sim.id, propFirm: sim.propFirmId },
+        }]
+        this.accountsFetched = true
+        this.practiceTradeHandler =
+          sim.status === 'active' ? new PracticeTradeHandler(this, sim.id) : null
+        await this.onSelectedAccountChanged(options)
+        this.onDataReady?.()
+        return
+      }
+
       const result = await tradeseaAPI.getAccounts()
       if (!result.connected || !result.accounts?.length) {
         throw new Error(
@@ -739,7 +782,10 @@ export class TradeseaPropFirm extends PropFirmBase {
             bootstrapSymbol: this.chartSymbol || (this.practiceMode ? 'NQ' : undefined),
             bootstrapResolution: this.chartResolution,
           },
-          { connectTrades: !this.practiceMode }
+          {
+            connectTrades: !this.practiceMode,
+            usePracticeMarketData: this.practiceMode,
+          }
         )
       if (this.selectedAccountId !== accountId) {
         teardownTradeseaChartServices(nextServices)
@@ -1034,6 +1080,14 @@ export class TradeseaPropFirm extends PropFirmBase {
   /** Full MDS reconnect; resubscribeAll on open restores wire subs without unsub churn. */
   reconnectMarketData(): void {
     const svc = this.chartServices
+    const datafeed = svc?.datafeed as typeof svc.datafeed & {
+      __practiceMarketDatafeed?: boolean
+      reconnect?: () => void
+    }
+    if (datafeed?.__practiceMarketDatafeed && datafeed.reconnect) {
+      datafeed.reconnect()
+      return
+    }
     if (!svc?.mds) return
     svc.mds.reconnect()
   }

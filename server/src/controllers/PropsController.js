@@ -7,7 +7,7 @@ import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
 import Translator from '../utils/Translator.js'
 
-const SUPPORTED_PROP_FIRM_TYPES = ['tradesea', 'custom']
+const SUPPORTED_PROP_FIRM_TYPES = ['tradesea', 'tradingview', 'custom']
 
 class PropsController {
   /**
@@ -147,7 +147,8 @@ class PropsController {
         displayName: firm.display_name,
         enabled: firm.enabled === 1,
         credentials: credentials,
-        token: firm.token || null,
+        token: type === 'tradingview' ? null : firm.token || null,
+        tokenConfigured: Boolean(firm.token),
         expiration: firm.expiration || null,
         createdAt: firm.created_at,
         updatedAt: firm.updated_at
@@ -193,6 +194,7 @@ class PropsController {
       // Get display name
       const displayNames = {
         tradesea: 'Tradesea',
+        tradingview: 'TradingView',
         custom: 'Custom',
       }
 

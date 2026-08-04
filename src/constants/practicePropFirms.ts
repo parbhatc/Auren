@@ -7,7 +7,7 @@
 export type PracticeMarketDataSlotPolicy = 'exclusive' | 'concurrent'
 
 /** How practice hub resolves “market data connected” for this firm. */
-export type PracticeMarketDataConnectionKind = 'broker-accounts' | 'credential-login'
+export type PracticeMarketDataConnectionKind = 'broker-accounts' | 'credential-login' | 'server-managed'
 
 export interface PracticePropFirmMarketDataConfig {
   id: string
@@ -24,6 +24,12 @@ export const PRACTICE_PROP_FIRM_CONFIGS: readonly PracticePropFirmMarketDataConf
     displayName: 'Tradesea',
     marketDataConnection: 'broker-accounts',
     marketDataSlotPolicy: 'exclusive',
+  },
+  {
+    id: 'tradingview',
+    displayName: 'TradingView',
+    marketDataConnection: 'server-managed',
+    marketDataSlotPolicy: 'concurrent',
   },
 ] as const
 

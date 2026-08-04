@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "tradesea",
+  "label": "Tradesea",
+  "driver": "tradesea",
+  "enabled": true,
+  "capabilities": {
+    "accounts": true,
+    "liveTrading": true,
+    "practiceTrading": true,
+    "marketData": { "live": true, "practice": false }
+  },
+  "credentials": {
+    "source": "user-session",
+    "fields": ["accessToken", "refreshToken"]
+  },
+  "accountAliases": {
+    "sandbox": ["sandbox", "sandbox-2"],
+    "live": ["lucid"]
+  },
+  "endpoints": {
+    "app": "https://app.tradesea.ai",
+    "identity": "https://prod-identity.tradesea.ai",
+    "discovery": "https://prod-discovery.tradesea.ai",
+    "marketData": {
+      "delayedStream": "wss://api-mds-stream-delayed.tradesea.ai/v1/wss",
+      "delayedUdf": "https://api-udf-delayed.tradesea.ai/v1",
+      "instruments": "https://api-instruments-delayed.tradesea.ai",
+      "liveStream": "wss://prod-market-data.tradesea.ai/v1/wss",
+      "liveUdf": "https://prod-market-data.tradesea.ai/v1"
+    },
+    "trading": {
+      "delayedRead": "https://api-trades-r-delprod.tradesea.ai/v1",
+      "delayedWrite": "https://api-trades-w-delprod.tradesea.ai/v1",
+      "liveRead": "https://api-trades-r.tradesea.ai/v1",
+      "liveWrite": "https://api-trades-w.tradesea.ai/v1",
+      "lucidRead": "https://prod-trade-read.tradesea.ai/v1",
+      "lucidWrite": "https://prod-trade-write.tradesea.ai/v1"
+    }
+  }
+}

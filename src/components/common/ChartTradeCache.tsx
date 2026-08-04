@@ -199,6 +199,12 @@ class ChartTradeCache {
     return this.calcPnL(entry, mark, contracts, tickSize, tickValue)
   }
 
+  /** Keep BWC's position pill on the same executable mark as account UP&L. */
+  updateActivePositionMark(mark: number): void {
+    if (!Number.isFinite(mark)) return
+    this.getPositionBridge()?.updateMarkPrice(mark)
+  }
+
   /** Live bar hook for bracket fills (BWC onLiveBar path). */
   notifyLiveBracketBar(
     cacheKey: string,

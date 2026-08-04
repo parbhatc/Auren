@@ -7,6 +7,7 @@ import tradeseaMdsWebSocket from './websocket/TradeseaMdsWebSocket.js'
 import practiceAccountWebSocket from './websocket/PracticeAccountWebSocket.js'
 import BacktesterWebSocket from './websocket/BacktesterWebSocket.js'
 import BacktesterDataWebSocket from './websocket/BacktesterDataWebSocket.js'
+import PracticeMarketDataWebSocket from './websocket/PracticeMarketDataWebSocket.js'
 import webSocketManager from './websocket/WebSocketManager.js'
 import CSVLoader from './utils/CSVLoader.js'
 import { initBacktesterBarsService } from './services/BacktesterBarsService.js'
@@ -39,6 +40,7 @@ class Server {
     this.server = null
     this.backtesterWS = new BacktesterWebSocket(this)
     this.backtesterDataWS = new BacktesterDataWebSocket(this)
+    this.practiceMarketDataWS = new PracticeMarketDataWebSocket(this)
   }
 
   /**
@@ -110,6 +112,7 @@ class Server {
       webSocketManager.initialize(this.server, [
         this.backtesterWS,
         this.backtesterDataWS,
+        this.practiceMarketDataWS,
       ])
 
       // Start server on all interfaces (0.0.0.0) to allow network access

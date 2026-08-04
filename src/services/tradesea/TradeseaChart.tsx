@@ -11,6 +11,7 @@ import {
   shouldSubscribeMdsDepth,
   shouldUseDelayedMdsSymbols,
 } from './tradeseaMdsSymbols'
+import { createPracticeMarketDatafeed } from '../practice/PracticeMarketDatafeed'
 
 export type TradeseaChartServices = {
   mds?: TradeseaMdsClient
@@ -30,9 +31,27 @@ export async function prepareTradeseaChartServices(
     bootstrapSymbol?: string
     bootstrapResolution?: string
   } | null,
-  options?: { connectTrades?: boolean }
+  options?: { connectTrades?: boolean; usePracticeMarketData?: boolean }
 ): Promise<TradeseaChartServices> {
   const connectTrades = options?.connectTrades !== false
+  if (options?.usePracticeMarketData) {
+    const mds = existing?.mds ?? new TradeseaMdsClient()
+    const trades = existing?.trades ?? new TradeseaTradesClient()
+    mds.disconnect()
+    trades.disconnect()
+    const baseDatafeed = existing?.datafeed ?? new TradeseaDatafeed({
+      mds,
+      accountId,
+      userId: 'practice-market-data',
+      connectionGroupId: 'practice-market-data',
+      delayed: false,
+    })
+    const datafeed = createPracticeMarketDatafeed(
+      baseDatafeed as unknown as Record<string, unknown>
+    ) as unknown as TradeseaDatafeed
+    return { mds, trades, datafeed, streamConfig: { delayed: false }, accountId }
+  }
+
   const streamConfig = await tradeseaAPI.getStreamConfig(accountId)
   if (!streamConfig.success || !streamConfig.userId) {
     throw new Error(streamConfig.error || 'Failed to load market data stream config')
@@ -75,7 +94,7 @@ export async function prepareTradeseaChartServices(
   const delayedMd = useDelayedMd
   const datafeedDelayed = existing?.datafeed?.isDelayedMarketData()
   const needsNewDatafeed = !sameAccount || !existing?.datafeed || datafeedDelayed !== delayedMd
-  const datafeed = needsNewDatafeed
+  const tradeseaDatafeed = needsNewDatafeed
     ? new TradeseaDatafeed({
         mds,
         accountId,
@@ -85,7 +104,7 @@ export async function prepareTradeseaChartServices(
       })
     : existing!.datafeed!
 
-  return { mds, trades, datafeed, streamConfig, accountId }
+  return { mds, trades, datafeed: tradeseaDatafeed, streamConfig, accountId }
 }
 
 export function teardownTradeseaChartServices(services: TradeseaChartServices | null): void {

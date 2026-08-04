@@ -745,6 +745,17 @@
       "saveTokens": "Save tokens",
       "savingTokens": "Saving…",
       "tokensSaved": "Tradesea tokens saved."
+    },
+    "tradingview": {
+      "description": "TradingView provides server-managed market data for practice accounts.",
+      "serverTokenActive": "Server token active",
+      "personalTokenActive": "Personal token active",
+      "tokenDescription": "Optional: save your own TradingView token for your practice market-data requests. It stays on the Auren server and overrides the server token only for your account.",
+      "tokenPlaceholder": "Paste personal TradingView token",
+      "tokenRequired": "Enter a TradingView token.",
+      "saveToken": "Save personal token",
+      "savingToken": "Saving…",
+      "tokenSaved": "Personal TradingView token saved."
     }
   },
   "tradingJournal": {

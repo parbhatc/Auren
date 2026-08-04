@@ -330,6 +330,30 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return this.marketBook.subscribe(listener)
   }
 
+  /** Feed a bar from a server-managed market-data provider into the shared DOM/mark-price store. */
+  applyExternalMarketBar(chartSymbol: string, bar: Bar): void {
+    const streamId = this.streamSymbol(chartSymbol)
+    const close = Number(bar?.close)
+    if (!streamId || !Number.isFinite(close)) return
+    this.marketBook.applyLtp(streamId, close)
+  }
+
+  /** Feed provider quote fields into the shared DOM and practice execution mark store. */
+  applyExternalMarketQuote(
+    chartSymbol: string,
+    quote: { last?: number | null; bid?: number | null; ask?: number | null; bidSize?: number | null; askSize?: number | null }
+  ): void {
+    const streamId = this.streamSymbol(chartSymbol)
+    if (!streamId) return
+    this.marketBook.applyQuotes(streamId, {
+      p: quote.last,
+      bp: quote.bid,
+      ap: quote.ask,
+      bs: quote.bidSize,
+      as: quote.askSize,
+    })
+  }
+
   /** MDS opened — refresh bootstrap metadata and verify book subs. */
   private onMdsOpen(): void {
     const streamTickers = new Set<string>()

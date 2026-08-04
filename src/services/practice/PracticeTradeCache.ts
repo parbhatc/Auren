@@ -637,6 +637,9 @@ export class PracticeTradeCache extends ChartTradeCache {
       const posStream = this.normalizeStreamKey(this.streamForCacheKey(cacheKey))
       if (posStream !== streamKey) continue
       matchingPosition = true
+      if (this.positionBelongsOnActiveChart(cacheKey)) {
+        this.updateActivePositionMark(price)
+      }
       this.mergeOverlayBracketsIntoCache(cacheKey)
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)

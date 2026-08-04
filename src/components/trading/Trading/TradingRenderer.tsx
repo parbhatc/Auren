@@ -9,7 +9,7 @@ import { getTradeTradeseaAccount } from '../../../constants/trade'
 import { TradeHeader } from './TradeHeader'
 import { PracticeTradeHandler } from '../../../services/practice/PracticeTradeHandler'
 import type { TradeseaDatafeed } from '../../../services/tradesea/TradeseaDatafeed'
-import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
+import type { MdsStatusClient } from '../../../services/mds/mdsStatusClient'
 import { getPracticeAccountById } from '../../../constants/practice'
 import { getMaxContractsForSymbol } from '../../../services/practice/practiceLimits'
 import { resolvePracticeProductSymbol } from '../../../services/practice/practiceSymbol'
@@ -47,7 +47,7 @@ import ProductHeader from '../../layout/ProductHeader'
  */
 class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private accountDropdownRef = createRef<HTMLDivElement>()
-  private mdsClientRef: TradeseaMdsClient | null = null
+  private mdsClientRef: MdsStatusClient | null = null
   private mdsConnectionCleanups: (() => void)[] = []
 
   state: TradingRendererState = {
@@ -771,10 +771,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
                     Boolean(this.getHandler()?.tradeCache?.getPosition?.(selectedSymbol))
                   : Boolean(this.getHandler()?.tradeCache?.getPosition?.(selectedSymbol))
               }
-              mdsClient={
-                activeFirm?.chartServices?.mds ??
-                (activeFirm as { mdsClient?: typeof activeFirm.chartServices.mds })?.mdsClient
-              }
+              mdsClient={mdsClient}
               onReconnectMds={() => {
                 const firm = activeFirm as { reconnectMarketData?: () => void } | undefined
                 if (firm?.reconnectMarketData) {

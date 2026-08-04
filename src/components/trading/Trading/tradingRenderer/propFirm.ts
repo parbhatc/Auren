@@ -1,7 +1,7 @@
 import { propFirmRegistry } from '../../../../propfirms'
 import { FormattedAccount } from '../../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../../constants/trade'
-import type { TradeseaMdsClient } from '../../../../services/tradesea/TradeseaMdsClient'
+import type { MdsStatusClient } from '../../../../services/mds/mdsStatusClient'
 
 export function findPropFirmWithAccount(accountId: number): any {
   for (const firm of propFirmRegistry) {
@@ -37,9 +37,11 @@ export function getActivePropFirm(_practiceMode?: boolean): any {
   return null
 }
 
-export function getMdsClient(practiceMode?: boolean): TradeseaMdsClient | null {
+export function getMdsClient(practiceMode?: boolean): MdsStatusClient | null {
   const firm = getActivePropFirm(practiceMode)
   if (!firm) return null
+  const datafeed = firm.chartServices?.datafeed
+  if (datafeed?.__practiceMarketDatafeed) return datafeed as MdsStatusClient
   return firm.chartServices?.mds ?? firm.mdsClient ?? null
 }
 

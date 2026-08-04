@@ -4,6 +4,8 @@ import type { PropFirmConnectCallbacks } from '../types/common'
 import { PRACTICE_PROP_FIRM_CONFIGS } from '../../constants/practicePropFirms'
 import { TradeseaConnectPanel } from '../tradesea'
 import { t } from '../../utils/translator'
+import { SettingsStatusPill } from '../../components/settings/SettingsFormPrimitives'
+import TradingViewConnectPanel from '../tradingview/TradingViewConnectPanel'
 
 export type PropFirmSettingsPanelProps = PropFirmConnectCallbacks & {
   isDark: boolean
@@ -21,6 +23,11 @@ const PANEL_BY_FIRM_ID: Record<string, PanelEntry> = {
     ConnectPanel: TradeseaConnectPanel,
     descriptionKey: 'props.tradesea.otpDescription',
     canClear: (firm) => Boolean(firm?.token),
+  },
+  tradingview: {
+    ConnectPanel: TradingViewConnectPanel,
+    descriptionKey: 'props.tradingview.description',
+    canClear: (firm) => Boolean(firm?.tokenConfigured),
   },
 }
 

@@ -11,7 +11,7 @@ import { HeaderThemeButton } from '../shared/header/HeaderThemeButton'
 import AccountStatusBar from '../shared/header/AccountStatusBar'
 import LockoutCard from '../shared/header/LockoutCard'
 import HeaderTradingSettings from '../shared/header/HeaderTradingSettings'
-import type { TradeseaMdsClient } from '../../../services/tradesea/TradeseaMdsClient'
+import type { MdsStatusClient } from '../../../services/mds/mdsStatusClient'
 import { MdsConnectionLimitModal } from '../MdsConnectionLimitModal'
 import type { FormattedAccount } from '../../../utils/marketAccountDisplay'
 import { getPracticeAccountById } from '../../../constants/practice'
@@ -64,7 +64,7 @@ export function TradeHeader({
   rpl?: number
   upl?: number
   hasOpenPosition?: boolean
-  mdsClient?: TradeseaMdsClient | null
+  mdsClient?: MdsStatusClient | null
   onReconnectMds?: () => void
   /** BAL / RP&L / UP&L strip — chart trade page only */
   showStatsBar?: boolean

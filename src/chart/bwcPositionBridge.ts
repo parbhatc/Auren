@@ -19,6 +19,7 @@ export type BwcPositionOverlayApi = {
   getPosition: () => BwcPositionSnapshot | null
   modifyPosition?: (opts: { entry: number; qty: number }) => Promise<unknown> | unknown
   refreshLayout?: () => number
+  setMarkPrice?: (price: number) => boolean
   onClose: (cb: (snapshot: BwcPositionSnapshot) => void) => () => void
   onStopLossChanged: (cb: (oldPrice: number | null, newPrice: number | null) => void) => () => void
   onTakeProfitChanged: (cb: (oldPrice: number | null, newPrice: number | null) => void) => () => void
@@ -167,6 +168,11 @@ export class BwcPositionBridge {
 
   isActiveSymbol(symbol: string): boolean {
     return this.activeSymbol === symbol
+  }
+
+  updateMarkPrice(mark: number): void {
+    if (!Number.isFinite(mark)) return
+    this.getOverlay()?.setMarkPrice?.(mark)
   }
 
   createCompatHandle(symbol: string): BwcPositionLineHandle {

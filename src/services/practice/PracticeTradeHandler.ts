@@ -308,7 +308,9 @@ export class PracticeTradeHandler {
       const contracts = Number(position?.contracts)
       if (!contracts) continue
       const cacheKey = String(position.symbol || '')
-      const mark = this.getPositionMarkPrice(cacheKey, contracts)
+      // Display unrealized P&L at the current last-traded price. Bid/ask is
+      // reserved for actual market-order execution and liquidation.
+      const mark = this.getMarkPriceForPositionKey(cacheKey)
       if (mark == null) continue
       anyMark = true
       const tickSize = datafeed?.getTickSize?.(cacheKey) ?? datafeed?.getTickSize?.(`CME:${cacheKey}`) ?? 0.25
@@ -829,7 +831,7 @@ export class PracticeTradeHandler {
     const ctx = this.getDomPositionContextFor(symbolKey)
     if (!ctx) return null
     const tradeSymbol = this.resolveStreamLabel(symbolKey)
-    const mark = this.getPositionMarkPrice(tradeSymbol, ctx.signedContracts)
+    const mark = this.getMarkPriceForPositionKey(tradeSymbol)
     if (mark == null) return null
     return calcTradeseaTickPnL(
       ctx.entry,
@@ -844,10 +846,7 @@ export class PracticeTradeHandler {
   getActiveChartPositionUpl(): number | null {
     const ctx = this.getActiveChartDomPositionContext()
     if (!ctx) return null
-    const mark = this.getPositionMarkPrice(
-      this.getChartSymbol(),
-      ctx.signedContracts
-    )
+    const mark = this.getMarkPriceForPositionKey(this.getChartSymbol())
     if (mark == null) return null
     return calcTradeseaTickPnL(
       ctx.entry,

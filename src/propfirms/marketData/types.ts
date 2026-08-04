@@ -2,7 +2,7 @@ import type { PropFirmCredentials } from '../../types/props'
 
 export type BrokerAccountOption = { id: string; label: string }
 
-export type MarketDataConnectionKind = 'broker-accounts' | 'credential-login'
+export type MarketDataConnectionKind = 'broker-accounts' | 'credential-login' | 'server-managed'
 
 export type MarketDataConnectionState = {
   connected: boolean

@@ -19,6 +19,11 @@ class PracticeRoutes {
       AuthMiddleware.authenticate(),
       PracticeController.saveMarketData.bind(PracticeController)
     )
+    this.router.get(
+      '/market-data/config',
+      AuthMiddleware.authenticate(),
+      PracticeController.getMarketDataConfig.bind(PracticeController)
+    )
 
     this.router.get(
       '/accounts',

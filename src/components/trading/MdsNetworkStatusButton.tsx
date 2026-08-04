@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw, Wifi, WifiOff, Loader2 } from 'lucide-react'
 import type { MdsConnectionState } from '../../services/tradesea/TradeseaMdsClient'
-import type { TradeseaMdsClient } from '../../services/tradesea/TradeseaMdsClient'
 import { asMdsStatusClient, type MdsStatusClient } from '../../services/mds/mdsStatusClient'
 import {
   readMdsAutoReconnect,
@@ -9,7 +8,7 @@ import {
 } from '../../services/tradesea/mdsReconnectPrefs'
 
 type MdsNetworkStatusButtonProps = {
-  mds: TradeseaMdsClient | null | undefined
+  mds: MdsStatusClient | null | undefined
   onReconnect?: () => void
   className?: string
 }

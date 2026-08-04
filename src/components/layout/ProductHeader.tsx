@@ -23,6 +23,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   getPracticeAccounts,
   getPracticeAccountDisplayTitle,
+  getPracticeMarketDataSettings,
+  getPracticePropFirmConfig,
   PRACTICE_STORAGE_KEYS,
   refreshPracticeFromApi,
   type PracticeAccount,
@@ -30,6 +32,7 @@ import {
 import { ROUTES } from '../../constants/routes'
 import { useDisplayUnit, type DisplayUnit } from '../../contexts/DisplayUnitContext'
 import Logo from '../common/Logo'
+import { tradeseaAPI } from '../../api/tradesea.api'
 
 type NavItem = {
   id: string
@@ -99,6 +102,7 @@ export default function ProductHeader({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('auren-sidebar-collapsed') === '1')
+  const [providerStatus, setProviderStatus] = useState({ label: 'Market data', connected: false })
   const [activeId, setActiveId] = useState(() => {
     try {
       return localStorage.getItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID) || getPracticeAccounts()[0]?.id || ''
@@ -112,6 +116,43 @@ export default function ProductHeader({
     void refreshPracticeFromApi().then(sync).catch(sync)
     window.addEventListener('practiceAccountsChanged', sync)
     return () => window.removeEventListener('practiceAccountsChanged', sync)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const syncProviderStatus = async () => {
+      const storedId = localStorage.getItem('activePropFirm')
+      const firmId = storedId || getPracticeMarketDataSettings().propFirmId
+      const config = getPracticePropFirmConfig(firmId)
+      if (config.id === 'tradingview') {
+        if (active) setProviderStatus({ label: 'TradingView connected', connected: true })
+        return
+      }
+      if (config.id === 'tradesea') {
+        try {
+          const status = await tradeseaAPI.getConnectionStatus()
+          if (active) setProviderStatus({
+            label: status.connected ? 'Tradesea connected' : 'Tradesea disconnected',
+            connected: Boolean(status.connected),
+          })
+        } catch {
+          if (active) setProviderStatus({ label: 'Tradesea disconnected', connected: false })
+        }
+        return
+      }
+      if (active) setProviderStatus({ label: `${config.displayName} connected`, connected: true })
+    }
+    void syncProviderStatus()
+    const sync = () => void syncProviderStatus()
+    window.addEventListener('activePropFirmChanged', sync)
+    window.addEventListener('practiceSettingsChanged', sync)
+    window.addEventListener('refreshPropFirms', sync)
+    return () => {
+      active = false
+      window.removeEventListener('activePropFirmChanged', sync)
+      window.removeEventListener('practiceSettingsChanged', sync)
+      window.removeEventListener('refreshPropFirms', sync)
+    }
   }, [])
 
   useEffect(() => {
@@ -238,10 +279,14 @@ export default function ProductHeader({
           className={`flex h-10 items-center rounded-md px-3 text-sm ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
             isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
           }`}
-          title="Tradesea connected"
+          title={providerStatus.label}
         >
-          <Wifi className="h-[18px] w-[18px] shrink-0 text-emerald-500" strokeWidth={1.75} aria-hidden />
-          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>Tradesea connected</span>
+          <Wifi
+            className={`h-[18px] w-[18px] shrink-0 ${providerStatus.connected ? 'text-emerald-500' : 'text-amber-500'}`}
+            strokeWidth={1.75}
+            aria-hidden
+          />
+          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{providerStatus.label}</span>
         </div>
         <button
           type="button"

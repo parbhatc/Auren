@@ -7,6 +7,11 @@ export const PRACTICE_PROP_FIRM_CONFIGS = [
     displayName: 'Tradesea',
     marketDataSlotPolicy: 'exclusive',
   },
+  {
+    id: 'tradingview',
+    displayName: 'TradingView',
+    marketDataSlotPolicy: 'concurrent',
+  },
 ]
 
 const CONFIG_BY_ID = new Map(PRACTICE_PROP_FIRM_CONFIGS.map((c) => [c.id, c]))

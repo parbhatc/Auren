@@ -1,32 +1,38 @@
 /** Tradesea accounts supported in Nexus (sandbox / sandbox-2 + Lucid). */
+import { getPropFirmDescriptor } from '../propfirms/PropFirmCatalog.js'
+
+const config = getPropFirmDescriptor('tradesea')
+if (!config?.enabled) throw new Error('Tradesea provider is not configured')
+const marketData = config.endpoints.marketData
+const trading = config.endpoints.trading
 
 export const TRADESEA_DELAYED = {
-  MDS_STREAM: 'wss://api-mds-stream-delayed.tradesea.ai/v1/wss',
-  UDF: 'https://api-udf-delayed.tradesea.ai/v1',
-  INSTRUMENTS: 'https://api-instruments-delayed.tradesea.ai',
+  MDS_STREAM: marketData.delayedStream,
+  UDF: marketData.delayedUdf,
+  INSTRUMENTS: marketData.instruments,
 }
 
 export const TRADESEA_PROD = {
-  MDS_STREAM: 'wss://prod-market-data.tradesea.ai/v1/wss',
-  UDF: 'https://prod-market-data.tradesea.ai/v1',
+  MDS_STREAM: marketData.liveStream,
+  UDF: marketData.liveUdf,
 }
 
 /** RD / sandbox-2 / delayed accounts (matches app: accountType === "RD") */
 export const TRADESEA_TRADES_DELPROD = {
-  TRADE_READ: 'https://api-trades-r-delprod.tradesea.ai/v1',
-  TRADE_WRITE: 'https://api-trades-w-delprod.tradesea.ai/v1',
+  TRADE_READ: trading.delayedRead,
+  TRADE_WRITE: trading.delayedWrite,
 }
 
 /** Live / non-delayed accounts (non-Lucid brokers) */
 export const TRADESEA_TRADES_PROD = {
-  TRADE_READ: 'https://api-trades-r.tradesea.ai/v1',
-  TRADE_WRITE: 'https://api-trades-w.tradesea.ai/v1',
+  TRADE_READ: trading.liveRead,
+  TRADE_WRITE: trading.liveWrite,
 }
 
 /** Lucid live funded accounts (prod market data + prod trade write/read) */
 export const TRADESEA_TRADES_LIVE = {
-  TRADE_READ: 'https://prod-trade-read.tradesea.ai/v1',
-  TRADE_WRITE: 'https://prod-trade-write.tradesea.ai/v1',
+  TRADE_READ: trading.lucidRead,
+  TRADE_WRITE: trading.lucidWrite,
 }
 
 /** @deprecated use TRADESEA_TRADES_LIVE */
@@ -35,14 +41,14 @@ export const TRADESEA_LUCID_TRADES = TRADESEA_TRADES_LIVE
 export function isSandboxAccount(account) {
   if (!account) return false
   const firm = String(account.propFirm || '').toLowerCase()
-  return firm === 'sandbox' || firm === 'sandbox-2'
+  return config.accountAliases.sandbox.includes(firm)
 }
 
 export function isLucidAccount(account) {
   if (!account) return false
   const firm = String(account.propFirm || '').toLowerCase()
   const display = String(account.propFirmDisplayName || '').toLowerCase()
-  return firm.includes('lucid') || display.includes('lucid')
+  return config.accountAliases.live.some((alias) => firm.includes(alias) || display.includes(alias))
 }
 
 export function isSupportedTradeseaAccount(account) {

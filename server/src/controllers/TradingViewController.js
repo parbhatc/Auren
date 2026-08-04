@@ -3,6 +3,7 @@ import multer from 'multer'
 import ErrorHandler from '../middleware/ErrorHandler.js'
 import { HTTP_STATUS } from '../config/constants.js'
 import Database from '../config/Database.js'
+import { getPropFirmDescriptor } from '../services/propfirms/PropFirmCatalog.js'
 
 const upload = multer()
 
@@ -17,7 +18,7 @@ class TradingViewController {
    */
   async searchSymbols(req, res) {
     try {
-      const { text, hl = '1', exchange = '', lang = 'en', search_type = 'undefined', domain = 'production', sort_by_country = 'US', promo = 'true', broker, tradable } = req.query
+      const { text, hl = '1', exchange, lang = 'en', search_type, domain = 'production', sort_by_country = 'US', promo = 'true', broker, tradable } = req.query
 
       if (!text) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
@@ -30,13 +31,14 @@ class TradingViewController {
       const params = new URLSearchParams({
         text,
         hl,
-        exchange,
         lang,
-        search_type,
         domain,
         sort_by_country,
         promo
       })
+
+      if (exchange) params.append('exchange', exchange)
+      if (search_type && search_type !== 'undefined') params.append('search_type', search_type)
 
       // Add broker and tradable parameters if provided
       if (broker) {
@@ -47,8 +49,10 @@ class TradingViewController {
       }
 
       // Call TradingView symbol search API
+      const searchUrl = getPropFirmDescriptor('tradingview')?.transport?.upstreamSearchUrl
+      if (!searchUrl) throw new Error('TradingView search endpoint is not configured')
       const response = await axios.get(
-        `https://symbol-search.tradingview.com/symbol_search/v3/?${params.toString()}`,
+        `${searchUrl}?${params.toString()}`,
         {
           headers: {
             'Origin': 'https://www.tradingview.com',

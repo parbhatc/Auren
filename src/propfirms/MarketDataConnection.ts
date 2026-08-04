@@ -38,6 +38,10 @@ export function firmUsesCredentialLogin(firmId?: string | null): boolean {
   return getMarketDataConnectionKind(firmId) === 'credential-login'
 }
 
+export function firmUsesServerManagedData(firmId?: string | null): boolean {
+  return getMarketDataConnectionKind(firmId) === 'server-managed'
+}
+
 /** Firms that save a selected market-data account on the practice hub. */
 export function firmPersistsMarketAccountId(firmId?: string | null): boolean {
   return firmUsesBrokerAccounts(firmId)
@@ -62,6 +66,7 @@ export function resolveMarketDataConnection(ctx: MarketDataConnectionContext): M
   if (kind === 'broker-accounts') {
     return resolveBrokerAccountsMarketConnection({ ...ctx, firmId })
   }
+  if (kind === 'server-managed') return { connected: true, statusLabel: 'Server managed' }
   return { connected: false }
 }
 

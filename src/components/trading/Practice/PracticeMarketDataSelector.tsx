@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Check, RefreshCw } from 'lucide-react'
 import { tradeseaAPI, type TradeseaAccount } from '../../../api/tradesea.api'
 import {
+  applyActiveFirmToMarketDataSettings,
   getPracticeMarketDataSettings,
+  getPracticePropFirmConfig,
   savePracticeMarketDataSettings,
   updateFirmMarketDataSelection,
 } from '../../../constants/practice'
@@ -25,19 +27,46 @@ export default function PracticeMarketDataSelector({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const provider = getPracticePropFirmConfig(savedMarketData.propFirmId)
+  const serverManaged = provider.marketDataConnection === 'server-managed'
 
   const loadAccounts = useCallback(async () => {
     setLoading(true)
     setError('')
     setSuccess('')
     try {
+      const saved = getPracticeMarketDataSettings()
+      const storedProviderId = localStorage.getItem('activePropFirm')
+      const activeProvider = getPracticePropFirmConfig(storedProviderId || saved.propFirmId)
+      const activeSettings = applyActiveFirmToMarketDataSettings(saved, activeProvider.id)
+      if (activeProvider.marketDataConnection === 'server-managed') {
+        const next = updateFirmMarketDataSelection(activeSettings, activeProvider.id, {
+          accountId: 'default',
+          accountLabel: 'Default',
+        })
+        setSavedMarketData(next)
+        setAccounts([])
+        setSelectedAccountId('default')
+        if (
+          saved.propFirmId !== activeProvider.id ||
+          saved.accountId !== 'default' ||
+          saved.accountLabel !== 'Default'
+        ) {
+          await savePracticeMarketDataSettings(next)
+        }
+        return
+      }
+
+      if (saved.propFirmId !== activeProvider.id) {
+        await savePracticeMarketDataSettings(activeSettings)
+      }
+
       const result = await tradeseaAPI.getAccounts()
       if (!result.connected || !result.accounts?.length) {
         throw new Error(result.message || 'No supported market data accounts are available.')
       }
-      const saved = getPracticeMarketDataSettings()
-      const savedAccount = result.accounts.find((account) => account.id === saved.accountId)
-      setSavedMarketData(saved)
+      const savedAccount = result.accounts.find((account) => account.id === activeSettings.accountId)
+      setSavedMarketData(activeSettings)
       setAccounts(result.accounts)
       setSelectedAccountId(savedAccount?.id ?? '')
     } catch (caught) {
@@ -54,6 +83,13 @@ export default function PracticeMarketDataSelector({
 
   useEffect(() => {
     void loadAccounts()
+    const reload = () => void loadAccounts()
+    window.addEventListener('practiceSettingsChanged', reload)
+    window.addEventListener('activePropFirmChanged', reload)
+    return () => {
+      window.removeEventListener('practiceSettingsChanged', reload)
+      window.removeEventListener('activePropFirmChanged', reload)
+    }
   }, [loadAccounts])
 
   const savedAccountAvailable = accounts.some(
@@ -112,6 +148,16 @@ export default function PracticeMarketDataSelector({
             <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" aria-hidden />
             Loading…
           </span>
+        ) : serverManaged ? (
+          <select
+            id="practice-market-data-account"
+            value="default"
+            disabled
+            aria-label={`${provider.displayName} market data account`}
+            className={inputClass}
+          >
+            <option value="default">Default</option>
+          </select>
         ) : accounts.length ? (
           <>
             <select

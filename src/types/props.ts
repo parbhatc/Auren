@@ -2,7 +2,7 @@
  * Prop Firm Types
  */
 
-export type PropFirmType = 'tradesea' | 'custom'
+export type PropFirmType = 'tradesea' | 'tradingview' | 'custom'
 
 export interface PropFirm {
   id: string
@@ -12,6 +12,7 @@ export interface PropFirm {
   enabled: boolean
   credentials: PropFirmCredentials
   token?: string | null
+  tokenConfigured?: boolean
   sessionId?: string | null
   expiration?: string | null
   createdAt?: string
