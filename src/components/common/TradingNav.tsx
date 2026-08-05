@@ -148,9 +148,9 @@ class TradingNav extends Component<TradingNavProps> {
     ) : null
 
     const mobileTabClass = (active: boolean) => {
-      const base = 'relative flex min-h-11 min-w-0 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 transition-colors'
+      const base = 'group relative flex min-h-11 min-w-0 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 transition-[color,background-color,transform] duration-150 active:scale-[0.96]'
       if (active) {
-        return `${base} ${isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-50 text-blue-700'}`
+        return `${base} ${isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-blue-50/80 text-blue-700'}`
       }
       return `${base} ${isDark ? 'text-slate-400 active:bg-white/[0.06] active:text-slate-200' : 'text-slate-500 active:bg-slate-100 active:text-slate-800'}`
     }
@@ -181,6 +181,9 @@ class TradingNav extends Component<TradingNavProps> {
         aria-current={active ? 'page' : undefined}
         aria-pressed={options?.pressed}
       >
+        {active ? (
+          <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-blue-500" aria-hidden />
+        ) : null}
         {icon}
         <span className={mobileTabLabel}>{label}</span>
       </button>
@@ -193,7 +196,7 @@ class TradingNav extends Component<TradingNavProps> {
         aria-label="Practice navigation"
       >
         <div
-          className="flex h-16 items-stretch gap-1 px-2 py-1.5"
+          className="flex h-14 items-stretch gap-1 px-2 py-1"
         >
           {onToggleNav ? (
             <button

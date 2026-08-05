@@ -23,7 +23,7 @@ import { PadTradeSymbolPicker } from '../pad/TradeContractPicker'
 import { MobileMarketLabel, MOBILE_MARKET_BTN } from './mobileQuickTradeUi'
 
 const MOBILE_FLUSH_SHELL =
-  'max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:shadow-none'
+  'max-lg:auren-trade-dock-surface max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t'
 
 const FOCUS_RING =
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/45 focus-visible:ring-offset-1 focus-visible:ring-offset-[#18181B]'

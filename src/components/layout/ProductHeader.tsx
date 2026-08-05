@@ -101,7 +101,11 @@ export default function ProductHeader({
   const [accounts, setAccounts] = useState(() => getPracticeAccounts())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('auren-sidebar-collapsed') === '1')
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = localStorage.getItem('auren-sidebar-collapsed')
+    if (saved != null) return saved === '1'
+    return location.pathname.includes('/trade/') || location.pathname === ROUTES.TRADE
+  })
   const [providerStatus, setProviderStatus] = useState({ label: 'Market data', connected: false })
   const [activeId, setActiveId] = useState(() => {
     try {
@@ -160,7 +164,32 @@ export default function ProductHeader({
   }, [location.pathname])
 
   useEffect(() => {
-    const width = collapsed ? '72px' : '256px'
+    if (!sidebarOpen) return
+
+    const html = document.documentElement
+    const body = document.body
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      htmlOverscrollBehavior: html.style.overscrollBehavior,
+      bodyOverflow: body.style.overflow,
+      bodyOverscrollBehavior: body.style.overscrollBehavior,
+    }
+
+    html.style.overflow = 'hidden'
+    html.style.overscrollBehavior = 'none'
+    body.style.overflow = 'hidden'
+    body.style.overscrollBehavior = 'none'
+
+    return () => {
+      html.style.overflow = previous.htmlOverflow
+      html.style.overscrollBehavior = previous.htmlOverscrollBehavior
+      body.style.overflow = previous.bodyOverflow
+      body.style.overscrollBehavior = previous.bodyOverscrollBehavior
+    }
+  }, [sidebarOpen])
+
+  useEffect(() => {
+    const width = collapsed ? '64px' : '232px'
     document.documentElement.style.setProperty('--auren-sidebar-width', width)
     localStorage.setItem('auren-sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
@@ -188,9 +217,9 @@ export default function ProductHeader({
   const sidebar = (
     <aside
       aria-label="Primary navigation"
-      className={`fixed inset-y-0 left-0 z-[70] flex w-64 flex-col border-r transition-transform duration-200 lg:translate-x-0 ${
+      className={`auren-product-sidebar fixed inset-y-0 left-0 z-[70] flex w-[232px] flex-col border-r transition-[width,transform] duration-200 lg:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } ${collapsed ? 'lg:w-[72px]' : 'lg:w-64'} ${
+      } ${collapsed ? 'lg:w-16' : 'lg:w-[232px]'} ${
         isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
       }`}
     >
@@ -252,7 +281,7 @@ export default function ProductHeader({
                     type="button"
                     title={collapsed ? item.label : undefined}
                     onClick={() => selectRoute(item.path)}
-                    className={`flex h-10 w-full items-center rounded-md px-3 text-sm font-medium transition-colors ${
+                    className={`group relative flex h-10 w-full items-center overflow-hidden rounded-lg px-3 text-sm font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.98] ${
                       collapsed ? 'lg:justify-center lg:px-0' : ''
                     } ${
                       active
@@ -264,7 +293,13 @@ export default function ProductHeader({
                           : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
                     }`}
                   >
-                    <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
+                    {active ? (
+                      <span
+                        className={`absolute inset-y-2 left-0 w-0.5 rounded-full ${isDark ? 'bg-blue-400' : 'bg-blue-600'}`}
+                        aria-hidden
+                      />
+                    ) : null}
+                    <Icon className="h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-105" strokeWidth={1.75} aria-hidden />
                     <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
                   </button>
                 )

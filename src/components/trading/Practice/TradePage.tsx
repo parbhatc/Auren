@@ -4,7 +4,7 @@ import { useTheme } from '../../../hooks/useTheme'
 import { getThemeColors } from '../../../constants/theme'
 import { propFirmRegistry } from '../../../propfirms'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
-import { RefreshCw } from 'lucide-react'
+import { BarChart3, RefreshCw, ShieldCheck } from 'lucide-react'
 import TradingRenderer from '../Trading/TradingRenderer'
 import { t } from '../../../utils/translator'
 import { publishAccountStats } from '../../../services/trading/accountStatsStore'
@@ -205,17 +205,7 @@ function TradePageInner() {
   }
 
   if (isValidating && !refreshing) {
-    return (
-      <div
-        className={`h-screen flex items-center justify-center ${
-          isDark
-            ? 'bg-[#09090B]'
-            : 'bg-[#FAFAFA]'
-        }`}
-      >
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-      </div>
-    )
+    return <TerminalBootScreen isDark={isDark} />
   }
 
   if (validationError) {
@@ -263,17 +253,7 @@ function TradePageInner() {
   }
 
   if (!practiceAccount) {
-    return (
-      <div
-        className={`h-screen flex items-center justify-center ${
-          isDark
-            ? 'bg-[#09090B]'
-            : 'bg-[#FAFAFA]'
-        }`}
-      >
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
-      </div>
-    )
+    return <TerminalBootScreen isDark={isDark} />
   }
 
   const displayName = getPracticeAccountDisplayTitle(practiceAccount)
@@ -377,6 +357,54 @@ function TradePageInner() {
         onGoToStats={goToStats}
       />
     </>
+  )
+}
+
+function TerminalBootScreen({ isDark }: { isDark: boolean }) {
+  const surface = isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
+  const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
+  const skeleton = isDark ? 'bg-white/[0.055]' : 'bg-black/[0.055]'
+
+  return (
+    <div
+      className={`flex h-screen h-[100dvh] flex-col overflow-hidden ${isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'}`}
+      role="status"
+      aria-live="polite"
+      aria-label="Preparing trading workspace"
+    >
+      <div className={`flex h-10 shrink-0 items-center gap-2 border-b px-3 ${surface}`}>
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 text-blue-500">
+          <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+        </div>
+        <span className={`text-xs font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Auren Terminal</span>
+        <div className={`ml-auto h-5 w-20 animate-pulse rounded ${skeleton}`} aria-hidden />
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <div className={`hidden w-16 shrink-0 border-r lg:block ${surface}`} aria-hidden />
+        <div className="relative min-w-0 flex-1 overflow-hidden">
+          <div className="auren-terminal-boot-grid absolute inset-0 opacity-70" aria-hidden />
+          <div className="absolute inset-0 flex items-center justify-center p-5">
+            <div className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${surface}`}>
+              <div className="flex items-center gap-3">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 text-blue-500">
+                  <ShieldCheck className="h-5 w-5" aria-hidden />
+                  <RefreshCw className="absolute -bottom-1 -right-1 h-4 w-4 animate-spin rounded-full bg-blue-500 p-0.5 text-white" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Preparing your trading workspace</p>
+                  <p className={`mt-0.5 text-xs ${muted}`}>Verifying account rules and connecting market data...</p>
+                </div>
+              </div>
+              <div className={`mt-4 h-1 overflow-hidden rounded-full ${skeleton}`} aria-hidden>
+                <span className="auren-terminal-boot-progress block h-full w-1/3 rounded-full bg-blue-500" />
+              </div>
+              <p className={`mt-3 text-[10px] font-medium uppercase tracking-[0.14em] ${muted}`}>Secure practice environment</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
