@@ -24,6 +24,7 @@ Run from the repo root (install `ssh2` once in `scripts/deploy/`: `npm install s
 | `node scripts/deploy/run.mjs build` | Rebuild on server without git pull |
 | `node scripts/deploy/run.mjs status` | nginx/API status, health check, git commit |
 | `node scripts/deploy/run.mjs restart` | Restart nginx + API |
+| `node scripts/deploy/run.mjs gateway` | Install/update the local TradingviewServer gateway and restart Auren |
 | `node scripts/deploy/run.mjs logs` | API logs (`node scripts/deploy/run.mjs logs 200`) |
 | `node scripts/deploy/run.mjs backup` | Copy `server/data` to `BACKUP_DIR` on the server |
 | `node scripts/deploy/run.mjs restore` | Restore `server/data` from latest backup |

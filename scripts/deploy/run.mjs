@@ -69,6 +69,7 @@ const COMMANDS = {
   nginx: 'nginx.sh',
   ssl: 'ssl.sh',
   verify: 'verify-practice-market-data.sh',
+  gateway: 'tradingview-gateway.sh',
 }
 
 function loadEnv(filePath) {
@@ -173,6 +174,7 @@ Commands:
   nginx     Re-apply nginx config (MIME types, proxies)
   ssl       Enable HTTPS (Let's Encrypt) for APP_DOMAIN
   verify    Verify authenticated 30-second practice history on the VPS
+  gateway   Install/update TradingviewServer and restart Auren
 `)
     process.exit(0)
   }
