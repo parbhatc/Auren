@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "tradingview",
+  "label": "TradingView",
+  "driver": "tradingview",
+  "enabled": true,
+  "capabilities": {
+    "accounts": false,
+    "liveTrading": false,
+    "practiceTrading": false,
+    "marketData": { "live": false, "practice": true }
+  },
+  "defaults": { "practiceMarketData": true },
+  "credentials": {
+    "source": "environment",
+    "sessionIdEnv": "TRADINGVIEW_SESSION_ID"
+  },
+  "transport": {
+    "gatewayWebSocketUrl": "ws://127.0.0.1:8532/api/tradingview/stream",
+    "upstreamSearchUrl": "https://symbol-search.tradingview.com/symbol_search/v3/",
+    "clientGatewayPath": "/api/tradingview/stream",
+    "clientSearchPath": "/api/tradingview/search"
+  },
+  "marketData": {
+    "supportedResolutions": ["30S", "1", "3", "5", "15", "30", "45", "60", "120", "180", "240", "1D", "1W", "1M"]
+  }
+}

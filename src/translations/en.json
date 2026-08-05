@@ -748,14 +748,13 @@
     },
     "tradingview": {
       "description": "TradingView provides server-managed market data for practice accounts.",
-      "serverTokenActive": "Server token active",
-      "personalTokenActive": "Personal token active",
-      "tokenDescription": "Optional: save your own TradingView token for your practice market-data requests. It stays on the Auren server and overrides the server token only for your account.",
-      "tokenPlaceholder": "Paste personal TradingView token",
-      "tokenRequired": "Enter a TradingView token.",
-      "saveToken": "Save personal token",
-      "savingToken": "Saving…",
-      "tokenSaved": "Personal TradingView token saved."
+      "serverSessionActive": "Server session active",
+      "personalSessionActive": "Personal session active",
+      "sessionIdDescription": "Optional: save your TradingView sessionid cookie for your practice market-data requests. It stays on the Auren server and overrides the server session only for your account.",
+      "sessionIdPlaceholder": "Paste TradingView session ID",
+      "sessionIdRequired": "Enter a TradingView session ID.",
+      "saveSessionId": "Save personal session",
+      "sessionIdSaved": "Personal TradingView session ID saved."
     }
   },
   "tradingJournal": {
@@ -848,8 +847,8 @@
       "searchPlaceholder": "Search symbols…",
       "tradesea": "Tradesea",
       "tradingview": "TradingView",
-      "tradingviewToken": "TradingView token",
-      "tradingviewTokenPlaceholder": "Paste your TradingView token",
+      "tradingviewSessionId": "TradingView session ID",
+      "tradingviewSessionIdPlaceholder": "Paste your TradingView session ID",
       "update": "Update",
       "overwrite": "Overwrite",
       "overwriteTitle": "Overwrite CSV data",

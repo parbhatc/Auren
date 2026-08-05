@@ -92,6 +92,15 @@ export const propsAPI = {
     }
   },
 
+  updateTradingViewSession: async (sessionId: string): Promise<PropsSettingsResponse> => {
+    const response = await api.post<{ success: boolean; message?: string }>(
+      '/props/tradingview/session',
+      { sessionId },
+      { headers: getAuthHeaders() }
+    )
+    return { success: response.data.success, message: response.data.message }
+  },
+
   /**
    * Test prop firm connection and save token to database
    * @param type - Prop firm type (e.g., 'tradesea')

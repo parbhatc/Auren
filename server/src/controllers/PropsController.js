@@ -148,13 +148,13 @@ class PropsController {
         enabled: firm.enabled === 1,
         credentials: credentials,
         token: type === 'tradingview' ? null : firm.token || null,
-        tokenConfigured: Boolean(firm.token),
+        tokenConfigured: type === 'tradingview' ? Boolean(firm.session_id) : Boolean(firm.token),
         expiration: firm.expiration || null,
         createdAt: firm.created_at,
         updatedAt: firm.updated_at
       }
 
-      propFirmResponse.sessionId = firm.session_id || null
+      propFirmResponse.sessionId = type === 'tradingview' ? null : firm.session_id || null
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
@@ -279,6 +279,13 @@ class PropsController {
       const type = req.params.type
       const { token, sessionId, expiration } = req.body
 
+      if (type === 'tradingview' && !sessionId) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'A TradingView session ID is required'
+        })
+      }
+
       // Token is optional - allow saving just sessionId and expiration for some prop firms
       // At least one of token, sessionId, or expiration should be provided
       if (!token && !sessionId && !expiration) {
@@ -304,7 +311,7 @@ class PropsController {
       // Update token, session_id, and expiration (allow null values)
       await Database.run(
         'UPDATE prop_firms SET token = ?, session_id = ?, expiration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [token || null, sessionId || null, expiration || null, firm.id]
+        [type === 'tradingview' ? null : token || null, sessionId || null, expiration || null, firm.id]
       )
 
       return res.status(HTTP_STATUS.OK).json({

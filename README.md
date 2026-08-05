@@ -279,7 +279,7 @@ Use this page to manage historical bar data for the backtester:
 **Data sources**
 
 - **Broker feed** — 1-minute bars through the configured authenticated data source
-- **TradingView** — bars via TradingView chart replay; optional auth token saved to `server/data/backtester/config.json` (`tokens.tradingview`). Leave empty or clear the field to use unauthorized access. Tokens shorter than 8 characters are ignored.
+- **TradingView** — authenticated bars through `TradingviewServer`, which wraps the local `TradingviewAPI`; configure a TradingView `sessionid` with `TRADINGVIEW_SESSION_ID` or save one in the admin CSV settings (`sessions.tradingview`).
 
 **Timeframes**
 

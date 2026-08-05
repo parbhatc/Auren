@@ -4,8 +4,8 @@ import { loadPropFirmCatalog } from '../propfirms/PropFirmCatalog.js'
 const DRIVER_FACTORIES = {
   tradingview: (descriptor, options) => new TradingViewMarketDataClient({
     ...options,
-    tokenEnv: descriptor.credentials?.tokenEnv,
-    baseURL: descriptor.transport?.upstreamWebSocketBaseUrl,
+    sessionIdEnv: descriptor.credentials?.sessionIdEnv,
+    gatewayURL: descriptor.transport?.gatewayWebSocketUrl,
   }),
 }
 

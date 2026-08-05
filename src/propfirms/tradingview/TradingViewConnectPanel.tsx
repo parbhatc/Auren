@@ -12,15 +12,15 @@ export default function TradingViewConnectPanel({
   onSuccess,
   onError,
 }: PropFirmSettingsPanelProps) {
-  const [token, setToken] = useState('')
+  const [sessionId, setSessionId] = useState('')
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => setToken(''), [propFirm?.tokenConfigured])
+  useEffect(() => setSessionId(''), [propFirm?.tokenConfigured])
 
-  const saveToken = async () => {
-    const value = token.trim()
+  const saveSessionId = async () => {
+    const value = sessionId.trim()
     if (!value) {
-      onError(t('props.tradingview.tokenRequired'))
+      onError(t('props.tradingview.sessionIdRequired'))
       return
     }
     setSaving(true)
@@ -29,10 +29,10 @@ export default function TradingViewConnectPanel({
       if (!propFirm) {
         await propsAPI.savePropFirm({ type: 'tradingview', credentials: {} })
       }
-      await propsAPI.updateToken('tradingview', value)
-      setToken('')
+      await propsAPI.updateTradingViewSession(value)
+      setSessionId('')
       onRefresh()
-      onSuccess(t('props.tradingview.tokenSaved'))
+      onSuccess(t('props.tradingview.sessionIdSaved'))
     } catch (error) {
       onError(error instanceof Error ? error.message : t('props.connectionFailed'))
     } finally {
@@ -44,27 +44,27 @@ export default function TradingViewConnectPanel({
     <BasePropFirm
       isDark={isDark}
       connectedAs={propFirm?.tokenConfigured
-        ? t('props.tradingview.personalTokenActive')
-        : t('props.tradingview.serverTokenActive')}
+        ? t('props.tradingview.personalSessionActive')
+        : t('props.tradingview.serverSessionActive')}
     >
       <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-        {t('props.tradingview.tokenDescription')}
+        {t('props.tradingview.sessionIdDescription')}
       </p>
       <input
         type="password"
-        value={token}
-        onChange={(event) => setToken(event.target.value)}
-        placeholder={t('props.tradingview.tokenPlaceholder')}
+        value={sessionId}
+        onChange={(event) => setSessionId(event.target.value)}
+        placeholder={t('props.tradingview.sessionIdPlaceholder')}
         autoComplete="off"
         className={settingsInputClass(isDark)}
       />
       <button
         type="button"
         disabled={saving}
-        onClick={() => void saveToken()}
+        onClick={() => void saveSessionId()}
         className={`${settingsSaveButtonClass()} ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
-        {saving ? t('props.tradingview.savingToken') : t('props.tradingview.saveToken')}
+        {saving ? t('common.saving') : t('props.tradingview.saveSessionId')}
       </button>
     </BasePropFirm>
   )

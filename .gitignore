@@ -29,7 +29,6 @@ credentials.json
 secrets.json
 **/prop_firms.json
 # Private server-side provider transport configuration
-server/prop_firms/tradingview.provider.json
 
 # Local databases & server runtime data
 server/data/

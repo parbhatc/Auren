@@ -59,6 +59,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
       // Get tokens
       const tokens = config.tokens || {}
+      const sessions = config.sessions || {}
 
       // Get symbols
       const symbols = config.symbols || {}
@@ -78,6 +79,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
         success: true,
         data: {
           tokens,
+          sessions,
           symbols,
           csvFiles
         }
@@ -244,23 +246,23 @@ class BacktesterDataWebSocket extends WebSocketBase {
     
     try {
       // Get token from request or from config based on current tab
-      let authToken = token
-      if (!authToken && this.currentTab) {
+      let providerToken = token
+      if (!providerToken && this.currentTab) {
         // Load config to get saved token
         let config = {}
         if (fs.existsSync(this.configPath)) {
           const configData = fs.readFileSync(this.configPath, 'utf8')
           config = JSON.parse(configData)
         }
-        authToken = config.tokens?.[this.currentTab] || ''
+        providerToken = config.tokens?.[this.currentTab] || ''
       }
 
       // Handle search based on current tab
-      if (this.currentTab === 'tradesea' && authToken && searchQuery) {
+      if (this.currentTab === 'tradesea' && providerToken && searchQuery) {
         // Tradesea search requires token
         const TradeseaService = (await import('../services/TradeseaService.js')).default
         
-        const results = await TradeseaService.search(authToken, searchQuery, 30, '', false)
+        const results = await TradeseaService.search(providerToken, searchQuery, 30, '', false)
         
         // Normalize type: "Future" or "future" should be "futures"
         const normalizedResults = (results || []).map(result => {
@@ -319,7 +321,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
           symbols_remaining: result?.symbols_remaining || 0,
           formattedResults: formattedResults  // Map with source_id:symbol as keys
         })
-      } else if (this.currentTab === 'tradesea' && !authToken) {
+      } else if (this.currentTab === 'tradesea' && !providerToken) {
         // Tradesea requires token
         this.send(ws, {
           type: 'search_response',
@@ -372,13 +374,15 @@ class BacktesterDataWebSocket extends WebSocketBase {
       // Allow empty token - save it to config (can be used to clear the token)
       const tokenValue = token || ''
       
-      // Save token to config
+      // The legacy wire message is retained, but TradingView values are session IDs.
       this.saveTokenToConfig(source, tokenValue)
       
       this.send(ws, {
         type: 'save_token_response',
         success: true,
-        message: tokenValue ? `Token saved successfully for ${source}` : `Token cleared for ${source}`
+        message: tokenValue
+          ? `${source === 'tradingview' ? 'Session ID' : 'Token'} saved successfully for ${source}`
+          : `${source === 'tradingview' ? 'Session ID' : 'Token'} cleared for ${source}`
       })
     } catch (error) {
       console.error('[backtester-data WS] Error saving token:', error.message)
@@ -416,27 +420,11 @@ class BacktesterDataWebSocket extends WebSocketBase {
         })
         return
       } else if (source === 'tradingview') {
-        // Import TradingViewService dynamically to avoid circular dependencies
-        const TradingViewService = (await import('../services/TradingViewService.js')).default
-        
-        const result = await TradingViewService.login(username, password, true)
-        
-        if (result.success && result.auth_token) {
-          // Save token to config (TradingView uses auth_token)
-          this.saveTokenToConfig(source, result.auth_token)
-          
-          this.send(ws, {
-            type: 'user_login_response',
-            success: true,
-            token: result.auth_token
-          })
-        } else {
-          this.send(ws, {
-            type: 'user_login_response',
-            success: false,
-            error: result.error || 'Login failed'
-          })
-        }
+        this.send(ws, {
+          type: 'user_login_response',
+          success: false,
+          error: 'TradingView username/password and auth-token login are disabled. Save a session ID instead.'
+        })
       } else {
         this.send(ws, {
           type: 'user_login_response',
@@ -556,6 +544,14 @@ class BacktesterDataWebSocket extends WebSocketBase {
       if (fs.existsSync(this.configPath)) {
         const configData = fs.readFileSync(this.configPath, 'utf8')
         config = JSON.parse(configData)
+      }
+
+      if (source === 'tradingview') {
+        config.sessions ||= {}
+        config.sessions.tradingview = token
+        if (config.tokens) delete config.tokens.tradingview
+        fs.writeFileSync(this.configPath, JSON.stringify(config, null, 2), 'utf8')
+        return
       }
 
       // Initialize tokens object if it doesn't exist

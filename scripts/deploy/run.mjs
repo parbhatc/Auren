@@ -24,13 +24,19 @@ const SYNC_FILES = [
   'server/prop_firms/tradesea.provider.json',
   'server/prop_firms/tradingview.provider.json',
   'server/src/controllers/PracticeController.js',
+  'server/src/controllers/PropsController.js',
   'server/src/routes/PracticeRoutes.js',
+  'server/src/routes/PropsRoutes.js',
   'server/src/server.js',
   'server/src/services/practiceMarketData/PracticeMarketDataProviderRegistry.js',
   'server/src/services/propfirms/PropFirmCatalog.js',
   'server/src/services/tradesea/TradeseaAccountPolicy.js',
   'server/src/services/tradesea/TradeseaIdentityService.js',
   'server/src/services/tradingview/Series.js',
+  'server/src/services/tradingview/TradingViewGatewayClient.js',
+  'server/src/services/tradingview/TradingViewSessionConfig.js',
+  'server/src/websocket/handlers/TradingViewDataHandler.js',
+  'server/src/websocket/BacktesterDataWebSocket.js',
   'server/src/services/tradingview/TradingViewMarketDataClient.js',
   'server/src/services/tradingview/TradingViewWebSocket.js',
   'server/src/websocket/PracticeMarketDataWebSocket.js',
@@ -240,19 +246,19 @@ Commands:
       }
 
       const localServerEnv = loadEnv(path.join(PROJECT_DIR, 'server', '.env'))
-      const providerToken = localServerEnv.TRADINGVIEW_AUTH_TOKEN
-      if (!providerToken) throw new Error('TRADINGVIEW_AUTH_TOKEN is missing from server/.env')
-      const remoteTokenFile = `${remoteDir}/practice-market-data-token`
+      const providerSessionId = localServerEnv.TRADINGVIEW_SESSION_ID
+      if (!providerSessionId) throw new Error('TRADINGVIEW_SESSION_ID is missing from server/.env')
+      const remoteSessionFile = `${remoteDir}/practice-market-data-session`
       await execRemote(conn, `mkdir -p ${shellQuote(remoteDir)}`, 60000)
-      await sftpWriteText(sftp, providerToken, remoteTokenFile, 0o600)
+      await sftpWriteText(sftp, providerSessionId, remoteSessionFile, 0o600)
       const remoteEnv = `${installDir}/server/.env`
       await execRemote(conn, [
         `touch ${shellQuote(remoteEnv)}`,
-        `sed -i '/^TRADINGVIEW_AUTH_TOKEN=/d' ${shellQuote(remoteEnv)}`,
-        `printf 'TRADINGVIEW_AUTH_TOKEN=%s\\n' \"$(cat ${shellQuote(remoteTokenFile)})\" >> ${shellQuote(remoteEnv)}`,
-        `rm -f ${shellQuote(remoteTokenFile)}`,
+        `sed -i '/^TRADINGVIEW_AUTH_TOKEN=/d; /^TRADINGVIEW_SESSION_ID=/d' ${shellQuote(remoteEnv)}`,
+        `printf 'TRADINGVIEW_SESSION_ID=%s\\n' \"$(cat ${shellQuote(remoteSessionFile)})\" >> ${shellQuote(remoteEnv)}`,
+        `rm -f ${shellQuote(remoteSessionFile)}`,
       ].join(' && '), 60000)
-      console.log(`\n>>> deploy:sync uploaded ${SYNC_FILES.length} Auren files, ${BWC_SYNC_FILES.length} chart files, and updated the protected provider credential\n`)
+      console.log(`\n>>> deploy:sync uploaded ${SYNC_FILES.length} Auren files, ${BWC_SYNC_FILES.length} chart files, and updated the protected TradingView session\n`)
       return
     }
 

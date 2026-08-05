@@ -57,6 +57,12 @@ class PropsRoutes {
       AuthMiddleware.authenticate(),
       PropsController.saveToken.bind(PropsController)
     )
+
+    this.router.post(
+      '/:type/session',
+      AuthMiddleware.authenticate(),
+      PropsController.saveToken.bind(PropsController)
+    )
   }
 
   /**

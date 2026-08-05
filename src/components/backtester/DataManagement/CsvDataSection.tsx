@@ -344,18 +344,18 @@ export default function CsvDataSection({
       {dataSource === 'tradingview' && (
         <div>
           <label
-            htmlFor="csv-tradingview-token"
+            htmlFor="csv-tradingview-session-id"
             className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
           >
-            {t('backtesterDataManagement.csvData.tradingviewToken', {}, 'TradingView token')}
+            {t('backtesterDataManagement.csvData.tradingviewSessionId', {}, 'TradingView session ID')}
           </label>
           <input
-            id="csv-tradingview-token"
+            id="csv-tradingview-session-id"
             type="password"
             value={tradingViewToken}
             onChange={(e) => persistTradingViewToken(e.target.value)}
             onBlur={(e) => flushTradingViewToken(e.target.value)}
-            placeholder={t('backtesterDataManagement.csvData.tradingviewTokenPlaceholder', {}, 'Paste your TradingView token')}
+            placeholder={t('backtesterDataManagement.csvData.tradingviewSessionIdPlaceholder', {}, 'Paste your TradingView session ID')}
             className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all ${
               isDark
                 ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-blue-500'
@@ -367,7 +367,7 @@ export default function CsvDataSection({
             {t(
               'backtesterDataManagement.csvData.tradingviewTokenHint',
               {},
-              'Saved to backtester config. Leave empty to use unauthorized access.'
+              'Saved to backtester config and used through the local TradingviewAPI.'
             )}
           </p>
         </div>

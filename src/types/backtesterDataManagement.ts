@@ -269,6 +269,7 @@ export interface BacktesterDataClientCallbacks extends WebSocketClientCallbacks 
     success: boolean
     data: {
       tokens: { tradesea?: string; tradingview?: string }
+      sessions?: { tradingview?: string }
       symbols: Record<string, any>
       csvFiles: {
         tradesea: Array<{

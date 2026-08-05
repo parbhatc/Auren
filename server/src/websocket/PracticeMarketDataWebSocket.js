@@ -40,16 +40,16 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     this.server = server
     this.marketData = options.marketData || providerRegistry
     this.verifyToken = options.verifyToken || ((token) => TokenService.verifyAuthToken(token))
-    this.getUserToken = options.getUserToken || (async (userId) => {
+    this.getUserSessionId = options.getUserSessionId || options.getUserToken || (async (userId) => {
       try {
         await Database.initialize()
         const row = await Database.get(
-          'SELECT token FROM prop_firms WHERE user_id = ? AND type = ?',
+          'SELECT session_id FROM prop_firms WHERE user_id = ? AND type = ?',
           [userId, 'tradingview']
         )
-        return String(row?.token || '').trim() || null
+        return String(row?.session_id || '').trim() || null
       } catch (error) {
-        console.warn('[practice-market-data] Could not load the user TradingView token; using the server token', error?.message || error)
+        console.warn('[practice-market-data] Could not load the user TradingView session ID; using the server session', error?.message || error)
         return null
       }
     })
@@ -95,20 +95,20 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
         break
       case 'history':
         {
-        const authToken = await this.getUserToken(this.userIds.get(ws))
+        const sessionId = await this.getUserSessionId(this.userIds.get(ws))
         result = await this.marketData.history(normalizeSymbol(message.symbol), {
           interval: normalizeResolution(message.resolution, this.resolutions),
           bars: normalizeBars(message.bars, this.maxBars),
           ...(message.to == null ? {} : { to: message.to }),
-          ...(authToken ? { authToken } : {}),
+          ...(sessionId ? { sessionId } : {}),
         })
         }
         break
       case 'subscribe':
-        result = this.subscribe(ws, message, await this.getUserToken(this.userIds.get(ws)))
+        result = this.subscribe(ws, message, await this.getUserSessionId(this.userIds.get(ws)))
         break
       case 'quote_subscribe':
-        result = this.subscribeQuote(ws, message, await this.getUserToken(this.userIds.get(ws)))
+        result = this.subscribeQuote(ws, message, await this.getUserSessionId(this.userIds.get(ws)))
         break
       case 'unsubscribe':
         result = this.unsubscribe(ws, String(message.subscriptionId || ''))
@@ -119,7 +119,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     this.send(ws, { type: 'response', id: message.id, request: message.type, data: result })
   }
 
-  subscribe(ws, message, authToken = null) {
+  subscribe(ws, message, sessionId = null) {
     const symbol = normalizeSymbol(message.symbol)
     const resolution = normalizeResolution(message.resolution, this.resolutions)
     const expectedId = `${symbol}#${resolution}`
@@ -140,7 +140,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
         const history = await this.marketData.history(symbol, {
           interval: resolution,
           bars: 2,
-          ...(authToken ? { authToken } : {}),
+          ...(sessionId ? { sessionId } : {}),
         })
         const current = history.bars.at(-1)
         const fingerprint = current
@@ -168,7 +168,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     subscription.timer = setInterval(poll, this.pollMs)
     if (typeof this.marketData.subscribeQuotes === 'function') {
       subscription.quoteStop = this.marketData.subscribeQuotes([symbol], {
-        ...(authToken ? { authToken } : {}),
+        ...(sessionId ? { sessionId } : {}),
         onQuote: (quote) => {
           if (!subscriptions.has(subscriptionId)) return
           this.send(ws, { type: 'quote', subscriptionId, symbol, resolution, quote })
@@ -178,7 +178,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     return { subscriptionId, symbol, resolution }
   }
 
-  subscribeQuote(ws, message, authToken = null) {
+  subscribeQuote(ws, message, sessionId = null) {
     const symbol = normalizeSymbol(message.symbol)
     const expectedId = `${symbol}#QUOTE`
     const subscriptionId = String(message.subscriptionId || expectedId)
@@ -198,7 +198,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     }
     subscriptions.set(subscriptionId, subscription)
     subscription.quoteStop = this.marketData.subscribeQuotes([symbol], {
-      ...(authToken ? { authToken } : {}),
+      ...(sessionId ? { sessionId } : {}),
       onQuote: (quote) => {
         if (!subscriptions.has(subscriptionId)) return
         this.send(ws, { type: 'quote', subscriptionId, symbol, quote })

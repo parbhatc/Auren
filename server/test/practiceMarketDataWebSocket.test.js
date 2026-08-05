@@ -57,32 +57,13 @@ test('TradingView quote normalization drops a last price that conflicts with fre
 
 test('TradingView history retries a rate-limited connection and shares identical requests', async () => {
   let attempts = 0
-  const socketFactory = () => {
+  const gateway = { history: async (symbol, options) => {
     attempts += 1
-    const attempt = attempts
-    return {
-      disconnect() {},
-      createSeries() {
-        return {
-          resolve() {
-            queueMicrotask(() => {
-              this.onTimescaleUpdate?.({
-                series_data: { s: [{ v: [60, 1, 2, 1, 2, 3] }] }
-              })
-              this.onSeriesCompleted?.()
-            })
-          },
-          requestMoreData() {},
-        }
-      },
-      async connect(callbacks) {
-        if (attempt === 1) throw new Error('Unexpected server response: 429')
-        callbacks.onSessionInit?.()
-      },
-    }
-  }
+    if (attempts === 1) throw new Error('Unexpected server response: 429')
+    return { symbol, interval: options.interval, bars: [{ time: 60, open: 1, high: 2, low: 1, close: 2, volume: 3 }] }
+  } }
   const client = new TradingViewMarketDataClient({
-    socketFactory,
+    gateway,
     historyRetries: 1,
     historyRetryBaseMs: 100,
   })
@@ -105,25 +86,31 @@ test('server-side provider catalog describes Tradesea and TradingView consistent
   assert.equal(tradingview.driver, 'tradingview')
   assert.equal(tradingview.capabilities.marketData.practice, true)
   assert.equal(tradingview.capabilities.liveTrading, false)
-  assert.equal(tradingview.credentials.tokenEnv, 'TRADINGVIEW_AUTH_TOKEN')
+  assert.equal(tradingview.credentials.sessionIdEnv, 'TRADINGVIEW_SESSION_ID')
+  assert.equal(tradingview.transport.gatewayWebSocketUrl, 'ws://127.0.0.1:8532/api/tradingview/stream')
   assert.equal(tradingview.transport.clientSearchPath, '/api/tradingview/search')
   assert.equal(tradingview.transport.upstreamSearchUrl, 'https://symbol-search.tradingview.com/symbol_search/v3/')
 })
 
 test('practice market-data stream serves history and symbol-resolution subscription IDs', async () => {
+  const calls = []
   const marketData = {
     supportedResolutions: ['30S', '1'],
-    history: async (symbol, options) => ({
-      symbol,
-      interval: options.interval,
-      bars: [{ time: 60, open: 1, high: 2, low: 1, close: 2, volume: 3 }],
-      historyExhausted: false
-    })
+    history: async (symbol, options) => {
+      calls.push({ symbol, options })
+      return {
+        symbol,
+        interval: options.interval,
+        bars: [{ time: 60, open: 1, high: 2, low: 1, close: 2, volume: 3 }],
+        historyExhausted: false
+      }
+    }
   }
   const stream = new PracticeMarketDataWebSocket(null, {
     marketData,
     resolutions: marketData.supportedResolutions,
     verifyToken: () => ({ userId: 1, username: 'practice-user' }),
+    getUserSessionId: async () => 'personal-session',
     pollMs: 1000
   })
   const socket = new FakeSocket()
@@ -135,6 +122,7 @@ test('practice market-data stream serves history and symbol-resolution subscript
   const history = await waitFor(socket, (message) => message.id === 'history-1')
   assert.equal(history.data.symbol, 'NASDAQ:AAPL')
   assert.equal(history.data.interval, '30S')
+  assert.equal(calls[0].options.sessionId, 'personal-session')
 
   await stream.dispatch(socket, {
     id: 'sub-1', type: 'subscribe', subscriptionId: 'NASDAQ:AAPL#30S', symbol: 'NASDAQ:AAPL', resolution: '30S'
@@ -156,7 +144,7 @@ test('practice market-data stream accepts chart daily and weekly aliases', async
   const stream = new PracticeMarketDataWebSocket(null, {
     marketData,
     resolutions: marketData.supportedResolutions,
-    getUserToken: async () => null,
+    getUserSessionId: async () => null,
   })
   const socket = new FakeSocket()
   stream.userIds.set(socket, 1)

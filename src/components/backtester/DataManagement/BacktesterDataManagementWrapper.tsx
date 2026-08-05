@@ -202,10 +202,9 @@ const BacktesterDataManagementWrapper = () => {
       },
       onInitialData: (data) => {
         if (data.success && data.data) {
-          const tokens = data.data.tokens || {}
-          if (tokens.tradingview) {
-            const tv = String(tokens.tradingview).trim()
-            setTradingviewCurrentToken(tv.length >= 8 ? tv : '')
+          const sessions = data.data.sessions || {}
+          if (sessions.tradingview) {
+            setTradingviewCurrentToken(String(sessions.tradingview).trim())
           }
 
           setSymbols(data.data.symbols || {})
