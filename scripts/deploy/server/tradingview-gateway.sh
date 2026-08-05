@@ -52,7 +52,7 @@ Type=simple
 User=root
 WorkingDirectory=${GATEWAY_DIR}
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node --use-system-ca src/server.js
+ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
 RestartSec=5
 
@@ -69,9 +69,20 @@ fi
 systemctl daemon-reload
 systemctl enable tradingview-gateway
 systemctl restart tradingview-gateway
-sleep 2
-curl -sf http://127.0.0.1:8532/api/tradingview/health
-echo ""
+gateway_ready=false
+for _ in $(seq 1 15); do
+  if curl -sf http://127.0.0.1:8532/api/tradingview/health; then
+    echo ""
+    gateway_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$gateway_ready" != true ]]; then
+  systemctl status tradingview-gateway --no-pager || true
+  journalctl -u tradingview-gateway -n 80 --no-pager || true
+  die "TradingView gateway failed its startup health check"
+fi
 systemctl restart auren-api
 sleep 2
 
