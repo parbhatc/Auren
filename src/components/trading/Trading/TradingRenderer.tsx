@@ -220,33 +220,44 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         })
       }
 
+      if (typeof activeFirm.setOnChartSymbolChange === 'function') {
+        activeFirm.setOnChartSymbolChange((chartSym: string) => {
+          const root = chartSymbolToProductRoot(chartSym)
+          const padId = this.getPadSessionId()
+          const shouldSyncPad = Boolean(
+            root &&
+              padId &&
+              getTradePadAutoChange(padId) &&
+              root !== this.state.tradePadSymbol
+          )
+          const shouldSyncChart = Boolean(root && root !== this.state.selectedSymbol)
+          debugPracticeChartSymbol(
+            'TradingRenderer.onChartSymbolChange',
+            {
+              chartSym,
+              root,
+              prevSelectedSymbol: this.state.selectedSymbol,
+              prevTradePadSymbol: this.state.tradePadSymbol,
+              shouldSyncChart,
+              shouldSyncPad,
+            },
+            { force: true }
+          )
+          if (!root || (!shouldSyncChart && !shouldSyncPad)) return
+
+          const next: Pick<typeof this.state, 'selectedSymbol' | 'tradePadSymbol'> = {
+            selectedSymbol: shouldSyncChart ? root : this.state.selectedSymbol,
+            tradePadSymbol: this.state.tradePadSymbol,
+          }
+          if (shouldSyncPad && padId) {
+            next.tradePadSymbol = root
+            saveTradePadSymbol(padId, root)
+          }
+          this.setState(next)
+        })
+      }
+
       if (activeFirm.id === 'tradesea') {
-        if (typeof activeFirm.setOnChartSymbolChange === 'function') {
-          activeFirm.setOnChartSymbolChange((chartSym: string) => {
-            const root = chartSymbolToProductRoot(chartSym)
-            debugPracticeChartSymbol(
-              'TradingRenderer.onChartSymbolChange',
-              {
-                chartSym,
-                root,
-                prevSelectedSymbol: this.state.selectedSymbol,
-                willSetState: Boolean(root && root !== this.state.selectedSymbol),
-              },
-              { force: true }
-            )
-            if (!root || root === this.state.selectedSymbol) return
-            const padId = this.getPadSessionId()
-            const next: Pick<typeof this.state, 'selectedSymbol' | 'tradePadSymbol'> = {
-              selectedSymbol: root,
-              tradePadSymbol: this.state.tradePadSymbol,
-            }
-            if (padId && getTradePadAutoChange(padId)) {
-              next.tradePadSymbol = root
-              saveTradePadSymbol(padId, root)
-            }
-            this.setState(next)
-          })
-        }
         const handler = (activeFirm as any).getHandler?.()
         if (handler) {
           handler.onUnrealizedPnLUpdate = () => {
@@ -327,7 +338,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     window.removeEventListener('storage', this.handleStorageChange)
     window.removeEventListener(PRACTICE_MOBILE_TRADE_PREFS_EVENT, this.handleMobileTradePrefsChange)
     const activeFirm = this.getActiveFirm()
-    if (activeFirm?.id === 'tradesea' && typeof activeFirm.setOnChartSymbolChange === 'function') {
+    if (typeof activeFirm?.setOnChartSymbolChange === 'function') {
       activeFirm.setOnChartSymbolChange(null)
     }
     if (this.layoutCheckInterval) {

@@ -357,8 +357,8 @@ html.dark body {
 
 /* BWC order-line pills — override chart.css faux-bold + black TV shell */
 .trading-chart-host .order-line-control {
-  height: 20px;
-  min-height: 20px;
+  height: 24px;
+  min-height: 24px;
   border-radius: 3px;
   border: none !important;
   box-shadow:
@@ -379,7 +379,7 @@ html.dark body {
 .trading-chart-host .order-line-control__qty,
 .trading-chart-host .order-line-control__segment {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  font-size: 12px !important;
+  font-size: 14px !important;
   font-weight: 600 !important;
   font-synthesis: none;
   line-height: 1;
@@ -398,9 +398,9 @@ html.dark body {
 }
 
 .trading-chart-host .order-line-control__cancel {
-  width: 20px !important;
-  min-width: 20px;
-  min-height: 20px;
+  width: 24px !important;
+  min-width: 24px;
+  min-height: 24px;
   border-left: 1px solid rgba(0, 0, 0, 0.08) !important;
   background: rgba(255, 255, 255, 0.96) !important;
   color: rgba(0, 0, 0, 0.5) !important;

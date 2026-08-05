@@ -3,6 +3,7 @@ export type PracticeChartDatafeed = {
   resolveProductSymbol?(chartSymbol: string): string
   resolveStreamInstrument?(chartLabel: string): string
   getTickSize?(symbol: string): number
+  getTickValue?(symbol: string): number
   getLastBarForChart?(chart: unknown): { close?: number } | null
   getMarketBookForChart?(chartSymbol: string): PracticeMarketBook | null
   isMarketOpenForChart?(chartSymbol: string, now?: Date): boolean

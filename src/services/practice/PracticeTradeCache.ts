@@ -124,15 +124,15 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     const datafeed = this.getDatafeed()
 
-    const chartSym = this.activeChartSymbol() || symbol
+    const chartSym = this.activeChartSymbol()
 
-    const tickSize = datafeed?.getTickSize?.(chartSym) ?? datafeed?.getTickSize?.(symbol) ?? 0.25
+    const tickSize = datafeed?.getTickSize?.(symbol) ?? datafeed?.getTickSize?.(chartSym) ?? 0.25
 
     const tickValue =
 
-      datafeed?.getTickValue?.(chartSym) ??
-
       datafeed?.getTickValue?.(symbol) ??
+
+      datafeed?.getTickValue?.(chartSym) ??
 
       tickSize * 2
 

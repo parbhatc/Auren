@@ -197,7 +197,7 @@ class ChartPositionLine {
     })
     line.setPrice(entryPrice);
     line.setQuantity(this.getContracts().toString());
-    line.setLineStyle(2);
+    line.setLineStyle(0);
     line.setLineLength(this.RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
     this.applyPositionPillOffset(line);
@@ -386,7 +386,7 @@ class ChartPositionLine {
     line.setPrice(price);
     this.setTvLineText(line, this.formatDollar(pnl));
     this.refreshBracketQuantity(line, size);
-    line.setLineStyle(2);
+    line.setLineStyle(3);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
     this.applyBracketPillOffset(line);
@@ -515,7 +515,7 @@ class ChartPositionLine {
     line.setPrice(price);
     this.setTvLineText(line, this.formatDollar(pnl));
     this.refreshBracketQuantity(line, size);
-    line.setLineStyle(2);
+    line.setLineStyle(3);
     line.setLineLength(this.ORDER_RIGHT_PLOT_SIDE);
     this.applyFullWidthLine(line);
     this.applyBracketPillOffset(line);
@@ -778,7 +778,7 @@ class ChartPositionLine {
 
   /** Clean system UI font at pill size. */
   private getPillFontSize(): number {
-    return 12
+    return 14
   }
 
   /** No black shell — let CSS handle subtle dividers and shadow. */
@@ -808,11 +808,11 @@ class ChartPositionLine {
   }
 
   private getPositionPillOffset(): number {
-    return this.isMobileViewport() ? 40 : 200
+    return this.isMobileViewport() ? 24 : 320
   }
 
   private getBracketPillOffset(): number {
-    return this.isMobileViewport() ? 56 : 300
+    return this.isMobileViewport() ? 104 : 420
   }
 
   private applyPositionPillOffset(line: any): void {

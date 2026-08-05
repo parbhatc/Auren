@@ -8,6 +8,7 @@ import type {
 } from '../../types/chart'
 import type { MdsConnectionState } from '../tradesea/TradeseaMdsClient'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
+import { resolvePracticeInstrumentTicks } from './practiceInstrumentTicks'
 
 const RESOLUTIONS = ['30S', '1', '3', '5', '15', '30', '45', '60', '120', '180', '240', '1D', '1W', '1M']
 const OVERRIDES = new Set([
@@ -24,6 +25,10 @@ const OVERRIDES = new Set([
   'teardownCandleStreams',
   'dispose',
   'getConnectionState',
+  'getTickSize',
+  'getTickValue',
+  'getDollarsPerPoint',
+  'resolveProductSymbol',
   'isAutoReconnectEnabled',
   'setAutoReconnectEnabled',
   'reconnect',
@@ -111,6 +116,23 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
   private statusListeners = new Map<StatusEvent, Set<StatusListener>>()
 
   constructor(private readonly fallback: Record<string, unknown>) {}
+
+  resolveProductSymbol(chartSymbol: string): string {
+    return chartSymbolToProductRoot(chartSymbol)
+  }
+
+  getTickSize(symbol: string): number {
+    return resolvePracticeInstrumentTicks(symbol).tickSize
+  }
+
+  getTickValue(symbol: string): number {
+    return resolvePracticeInstrumentTicks(symbol).tickValue
+  }
+
+  getDollarsPerPoint(symbol: string): number {
+    const { tickSize, tickValue } = resolvePracticeInstrumentTicks(symbol)
+    return tickSize > 0 ? tickValue / tickSize : tickValue
+  }
 
   getConnectionState(): MdsConnectionState {
     return this.connectionState
@@ -317,10 +339,7 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
   }
 
   private cacheSearchResult(result: SearchResult): LibrarySymbolInfo {
-    const fallbackTick = this.fallback.getTickSize
-    const tick = typeof fallbackTick === 'function'
-      ? Number(fallbackTick.call(this.fallback, result.symbol)) || 0.01
-      : 0.01
+    const tick = this.getTickSize(result.ticker || result.symbol)
     const pricescale = Math.min(1e8, Math.max(1, Math.round(1 / tick)))
     const info: LibrarySymbolInfo = {
       name: result.ticker,

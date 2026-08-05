@@ -8,6 +8,7 @@ import { ROUTES } from '../../../constants/routes'
 import TradingRenderer from '../Trading/TradingRenderer'
 import { t } from '../../../utils/translator'
 import { getLiveTradePropFirmId } from '../../../utils/liveTrade'
+import ProductHeader from '../../layout/ProductHeader'
 
 export default function LiveTradePage() {
   const navigate = useNavigate()
@@ -82,33 +83,39 @@ export default function LiveTradePage() {
 
   if (isValidating && !refreshing) {
     return (
-      <div className={`h-screen flex items-center justify-center ${pageBg}`}>
-        <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+      <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
+        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+        <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
+          <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
+        </main>
       </div>
     )
   }
 
   if (validationError) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center p-4 ${pageBg}`}>
-        <div
-          className={`max-w-md w-full p-6 rounded-2xl border ${
-            isDark ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-200'
-          }`}
-        >
-          <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{validationError}</p>
-          <button
-            type="button"
-            onClick={() => navigate(`${ROUTES.HOME}?mode=live`)}
-            className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${
-              isDark
-                ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
-                : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+      <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
+        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+        <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
+          <div
+            className={`max-w-md w-full p-6 rounded-2xl border ${
+              isDark ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-200'
             }`}
           >
-            {t('live.trade.backToHub')}
-          </button>
-        </div>
+            <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{validationError}</p>
+            <button
+              type="button"
+              onClick={() => navigate(`${ROUTES.HOME}?mode=live`)}
+              className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${
+                isDark
+                  ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
+                  : 'bg-[#18181B] text-white hover:bg-[#27272A]'
+              }`}
+            >
+              {t('live.trade.backToHub')}
+            </button>
+          </div>
+        </main>
       </div>
     )
   }
