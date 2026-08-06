@@ -7,6 +7,7 @@ import {
   CandlestickChart,
   ChevronDown,
   Activity,
+  LogOut,
   Menu,
   Moon,
   Newspaper,
@@ -211,7 +212,14 @@ export default function ProductHeader({
 
   const selectRoute = (path: string) => {
     setSidebarOpen(false)
+    setProfileOpen(false)
     navigate(path)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    setProfileOpen(false)
+    navigate(ROUTES.LOGIN, { replace: true })
   }
 
   const sidebar = (
@@ -477,6 +485,20 @@ export default function ProductHeader({
                 >
                   <Wifi className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                   Market data
+                </button>
+                <div className={`my-1 border-t ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`} />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleLogout}
+                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${
+                    isDark
+                      ? 'text-red-400 hover:bg-red-500/10'
+                      : 'text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  <LogOut className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                  Logout
                 </button>
               </div>
             ) : null}

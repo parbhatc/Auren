@@ -515,7 +515,25 @@ class BacktesterDataWebSocket extends WebSocketBase {
   runDataHandlerSafely(promise, { action, symbol, source, operationKey }) {
     Promise.resolve(promise)
       .catch((err) => {
-        console.error(`[backtester-data WS] ${action} failed for ${symbol} (${source}):`, err?.message || err)
+        const rawMessage = err?.message || String(err || `${action} failed`)
+        const errorMessage = source === 'tradingview' && /ECONNREFUSED.*(?:8532|127\.0\.0\.1)/i.test(rawMessage)
+          ? 'TradingView gateway is unavailable. Start TradingviewServer on port 8532 and try again.'
+          : rawMessage
+        const responseType = {
+          download: 'download_response',
+          update: 'update_response',
+          overwrite: 'overwrite_response',
+          reset: 'reset_response'
+        }[action] || `${action}_response`
+
+        console.error(`[backtester-data WS] ${action} failed for ${symbol} (${source}):`, rawMessage)
+        this.broadcast({
+          type: responseType,
+          success: false,
+          error: errorMessage,
+          symbol,
+          source
+        })
       })
       .finally(() => {
         if (operationKey) {

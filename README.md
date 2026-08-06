@@ -279,7 +279,7 @@ Use this page to manage historical bar data for the backtester:
 **Data sources**
 
 - **Broker feed** — 1-minute bars through the configured authenticated data source
-- **TradingView** — authenticated bars through `TradingviewServer`, which wraps the local `TradingviewAPI`; configure a TradingView `sessionid` with `TRADINGVIEW_SESSION_ID` or save one in the admin CSV settings (`sessions.tradingview`).
+- **TradingView** — CSV downloads and updates use [`parbhatc/TradingviewAPI`](https://github.com/parbhatc/TradingviewAPI) directly through the server's `tradingviewapi` npm dependency; configure a TradingView `sessionid` with `TRADINGVIEW_SESSION_ID` or save one in the admin CSV settings (`sessions.tradingview`). The separate `TradingviewServer` gateway is not used for CSV data management.
 
 **Timeframes**
 

@@ -6,12 +6,12 @@ import {
   monthFilePath,
   monthNameFromIndex,
 } from '../../utils/backtesterCsvPaths.js'
-import TradingViewMarketDataClient from '../../services/tradingview/TradingViewMarketDataClient.js'
+import TradingViewDirectClient from '../../services/tradingview/TradingViewDirectClient.js'
 
 class TradingViewDataHandler {
   constructor(websocketInstance) {
     this.ws = websocketInstance
-    this.marketData = new TradingViewMarketDataClient({ configPath: websocketInstance.configPath })
+    this.marketData = new TradingViewDirectClient({ configPath: websocketInstance.configPath })
   }
 
   getMonthName(monthIndex) {
@@ -25,7 +25,7 @@ class TradingViewDataHandler {
     let to
     let previousOldest = null
 
-    this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Starting ${action} through TradingviewServer`)
+    this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Starting ${action} through TradingViewAPI`)
     for (;;) {
       const history = await this.marketData.history(apiSymbol, {
         interval,
@@ -43,7 +43,7 @@ class TradingViewDataHandler {
     }
 
     const unique = [...new Map(allBars.map((bar) => [bar.time, bar])).values()].sort((a, b) => a.time - b.time)
-    if (!unique.length) throw new Error('No TradingView bars were returned by TradingviewServer')
+    if (!unique.length) throw new Error('No TradingView bars were returned by TradingViewAPI')
     return this.processAndSaveBars(
       unique,
       apiSymbol,
