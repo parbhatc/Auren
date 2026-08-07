@@ -26,6 +26,34 @@ function normalizeBars(value, maximum) {
   return bars
 }
 
+function fixedResolutionSeconds(value) {
+  const resolution = String(value || '').trim().toUpperCase()
+  if (resolution.endsWith('S')) {
+    const seconds = Number(resolution.slice(0, -1))
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null
+  }
+  if (/^\d+$/.test(resolution)) return Number(resolution) * 60
+  if (resolution === '1D') return 86_400
+  if (resolution === '1W') return 604_800
+  return null
+}
+
+/**
+ * TradingView can return the just-closed bar for a moment at a timeframe
+ * boundary. Retry that narrow rollover window promptly instead of presenting
+ * the previous minute as the current candle for a full normal poll interval.
+ */
+export function livePollDelayMs(resolution, current, nowMs, pollMs, fastPollAttempts = 0) {
+  const intervalSeconds = fixedResolutionSeconds(resolution)
+  const rawTime = Number(current?.time)
+  if (!intervalSeconds || !Number.isFinite(rawTime) || rawTime <= 0) return pollMs
+
+  const barStartMs = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime
+  const rolloverLagMs = nowMs - (barStartMs + intervalSeconds * 1000)
+  const isBrieflyBehind = rolloverLagMs >= 0 && rolloverLagMs <= 10_000
+  return isBrieflyBehind && fastPollAttempts < 2 ? Math.min(1_000, pollMs) : pollMs
+}
+
 function errorPayload(error, id) {
   return {
     type: 'error',
@@ -130,8 +158,23 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     this.unsubscribe(ws, subscriptionId)
     const subscription = {
       symbol, resolution, timer: null, quoteStop: null, running: false, current: null, fingerprint: null, closedTime: null,
+      fastPollAttempts: 0,
     }
     subscriptions.set(subscriptionId, subscription)
+
+    const scheduleNextPoll = () => {
+      if (!subscriptions.has(subscriptionId)) return
+      const delay = livePollDelayMs(
+        resolution,
+        subscription.current,
+        Date.now(),
+        this.pollMs,
+        subscription.fastPollAttempts
+      )
+      if (delay < this.pollMs) subscription.fastPollAttempts += 1
+      else subscription.fastPollAttempts = 0
+      subscription.timer = setTimeout(poll, delay)
+    }
 
     const poll = async () => {
       if (subscription.running || !subscriptions.has(subscriptionId)) return
@@ -162,10 +205,10 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
         this.send(ws, { ...errorPayload(error), subscriptionId })
       } finally {
         subscription.running = false
+        scheduleNextPoll()
       }
     }
     void poll()
-    subscription.timer = setInterval(poll, this.pollMs)
     if (typeof this.marketData.subscribeQuotes === 'function') {
       subscription.quoteStop = this.marketData.subscribeQuotes([symbol], {
         ...(sessionId ? { sessionId } : {}),
@@ -211,7 +254,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
     const subscriptions = this.subscriptions.get(ws)
     const subscription = subscriptions?.get(subscriptionId)
     if (!subscription) return { subscriptionId, removed: false }
-    clearInterval(subscription.timer)
+    clearTimeout(subscription.timer)
     subscription.quoteStop?.()
     subscriptions.delete(subscriptionId)
     return { subscriptionId, removed: true }
@@ -219,7 +262,7 @@ export default class PracticeMarketDataWebSocket extends WebSocketBase {
 
   handleClose(ws, clientInfo, serverInfo) {
     for (const subscription of this.subscriptions.get(ws)?.values() || []) {
-      clearInterval(subscription.timer)
+      clearTimeout(subscription.timer)
       subscription.quoteStop?.()
     }
     this.subscriptions.delete(ws)

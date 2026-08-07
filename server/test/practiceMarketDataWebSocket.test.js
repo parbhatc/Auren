@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import PracticeMarketDataWebSocket from '../src/websocket/PracticeMarketDataWebSocket.js'
+import PracticeMarketDataWebSocket, { livePollDelayMs } from '../src/websocket/PracticeMarketDataWebSocket.js'
 import TradingViewMarketDataClient, { normalizeQuote, normalizeSearchResult } from '../src/services/tradingview/TradingViewMarketDataClient.js'
 import { getPropFirmDescriptor } from '../src/services/propfirms/PropFirmCatalog.js'
 
@@ -171,4 +171,15 @@ test('practice market-data stream rejects pane-scoped subscription IDs', async (
   assert.throws(() => stream.subscribe(socket, {
     subscriptionId: 'pane-0', symbol: 'NASDAQ:AAPL', resolution: '1'
   }), /NASDAQ:AAPL#1/)
+})
+
+test('practice market-data stream retries promptly when a new minute has just started', () => {
+  const minute = 60_000
+  const barStart = Date.UTC(2026, 7, 7, 11, 14, 0)
+  const current = { time: barStart / 1000 }
+
+  assert.equal(livePollDelayMs('1', current, barStart + minute + 250, 5_000, 0), 1_000)
+  assert.equal(livePollDelayMs('1', current, barStart + minute + 1_250, 5_000, 1), 1_000)
+  assert.equal(livePollDelayMs('1', current, barStart + minute + 2_250, 5_000, 2), 5_000)
+  assert.equal(livePollDelayMs('1', current, barStart + minute + 11_000, 5_000, 0), 5_000)
 })
