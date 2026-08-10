@@ -11,6 +11,10 @@ test('direct TradingView client authenticates once and reads history without a g
       calls.push(['history', symbol, options])
       return { symbol, interval: options.interval, bars: [{ time: 60 }] }
     },
+    loadAllBars: async (symbol, options) => {
+      calls.push(['loadAllBars', symbol, options])
+      return { symbol, interval: options.interval, bars: [{ time: 121 }] }
+    },
     close: () => calls.push(['close']),
   }
   const client = new TradingViewDirectClient({
@@ -29,13 +33,26 @@ test('direct TradingView client authenticates once and reads history without a g
     bars: 1,
     to: 120,
   })
+  const incremental = await client.loadAllBars('CME_MINI:NQ1!', {
+    sessionId: 'session-value',
+    interval: '30s',
+    chunkSize: 10_000,
+    after: 120,
+  })
 
   assert.equal(first.bars.length, 1)
   assert.equal(second.bars.length, 1)
+  assert.equal(incremental.bars.length, 1)
   assert.deepEqual(calls, [
     ['login', 'session-value'],
     ['history', 'CME_MINI:NQ1!', { interval: '1', bars: 5 }],
     ['history', 'CME_MINI:NQ1!', { interval: '1', bars: 1, to: 120 }],
+    ['loadAllBars', 'CME_MINI:NQ1!', {
+      interval: '30S',
+      chunkSize: 10_000,
+      session: 'extended',
+      after: 120,
+    }],
   ])
 })
 

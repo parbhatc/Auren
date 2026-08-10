@@ -3,6 +3,7 @@ import path from 'path'
 import {
   csvFolderForChartResolution,
   ensureMonthFileDir,
+  findLatestBarTimestamp,
   monthFilePath,
   monthNameFromIndex,
 } from '../../utils/backtesterCsvPaths.js'
@@ -18,31 +19,39 @@ class TradingViewDataHandler {
     return monthNameFromIndex(monthIndex)
   }
 
-  async download(apiSymbol, action = 'download', storageSymbol = null, chartResolution = '1') {
+  async download(apiSymbol, action = 'download', storageSymbol = null, chartResolution = '1', options = {}) {
     const folderSymbol = storageSymbol || apiSymbol
     const interval = String(chartResolution || '1')
-    const allBars = []
-    let to
-    let previousOldest = null
+    const csvResolution = csvFolderForChartResolution(interval)
+    const chunkSize = Math.max(1, Math.floor(Number(options.chunkSize) || 25_000))
+    const latest = action === 'update'
+      ? findLatestBarTimestamp(this.ws.csvDir, folderSymbol.replace(/:/g, '__'), csvResolution)
+      : null
 
-    this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Starting ${action} through TradingViewAPI`)
-    for (;;) {
-      const history = await this.marketData.history(apiSymbol, {
-        interval,
-        bars: 5000,
-        ...(to == null ? {} : { to }),
-      })
-      const batch = Array.isArray(history?.bars) ? history.bars : []
-      if (!batch.length) break
-      allBars.push(...batch.map((bar) => ({ ...bar, time: Number(bar.time) * 1000 })))
-      const oldest = Math.min(...batch.map((bar) => Number(bar.time)).filter(Number.isFinite))
-      if (!Number.isFinite(oldest) || oldest === previousOldest || history.historyExhausted) break
-      previousOldest = oldest
-      to = oldest - 1
-      this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Loaded ${allBars.length.toLocaleString()} bars`)
-    }
+    const startMessage = latest
+      ? `Updating after ${new Date(latest.timestampMs).toISOString()} in ${chunkSize.toLocaleString()}-bar batches`
+      : `Starting ${action} through TradingViewAPI in ${chunkSize.toLocaleString()}-bar batches`
+    this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, startMessage)
+
+    const history = await this.marketData.loadAllBars(apiSymbol, {
+      interval,
+      chunkSize,
+      session: 'extended',
+      ...(latest ? { after: latest.timestampSeconds } : {}),
+      onProgress: ({ bars }) => {
+        this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Loaded ${Number(bars || 0).toLocaleString()} bars`)
+      },
+    })
+    const allBars = (Array.isArray(history?.bars) ? history.bars : [])
+      .map((bar) => ({ ...bar, time: Number(bar.time) * 1000 }))
 
     const unique = [...new Map(allBars.map((bar) => [bar.time, bar])).values()].sort((a, b) => a.time - b.time)
+    if (!unique.length && action === 'update') {
+      const message = 'No new data to update. All data is already up to date.'
+      this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, 'Update complete!')
+      this.ws.broadcast({ type: this.getResponseType(action), success: true, message })
+      return { filesWritten: 0, newBars: 0, message }
+    }
     if (!unique.length) throw new Error('No TradingView bars were returned by TradingViewAPI')
     return this.processAndSaveBars(
       unique,
@@ -55,8 +64,8 @@ class TradingViewDataHandler {
     )
   }
 
-  update(apiSymbol, storageSymbol = null, chartResolution = '1') {
-    return this.download(apiSymbol, 'update', storageSymbol, chartResolution)
+  update(apiSymbol, storageSymbol = null, chartResolution = '1', options = {}) {
+    return this.download(apiSymbol, 'update', storageSymbol, chartResolution, options)
   }
 
   async processAndSaveBars(allBars, symbol, action, overallFirstBarTime, overallLastBarTime, storageSymbol = null, chartResolution = '1') {
@@ -135,6 +144,7 @@ class TradingViewDataHandler {
     }
     this.ws.broadcast({ type: this.getResponseType(action), success: true, message })
     console.log(`[TradingViewDataHandler] ${actionLabel} completed for ${symbol}: ${allBars.length} bars in ${filesWritten} files`)
+    return { filesWritten, newBars: totalNewCandles, message }
   }
 
   getResponseType(action) {

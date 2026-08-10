@@ -281,6 +281,12 @@ Use this page to manage historical bar data for the backtester:
 - **Broker feed** — 1-minute bars through the configured authenticated data source
 - **TradingView** — CSV downloads and updates use [`parbhatc/TradingviewAPI`](https://github.com/parbhatc/TradingviewAPI) directly through the server's `tradingviewapi` npm dependency; configure a TradingView `sessionid` with `TRADINGVIEW_SESSION_ID` or save one in the admin CSV settings (`sessions.tradingview`). The separate `TradingviewServer` gateway is not used for CSV data management.
 
+TradingView downloads use replay-backed bulk history in 25,000-bar batches by
+default. The WebSocket `download`, `update`, and `overwrite` messages accept an
+optional positive `chunkSize`. Updates read the latest candle timestamp from the
+selected symbol/resolution CSV folder and stop history traversal at that candle,
+so only newer bars are merged into disk.
+
 **Timeframes**
 
 The download modal lists TradingView intervals (ticks, seconds, minutes, hours, days, ranges). On disk:

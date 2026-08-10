@@ -59,6 +59,17 @@ export default class TradingViewDirectClient {
     })
   }
 
+  async loadAllBars(symbol, options = {}) {
+    const api = await this.authenticatedApi(options.sessionId)
+    return api.loadAllBars(symbol, {
+      interval: String(options.interval || '1').toUpperCase(),
+      chunkSize: Math.max(1, Math.floor(Number(options.chunkSize) || 25_000)),
+      session: options.session || 'extended',
+      ...(options.after == null ? {} : { after: Math.floor(Number(options.after)) }),
+      ...(typeof options.onProgress === 'function' ? { onProgress: options.onProgress } : {}),
+    })
+  }
+
   close() {
     this.api?.close?.()
     this.api = null

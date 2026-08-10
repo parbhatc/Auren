@@ -597,7 +597,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onDownload(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onDownload called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -677,7 +677,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start download process using handler
         this.runDataHandlerSafely(
-          this.tradingViewHandler.download(symbol, 'download', normalizedSymbol, resolution),
+          this.tradingViewHandler.download(symbol, 'download', normalizedSymbol, resolution, { chunkSize }),
           { action: 'download', symbol: normalizedSymbol, source, operationKey }
         )
       } else {
@@ -707,7 +707,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onUpdate(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onUpdate called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -789,7 +789,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start update process using handler
         this.runDataHandlerSafely(
-          this.tradingViewHandler.update(symbol, normalizedSymbol, resolution),
+          this.tradingViewHandler.update(symbol, normalizedSymbol, resolution, { chunkSize }),
           { action: 'update', symbol: normalizedSymbol, source, operationKey }
         )
       } else {
@@ -818,7 +818,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onOverwrite(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw } = data
+    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onOverwrite called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -906,7 +906,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start overwrite process (same as download, overwrites existing files)
         this.runDataHandlerSafely(
-          this.tradingViewHandler.download(symbol, 'overwrite', normalizedSymbol, resolution),
+          this.tradingViewHandler.download(symbol, 'overwrite', normalizedSymbol, resolution, { chunkSize }),
           { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
         )
       } else {
