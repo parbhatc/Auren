@@ -22,6 +22,10 @@ import {
   getLastResetBoundaryMs,
 } from '../utils/practiceSessionReset.js'
 import {
+  getPracticeTradeNetPnl,
+  getPracticeTradesNetPnl,
+} from '../utils/practiceTradePnl.js'
+import {
   broadcastOpenPosition,
   broadcastModifyPosition,
   broadcastClosePosition,
@@ -886,7 +890,6 @@ class PracticeService {
     const rules = account.rules
     const rulesStatus = evaluatePracticeRules(account, rules, account.dayPnL)
 
-    const tradeNetPnl = (t) => (Number(t.pnl) || 0) - (Number(t.fees) || 0)
     const isForcedExit = (t) => t.forced_exit === 1 || t.forced_exit === true
 
     let ratedTrades = trades.filter((t) => !isForcedExit(t))
@@ -896,16 +899,16 @@ class PracticeService {
       !trades.some(isForcedExit)
     ) {
       const last = [...trades].sort((a, b) => b.exit_time - a.exit_time)[0]
-      if (last && tradeNetPnl(last) > 0) {
+      if (last && getPracticeTradeNetPnl(last) > 0) {
         ratedTrades = ratedTrades.filter((t) => t.id !== last.id)
       }
     }
 
-    const wins = ratedTrades.filter((t) => tradeNetPnl(t) > 0).length
-    const losses = ratedTrades.filter((t) => tradeNetPnl(t) < 0).length
+    const wins = ratedTrades.filter((t) => getPracticeTradeNetPnl(t) > 0).length
+    const losses = ratedTrades.filter((t) => getPracticeTradeNetPnl(t) < 0).length
     const winDenom = wins + losses
     const totalTrades = trades.length
-    const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
+    const totalPnl = getPracticeTradesNetPnl(trades)
 
     return {
       account,

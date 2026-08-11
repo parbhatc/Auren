@@ -347,8 +347,9 @@ export function DashboardPage() {
   const pnl = stats.totalPnl ?? (account ? account.balance - account.rules.startingBalance : 0)
   const rules = account ? evaluatePracticeRules(account) : null
   const trades = stats.trades ?? []
-  const grossProfit = trades.filter((trade) => trade.pnl > 0).reduce((sum, trade) => sum + trade.pnl, 0)
-  const grossLoss = Math.abs(trades.filter((trade) => trade.pnl < 0).reduce((sum, trade) => sum + trade.pnl, 0))
+  const netTradePnl = (trade: PracticeTradeRecord) => Number(trade.pnl || 0) - Number(trade.fees || 0)
+  const grossProfit = trades.map(netTradePnl).filter((tradePnl) => tradePnl > 0).reduce((sum, tradePnl) => sum + tradePnl, 0)
+  const grossLoss = Math.abs(trades.map(netTradePnl).filter((tradePnl) => tradePnl < 0).reduce((sum, tradePnl) => sum + tradePnl, 0))
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? grossProfit : 0
   const winRate = stats.winRate ?? (trades.length ? (trades.filter((trade) => trade.pnl > 0).length / trades.length) * 100 : 0)
   const riskUnit = account ? Math.max(1, account.rules.maxLoss / 10) : 100
