@@ -19,6 +19,7 @@ function isAuthFailure(error: unknown): boolean {
 class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState> {
   state: ProtectedRouteState = {
     isAuthenticated: null,
+    isAdmin: false,
   }
 
   componentDidMount() {
@@ -49,8 +50,11 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
       }
 
       // Validate token with server
-      await authAPI.validateToken(token)
-      this.setState({ isAuthenticated: true })
+      const response = await authAPI.validateToken(token)
+      this.setState({
+        isAuthenticated: true,
+        isAdmin: Boolean(response.user?.isAdmin),
+      })
     } catch (error) {
       if (isAuthFailure(error)) {
         localStorage.removeItem('token')
@@ -63,8 +67,8 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
   }
 
   render() {
-    const { children } = this.props
-    const { isAuthenticated } = this.state
+    const { children, adminOnly = false } = this.props
+    const { isAuthenticated, isAdmin } = this.state
     const isDark = this.getIsDark()
 
     // Show loading while checking authentication
@@ -75,6 +79,10 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
     // Redirect to login if not authenticated
     if (!isAuthenticated) {
       return <Navigate to={ROUTES.LOGIN} replace />
+    }
+
+    if (adminOnly && !isAdmin) {
+      return <Navigate to={ROUTES.DASHBOARD} replace />
     }
 
     // Render protected content

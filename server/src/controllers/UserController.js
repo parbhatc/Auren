@@ -100,6 +100,9 @@ class UserController {
       }
 
       if (role && role !== existingUser.role) {
+        if (!RoleLoader.roleExists(role)) {
+          return ErrorHandler.handleValidationError(res, 'Invalid role')
+        }
         await Database.updateUserRole(userId, role)
       }
 
@@ -217,6 +220,9 @@ class UserController {
 
       // Get default role if not provided
       const userRole = role || RoleLoader.getDefaultRole()
+      if (!RoleLoader.roleExists(userRole)) {
+        return ErrorHandler.handleValidationError(res, 'Invalid role')
+      }
 
       // Create user (verified by default for admin-created users)
       const newUser = await Database.createUser({

@@ -6,6 +6,7 @@ import {
   BookOpen,
   CandlestickChart,
   ChevronDown,
+  Database,
   Activity,
   LogOut,
   Menu,
@@ -15,8 +16,10 @@ import {
   PanelLeftOpen,
   Rewind,
   Settings,
+  Shield,
   Sun,
   User,
+  Users,
   Wifi,
   X,
 } from 'lucide-react'
@@ -34,6 +37,7 @@ import { ROUTES } from '../../constants/routes'
 import { useDisplayUnit, type DisplayUnit } from '../../contexts/DisplayUnitContext'
 import Logo from '../common/Logo'
 import { tradeseaAPI } from '../../api/tradesea.api'
+import { authAPI } from '../../api/auth.api'
 
 type NavItem = {
   id: string
@@ -41,6 +45,7 @@ type NavItem = {
   path: string
   matches: string[]
   icon: LucideIcon
+  adminOnly?: boolean
 }
 
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
@@ -63,7 +68,16 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { id: 'journal', label: 'Journal & Trade Log', path: ROUTES.JOURNAL, matches: [ROUTES.JOURNAL], icon: BookOpen },
       { id: 'analytics', label: 'Playbooks & Analytics', path: ROUTES.ANALYTICS, matches: [ROUTES.ANALYTICS], icon: Beaker },
       { id: 'news', label: 'News Calendar', path: ROUTES.NEWS, matches: [ROUTES.NEWS], icon: Newspaper },
-      { id: 'settings', label: 'Settings', path: ROUTES.SETTINGS, matches: [ROUTES.SETTINGS, '/admin'], icon: Settings },
+      { id: 'settings', label: 'Settings', path: ROUTES.SETTINGS, matches: [ROUTES.SETTINGS], icon: Settings },
+    ],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { id: 'admin-users', label: 'Users', path: ROUTES.USER_MANAGER, matches: [ROUTES.USER_MANAGER], icon: Users, adminOnly: true },
+      { id: 'admin-roles', label: 'Roles & permissions', path: ROUTES.PERMISSION_MANAGER, matches: [ROUTES.PERMISSION_MANAGER], icon: Shield, adminOnly: true },
+      { id: 'admin-site', label: 'Site settings', path: ROUTES.ADMIN_SETTINGS, matches: [ROUTES.ADMIN_SETTINGS], icon: Settings, adminOnly: true },
+      { id: 'admin-csv', label: 'CSV data', path: ROUTES.BACKTESTER_DATA_MANAGEMENT, matches: [ROUTES.BACKTESTER_DATA_MANAGEMENT], icon: Database, adminOnly: true },
     ],
   },
 ]
@@ -108,6 +122,7 @@ export default function ProductHeader({
     return location.pathname.includes('/trade/') || location.pathname === ROUTES.TRADE
   })
   const [providerStatus, setProviderStatus] = useState({ label: 'Market data', connected: false })
+  const [isAdmin, setIsAdmin] = useState(false)
   const [activeId, setActiveId] = useState(() => {
     try {
       return localStorage.getItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID) || getPracticeAccounts()[0]?.id || ''
@@ -121,6 +136,22 @@ export default function ProductHeader({
     void refreshPracticeFromApi().then(sync).catch(sync)
     window.addEventListener('practiceAccountsChanged', sync)
     return () => window.removeEventListener('practiceAccountsChanged', sync)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const token = localStorage.getItem('token')
+    if (!token) return
+    void authAPI.validateToken(token)
+      .then((response) => {
+        if (active) setIsAdmin(Boolean(response.user?.isAdmin))
+      })
+      .catch(() => {
+        if (active) setIsAdmin(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -268,7 +299,7 @@ export default function ProductHeader({
       </div>
 
       <nav className="flex-1 overflow-y-auto p-2">
-        {NAV_GROUPS.map((group, groupIndex) => (
+        {NAV_GROUPS.filter((group) => group.items.some((item) => !item.adminOnly || isAdmin)).map((group, groupIndex) => (
           <div key={group.label ?? 'primary'} className={groupIndex === 0 ? '' : 'mt-4'}>
             {group.label ? (
               <p
@@ -280,7 +311,7 @@ export default function ProductHeader({
               </p>
             ) : null}
             <div className="space-y-1">
-              {group.items.map((item) => {
+              {group.items.filter((item) => !item.adminOnly || isAdmin).map((item) => {
                 const active = routeIsActive(location.pathname, item.matches)
                 const Icon = item.icon
                 return (

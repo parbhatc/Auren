@@ -39,6 +39,7 @@ import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
+import { snapPracticePriceToTick } from './practiceInstrumentTicks'
 
 /** Keep quote-driven P&L/risk UI responsive without running it on every MDS packet. */
 const UPL_REFRESH_MIN_INTERVAL_MS = 120
@@ -560,7 +561,6 @@ export class PracticeTradeHandler {
     }
 
     const datafeed = this.propFirm.chartServices?.datafeed ?? null
-    const tickSize = datafeed?.getTickSize?.(tradeSymbol) ?? 0.25
     const cache = this.tradeCache
     if (!cache) return
 
@@ -578,15 +578,20 @@ export class PracticeTradeHandler {
       return
     }
 
-    const sl = brackets?.stopLoss ?? null
-    const tp = brackets?.takeProfit ?? null
+    const normalizedLimitPrice = snapPracticePriceToTick(tradeSymbol, limitPrice)
+    const sl = brackets?.stopLoss == null
+      ? null
+      : snapPracticePriceToTick(tradeSymbol, brackets.stopLoss)
+    const tp = brackets?.takeProfit == null
+      ? null
+      : snapPracticePriceToTick(tradeSymbol, brackets.takeProfit)
 
     const order: PracticePendingOrder = {
       id: `po-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       symbol: tradeSymbol,
       side,
       contracts: qty,
-      limitPrice,
+      limitPrice: normalizedLimitPrice,
       stopLoss: sl,
       takeProfit: tp,
       createdAt: Date.now(),
@@ -782,13 +787,15 @@ export class PracticeTradeHandler {
     const book = datafeed?.getMarketBookForChart?.(stream)
     const { bestBid, bestAsk, last: bookLastRaw } = practiceBookBidAsk(book)
     const bookLast =
-      bookLastRaw != null && Number.isFinite(bookLastRaw) ? bookLastRaw : null
+      bookLastRaw != null && Number.isFinite(bookLastRaw)
+        ? snapPracticePriceToTick(stream, bookLastRaw)
+        : null
     const mid =
       bestBid != null &&
       bestAsk != null &&
       Number.isFinite(bestBid) &&
       Number.isFinite(bestAsk)
-        ? (bestBid + bestAsk) / 2
+        ? snapPracticePriceToTick(stream, (bestBid + bestAsk) / 2)
         : null
 
     const activeBook = sameAsActiveChart
@@ -797,17 +804,19 @@ export class PracticeTradeHandler {
     const activeBookMark = resolvePracticeBookMark(activeBook)
 
     if (sameAsActiveChart && barClose != null) {
-      if (bookLast != null && this.markPricesAgree(barClose, bookLast)) return bookLast
-      if (mid != null && this.markPricesAgree(barClose, mid)) return mid
-      return barClose
+      const normalizedBarClose = snapPracticePriceToTick(stream, barClose)
+      if (bookLast != null && this.markPricesAgree(normalizedBarClose, bookLast, stream)) return bookLast
+      if (mid != null && this.markPricesAgree(normalizedBarClose, mid, stream)) return mid
+      return normalizedBarClose
     }
 
-    if (sameAsActiveChart && activeBookMark != null) return activeBookMark
+    if (sameAsActiveChart && activeBookMark != null) return snapPracticePriceToTick(stream, activeBookMark)
 
     const safeBookMark = resolvePracticeBookMark(book)
-    if (safeBookMark != null) return safeBookMark
-    if (sameAsActiveChart && barClose != null) return barClose
-    return bestBid ?? bestAsk ?? null
+    if (safeBookMark != null) return snapPracticePriceToTick(stream, safeBookMark)
+    if (sameAsActiveChart && barClose != null) return snapPracticePriceToTick(stream, barClose)
+    const fallback = bestBid ?? bestAsk
+    return fallback == null ? null : snapPracticePriceToTick(stream, fallback)
   }
 
   /** Executable top-of-book price for a market order. */
@@ -821,7 +830,24 @@ export class PracticeTradeHandler {
     const book = datafeed?.getMarketBookForChart?.(stream)
     const { bestBid, bestAsk } = practiceBookBidAsk(book)
     const price = side === 'buy' ? bestAsk : bestBid
-    return price != null && Number.isFinite(price) && price > 0 ? price : null
+    if (price == null || !Number.isFinite(price) || price <= 0) return null
+    const normalized = snapPracticePriceToTick(stream, price)
+    const chartSym = this.getChartSymbol()
+    const sameAsActiveChart = this.normalizeSymbolKey(stream) === this.normalizeSymbolKey(chartSym)
+    if (!sameAsActiveChart) return normalized
+    try {
+      const chart = (this.widget as { chart?: () => unknown } | null | undefined)?.chart?.()
+      const barClose = chart ? datafeed?.getLastBarForChart?.(chart)?.close : null
+      if (barClose != null && Number.isFinite(barClose)) {
+        const normalizedBarClose = snapPracticePriceToTick(stream, barClose)
+        if (!this.markPricesAgree(normalizedBarClose, normalized, stream)) {
+          return normalizedBarClose
+        }
+      }
+    } catch {
+      // The chart may be remounting; the tick-normalized quote is still usable.
+    }
+    return normalized
   }
 
   /** Liquidation value: longs sell to bid; shorts buy back at ask. */
@@ -834,9 +860,10 @@ export class PracticeTradeHandler {
   }
 
   /** Reject MDS LTP that disagrees with the chart bar (e.g. scaled / stale). */
-  private markPricesAgree(chartPrice: number, candidate: number): boolean {
+  private markPricesAgree(chartPrice: number, candidate: number, symbol: string): boolean {
     const diff = Math.abs(chartPrice - candidate)
-    return diff <= Math.max(1, Math.abs(chartPrice) * 0.002)
+    const tickSize = this.propFirm.chartServices?.datafeed?.getTickSize?.(symbol) ?? 0.25
+    return diff <= tickSize * 4
   }
 
   private getMarkPrice(symbol: string): number | null {

@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url'
 import { listAllCsvFiles } from '../utils/backtesterCsvPaths.js'
 import TradeseaDataHandler from './handlers/TradeseaDataHandler.js'
 import TradingViewDataHandler from './handlers/TradingViewDataHandler.js'
+import TokenService from '../services/TokenService.js'
+import Database from '../config/Database.js'
+import RoleLoader from '../config/RoleLoader.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,6 +38,22 @@ class BacktesterDataWebSocket extends WebSocketBase {
     // Initialize data handlers
     this.tradeseaHandler = new TradeseaDataHandler(this)
     this.tradingViewHandler = new TradingViewDataHandler(this)
+  }
+
+  /** CSV inventory and provider sessions are admin-only, including over WebSocket. */
+  async handleConnection(ws, req, clientInfo, serverInfo) {
+    const decoded = clientInfo?.token
+      ? TokenService.verifyAuthToken(clientInfo.token)
+      : null
+    const userId = decoded?.userId || decoded?.id
+    const user = userId ? await Database.findUserById(userId) : null
+    if (!user || !RoleLoader.hasPermission(user.role, '*')) {
+      ws.close(1008, 'Admin access required')
+      return
+    }
+    clientInfo.userId = user.id
+    clientInfo.role = user.role
+    super.handleConnection(ws, req, clientInfo, serverInfo)
   }
 
   /**

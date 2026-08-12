@@ -10,7 +10,10 @@ import {
   getMaxContractsForSymbol,
   getCommissionPerContract,
 } from '../utils/practiceRules.js'
-import { calcPracticePnL } from '../utils/practiceInstrumentTicks.js'
+import {
+  calcPracticePnL,
+  snapPracticePriceToTick,
+} from '../utils/practiceInstrumentTicks.js'
 import {
   evaluatePracticeLockout,
   getPracticeSessionDayKey,
@@ -626,12 +629,13 @@ class PracticeService {
     const contracts = Math.abs(Number(row.contracts) || 0)
     let trade = null
     if (exitPrice != null && Number.isFinite(Number(exitPrice)) && contracts) {
-      const pnl = calcPracticePnL(Number(row.entry), Number(exitPrice), Number(row.contracts), symbol)
+      const normalizedExitPrice = snapPracticePriceToTick(symbol, Number(exitPrice))
+      const pnl = calcPracticePnL(Number(row.entry), normalizedExitPrice, Number(row.contracts), symbol)
       trade = await this.recordTrade(userId, accountId, {
         symbol,
         direction: row.type,
         entryPrice: row.entry,
-        exitPrice: Number(exitPrice),
+        exitPrice: normalizedExitPrice,
         contracts,
         pnl,
         fees,
@@ -720,6 +724,18 @@ class PracticeService {
 
     const id = position.id || existingRow?.id || newId('pp')
     const instrument = normalizeTradeSymbol(position.instrument || position.symbol)
+    const entry = snapPracticePriceToTick(symbol, Number(position.entry))
+    const stopLoss = position.stopLoss == null
+      ? null
+      : snapPracticePriceToTick(symbol, Number(position.stopLoss))
+    const takeProfit = position.takeProfit == null
+      ? null
+      : snapPracticePriceToTick(symbol, Number(position.takeProfit))
+    if (![entry, stopLoss, takeProfit].filter((value) => value != null).every(Number.isFinite)) {
+      const err = new Error(`Invalid ${symbol} position price`)
+      err.statusCode = 400
+      throw err
+    }
     const entryTime = Number(position.entryTime) || existingRow?.entry_time || Math.floor(Date.now() / 1000)
     const type =
       position.type === 'short' || Number(position.contracts) < 0 ? 'short' : 'long'
@@ -745,9 +761,9 @@ class PracticeService {
         symbol,
         instrument,
         nextContracts,
-        Number(position.entry),
-        position.stopLoss ?? null,
-        position.takeProfit ?? null,
+        entry,
+        stopLoss,
+        takeProfit,
         entryTime,
         type,
       ]
@@ -758,9 +774,9 @@ class PracticeService {
       symbol,
       instrument,
       contracts: nextContracts,
-      entry: Number(position.entry),
-      stopLoss: position.stopLoss ?? null,
-      takeProfit: position.takeProfit ?? null,
+      entry,
+      stopLoss,
+      takeProfit,
       entryTime,
       type,
     }
@@ -782,8 +798,14 @@ class PracticeService {
     if (!account) return null
 
     const id = newId('pt')
-    const pnl = Number(trade.pnl) || 0
+    const symbol = normalizeTradeSymbol(trade.symbol)
     const contracts = Math.abs(Number(trade.contracts) || 0)
+    const entryPrice = snapPracticePriceToTick(symbol, Number(trade.entryPrice))
+    const exitPrice = snapPracticePriceToTick(symbol, Number(trade.exitPrice))
+    const signedContracts = String(trade.direction).toLowerCase() === 'short' ? -contracts : contracts
+    const pnl = Number.isFinite(entryPrice) && Number.isFinite(exitPrice) && contracts
+      ? calcPracticePnL(entryPrice, exitPrice, signedContracts, symbol)
+      : Number(trade.pnl) || 0
     const exitCommission =
       trade.fees != null && Number.isFinite(Number(trade.fees))
         ? Number(trade.fees)
@@ -798,10 +820,10 @@ class PracticeService {
       [
         id,
         accountId,
-        normalizeTradeSymbol(trade.symbol),
+        symbol,
         trade.direction,
-        trade.entryPrice,
-        trade.exitPrice,
+        entryPrice,
+        exitPrice,
         trade.contracts,
         pnl,
         exitCommission,

@@ -8,7 +8,10 @@ import type {
 } from '../../types/chart'
 import type { MdsConnectionState } from '../tradesea/TradeseaMdsClient'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
-import { resolvePracticeInstrumentTicks } from './practiceInstrumentTicks'
+import {
+  resolvePracticeInstrumentTicks,
+  snapPracticePriceToTick,
+} from './practiceInstrumentTicks'
 
 const RESOLUTIONS = ['30S', '1', '3', '5', '15', '30', '45', '60', '120', '180', '240', '1D', '1W', '1M']
 const OVERRIDES = new Set([
@@ -238,7 +241,7 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
       ...(periodParams.to == null ? {} : { to: periodParams.to }),
     }).then((data) => {
       const history = data as { bars?: Bar[]; historyExhausted?: boolean }
-      const bars = history.bars || []
+      const bars = (history.bars || []).map((bar) => this.normalizeBar(symbol, bar))
       if (bars.length) this.rememberLatest(symbol, bars[bars.length - 1])
       onResult(bars, { noData: bars.length === 0 && Boolean(history.historyExhausted) })
     }).catch((error) => onError(error instanceof Error ? error.message : String(error)))
@@ -364,6 +367,16 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
     return info
   }
 
+  private normalizeBar(symbol: string, bar: Bar): Bar {
+    return {
+      ...bar,
+      open: snapPracticePriceToTick(symbol, bar.open),
+      high: snapPracticePriceToTick(symbol, bar.high),
+      low: snapPracticePriceToTick(symbol, bar.low),
+      close: snapPracticePriceToTick(symbol, bar.close),
+    }
+  }
+
   private rememberLatest(symbol: string, bar: Bar): void {
     this.latestBySymbol.set(symbol.toUpperCase(), bar)
     const root = symbol.split(':').pop()
@@ -417,15 +430,21 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
         }
         if (message.type === 'bar' || message.type === 'update') {
           const subscriptionId = String(message.subscriptionId || '')
-          const bar = message.bar as Bar
           const symbol = String(message.symbol || subscriptionId.split('#')[0])
+          const bar = this.normalizeBar(symbol, message.bar as Bar)
           this.rememberLatest(symbol, bar)
           for (const callback of this.wireSubscribers.get(subscriptionId)?.values() || []) callback(bar)
           return
         }
         if (message.type === 'quote') {
           const symbol = String(message.symbol || '')
-          const quote = message.quote as Record<string, number | null>
+          const rawQuote = message.quote as Record<string, number | null>
+          const quote = {
+            ...rawQuote,
+            last: rawQuote.last == null ? null : snapPracticePriceToTick(symbol, rawQuote.last),
+            bid: rawQuote.bid == null ? null : snapPracticePriceToTick(symbol, rawQuote.bid),
+            ask: rawQuote.ask == null ? null : snapPracticePriceToTick(symbol, rawQuote.ask),
+          }
           const applyExternalMarketQuote = this.fallback.applyExternalMarketQuote
           if (typeof applyExternalMarketQuote === 'function') {
             const labels = new Set([symbol, chartSymbolToProductRoot(symbol)].filter(Boolean))

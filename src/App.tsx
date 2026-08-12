@@ -16,9 +16,7 @@ import Settings from './components/settings/account'
 import PropsSettings from './components/settings/prop_firms'
 import UtilsSettings from './components/settings/utils'
 import KeyboardShortcutsSettings from './components/settings/keyboard_shortcuts'
-import AdminSettings from './components/admin/site_settings'
-import RolesManager from './components/admin/roles'
-import UserManager from './components/admin/users'
+import AdminWorkspacePage from './pages/admin/AdminWorkspacePage'
 import PracticeTradePage from './pages/trading/practice/TradePage'
 import PracticeTradePadPage from './pages/trading/practice/PadPage'
 import PracticeStatsPage from './pages/trading/practice/StatsPage'
@@ -273,24 +271,24 @@ function App() {
         <Route
           path={ROUTES.ADMIN_SETTINGS}
           element={
-            <ProtectedRoute>
-              <AdminSettings />
+            <ProtectedRoute adminOnly>
+              <AdminWorkspacePage section="settings" />
             </ProtectedRoute>
           }
         />
         <Route
           path={ROUTES.PERMISSION_MANAGER}
           element={
-            <ProtectedRoute>
-              <RolesManager />
+            <ProtectedRoute adminOnly>
+              <AdminWorkspacePage section="roles" />
             </ProtectedRoute>
           }
         />
         <Route
           path={ROUTES.USER_MANAGER}
           element={
-            <ProtectedRoute>
-              <UserManager />
+            <ProtectedRoute adminOnly>
+              <AdminWorkspacePage section="users" />
             </ProtectedRoute>
           }
         />
@@ -326,7 +324,7 @@ function App() {
         <Route
           path={ROUTES.BACKTESTER_DATA_MANAGEMENT}
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <BacktesterDataManagement />
             </ProtectedRoute>
           }

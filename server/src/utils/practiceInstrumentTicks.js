@@ -35,8 +35,20 @@ export function resolvePracticeInstrumentTicks(symbol) {
   return { tickSize, tickValue: isMicroPracticeSymbol(s) ? tickSize * 2 : tickSize * 20 }
 }
 
+export function snapPracticePriceToTick(symbol, value) {
+  const price = Number(value)
+  if (!Number.isFinite(price)) return price
+  const { tickSize } = resolvePracticeInstrumentTicks(symbol)
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return price
+  const decimals = Math.max(0, (String(tickSize).split('.')[1] || '').length)
+  return Number((Math.round(price / tickSize) * tickSize).toFixed(decimals))
+}
+
 export function calcPracticePnL(entry, exit, contracts, symbol) {
   const { tickSize, tickValue } = resolvePracticeInstrumentTicks(symbol)
   if (!tickSize) return 0
-  return ((exit - entry) / tickSize) * tickValue * contracts
+  const normalizedEntry = snapPracticePriceToTick(symbol, entry)
+  const normalizedExit = snapPracticePriceToTick(symbol, exit)
+  const pnl = ((normalizedExit - normalizedEntry) / tickSize) * tickValue * contracts
+  return Number.isFinite(pnl) ? pnl : 0
 }

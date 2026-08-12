@@ -117,10 +117,12 @@ export interface ConfirmDialogProps {
 
 export interface ProtectedRouteProps {
   children: React.ReactNode
+  adminOnly?: boolean
 }
 
 export interface ProtectedRouteState {
   isAuthenticated: boolean | null
+  isAdmin: boolean
 }
 
 export interface ResizablePanelState {

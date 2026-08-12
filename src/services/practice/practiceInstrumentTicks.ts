@@ -30,3 +30,12 @@ export function resolvePracticeInstrumentTicks(symbol: string): PracticeInstrume
   const isMicro = /^M[A-Z]{2,}/.test(product)
   return { tickSize, tickValue: isMicro ? tickSize * 2 : tickSize * 20 }
 }
+
+export function snapPracticePriceToTick(symbol: string, value: number): number {
+  const price = Number(value)
+  if (!Number.isFinite(price)) return price
+  const { tickSize } = resolvePracticeInstrumentTicks(symbol)
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return price
+  const decimals = Math.max(0, (String(tickSize).split('.')[1] || '').length)
+  return Number((Math.round(price / tickSize) * tickSize).toFixed(decimals))
+}

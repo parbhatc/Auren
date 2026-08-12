@@ -37,3 +37,20 @@ test('data-handler failures return an operation response instead of leaving the 
     console.error = originalConsoleError
   }
 })
+
+test('CSV data websocket rejects missing authentication before sending inventory', async () => {
+  const socketServer = new BacktesterDataWebSocket({})
+  const closes = []
+  let welcomed = false
+  const ws = {
+    close: (code, reason) => closes.push([code, reason]),
+  }
+  socketServer.sendWelcomeMessage = () => {
+    welcomed = true
+  }
+
+  await socketServer.handleConnection(ws, {}, { id: 'anonymous', token: null }, {})
+
+  assert.deepEqual(closes, [[1008, 'Admin access required']])
+  assert.equal(welcomed, false)
+})

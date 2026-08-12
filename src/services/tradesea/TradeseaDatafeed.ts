@@ -351,7 +351,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     let last = quote.last ?? null
     if (last != null && bid != null && ask != null) {
       const midpoint = (bid + ask) / 2
-      if (Math.abs(last - midpoint) > Math.max(1, Math.abs(midpoint) * 0.002)) {
+      const tickSize = this.getTickSize(chartSymbol) || 0.25
+      if (Math.abs(last - midpoint) > tickSize * 4) {
         last = null
       }
     }
