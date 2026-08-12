@@ -6,7 +6,6 @@ import {
   BookOpen,
   CandlestickChart,
   ChevronDown,
-  Database,
   Activity,
   LogOut,
   Menu,
@@ -77,7 +76,6 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { id: 'admin-users', label: 'Users', path: ROUTES.USER_MANAGER, matches: [ROUTES.USER_MANAGER], icon: Users, adminOnly: true },
       { id: 'admin-roles', label: 'Roles & permissions', path: ROUTES.PERMISSION_MANAGER, matches: [ROUTES.PERMISSION_MANAGER], icon: Shield, adminOnly: true },
       { id: 'admin-site', label: 'Site settings', path: ROUTES.ADMIN_SETTINGS, matches: [ROUTES.ADMIN_SETTINGS], icon: Settings, adminOnly: true },
-      { id: 'admin-csv', label: 'CSV data', path: ROUTES.BACKTESTER_DATA_MANAGEMENT, matches: [ROUTES.BACKTESTER_DATA_MANAGEMENT], icon: Database, adminOnly: true },
     ],
   },
 ]
