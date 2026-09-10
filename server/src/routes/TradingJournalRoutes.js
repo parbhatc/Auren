@@ -16,7 +16,18 @@ class TradingJournalRoutes {
    * Setup all trading journal routes
    */
   setupRoutes() {
+    for (const [method, path, handler] of [
+      ['get', '/analytics', 'getJournalAnalytics'],
+      ['get', '/reviews/:kind/:start', 'getJournalReview'],
+      ['put', '/reviews/:kind/:start', 'saveJournalReview'],
+    ]) this.router[method](path, AuthMiddleware.authenticate(), (_req, res, next) => {
+      res.set('Cache-Control', 'private, no-store'); next()
+    }, TradingJournalController[handler].bind(TradingJournalController))
     // ========== MANUAL JOURNAL ENTRIES ==========
+    this.router.use('/entries', (_req, res, next) => {
+      res.set('Cache-Control', 'private, no-store')
+      next()
+    })
     this.router.post(
       '/entries',
       AuthMiddleware.authenticate(),

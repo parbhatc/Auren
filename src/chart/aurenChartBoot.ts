@@ -7,16 +7,16 @@ type BwcSdk = {
   clearChartContextActions: () => void
 }
 
-const DEV_IMPORT_NONCE =
-  typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? String(Date.now())
-    : null
+// Dynamic imports are outside Vite's hashed bundle graph. Give every page load a
+// fresh root URL so Chrome never reuses a corrupt disk-cache entry for the BWC
+// module graph. Production builds also stamp the graph's transitive imports in
+// vite.bwcStatic.ts.
+const IMPORT_NONCE = typeof window !== 'undefined' ? String(Date.now()) : null
 
-function withDevCacheBust(url: string): string {
-  if (!DEV_IMPORT_NONCE) return url
+function withCacheBust(url: string): string {
+  if (!IMPORT_NONCE) return url
   const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}v=${encodeURIComponent(DEV_IMPORT_NONCE)}`
+  return `${url}${sep}v=${encodeURIComponent(IMPORT_NONCE)}`
 }
 
 function runtimeImport<T>(url: string): Promise<T> {
@@ -32,7 +32,7 @@ let paperFeedPromise: Promise<{
 
 function getSdk(): Promise<BwcSdk> {
   if (!sdkPromise) {
-    sdkPromise = runtimeImport<BwcSdk>(withDevCacheBust('/chart/sdk.js'))
+    sdkPromise = runtimeImport<BwcSdk>(withCacheBust('/chart/sdk.js'))
   }
   return sdkPromise
 }
@@ -41,16 +41,16 @@ export async function registerAurenChartIndicators(): Promise<void> {
   if (registered) return
   const sdk = await getSdk()
   const [fvg, levels, panels, presets, customSetups] = await Promise.all([
-    runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/fvg/FvgIndicator.js')),
-    runtimeImport<{ default: unknown }>(withDevCacheBust('/testing/js/indicators/levels/LevelsIndicator.js')),
+    runtimeImport<{ default: unknown }>(withCacheBust('/testing/js/indicators/fvg/FvgIndicator.js')),
+    runtimeImport<{ default: unknown }>(withCacheBust('/testing/js/indicators/levels/LevelsIndicator.js')),
     runtimeImport<{ registerTestingInputPanels: () => void }>(
-      withDevCacheBust('/testing/js/indicators/inputPanels.js')
+      withCacheBust('/testing/js/indicators/inputPanels.js')
     ),
     runtimeImport<{ registerTestingIndicatorPresets: () => void }>(
-      withDevCacheBust('/testing/js/indicators/presets.js')
+      withCacheBust('/testing/js/indicators/presets.js')
     ),
     runtimeImport<{ default: unknown }>(
-      withDevCacheBust('/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js')
+      withCacheBust('/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js')
     ),
   ])
   sdk.registerIndicator(fvg.default)

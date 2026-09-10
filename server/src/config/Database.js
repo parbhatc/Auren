@@ -154,6 +154,14 @@ class Database {
       )
     `)
 
+    await run(`CREATE TABLE IF NOT EXISTS journal_reviews (
+      user_id TEXT NOT NULL, kind TEXT NOT NULL, period_start TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, kind, period_start),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`)
+
     // Journal records stay separate from execution analytics. Replay capture is
     // opt-in and creates the same user-curated record shape as manual capture.
     await run(`
@@ -177,6 +185,7 @@ class Database {
         source_trade_id TEXT,
         source_context TEXT NOT NULL DEFAULT '{}',
         risk_plan TEXT NOT NULL DEFAULT '{}',
+        recap TEXT NOT NULL DEFAULT '{}',
         notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -436,14 +445,19 @@ class Database {
       `ALTER TABLE journal_entries ADD COLUMN source_trade_id TEXT`,
       `ALTER TABLE journal_entries ADD COLUMN source_context TEXT NOT NULL DEFAULT '{}'`,
       `ALTER TABLE journal_entries ADD COLUMN risk_plan TEXT NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE journal_entries ADD COLUMN recap TEXT NOT NULL DEFAULT '{}'`,
+      `ALTER TABLE journal_entries ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+      `ALTER TABLE journal_entries ADD COLUMN request_key TEXT`,
+      `ALTER TABLE journal_entries ADD COLUMN request_hash TEXT`,
     ]) {
       try {
         await run(migration)
       } catch (err) {
-        // Column already exists
+        if (!/duplicate column name/i.test(err.message)) throw err
       }
     }
 
+    await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_request ON journal_entries(user_id, request_key)`)
     try {
       await run(`ALTER TABLE practice_accounts ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
     } catch (err) {

@@ -1,5 +1,5 @@
 import { WebSocketClientBase } from '../../services/websocket/WebSocketClientBase'
-import { WebSocketClientCallbacks } from '../../types/websocket'
+import type { WebSocketClientCallbacks } from '../../types/websocket'
 import { getWebSocketUrl } from '../../api/api'
 import { BacktesterDataClientCallbacks, BacktesterDataClientOptions } from '../../types/backtesterDataManagement'
 
@@ -34,7 +34,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
   private static buildWebSocketUrl(): string {
     const token = localStorage.getItem('token')
     const wsUrl = getWebSocketUrl('/backtester/data-management-ws')
-    return `${wsUrl}${token ? `?token=${token}` : ''}`
+    return `${wsUrl}${token ? `?token=${encodeURIComponent(token)}` : ''}`
   }
 
   /**
@@ -42,25 +42,6 @@ export class BacktesterDataClient extends WebSocketClientBase {
    */
   protected buildWebSocketUrl(): string {
     return BacktesterDataClient.buildWebSocketUrl()
-  }
-
-  /**
-   * Override connect to add data management-specific logging
-   */
-  async connect(): Promise<void> {
-    await super.connect()
-  }
-
-  protected handleMessage(event: MessageEvent): void {
-    try {
-      const data = JSON.parse(event.data)
-      if (this.handleCustomMessage(data)) {
-        return
-      }
-      super.handleMessage(event)
-    } catch (error) {
-      super.handleMessage(event)
-    }
   }
 
   /**

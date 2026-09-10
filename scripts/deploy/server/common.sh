@@ -266,7 +266,40 @@ server {
         add_header Cache-Control "public, max-age=60, must-revalidate";
     }
 
+    # BEGIN SUE GOAL TRACKER
+    # SueGoalTracker is an independent service mounted below Auren. Keep this
+    # route in Auren's generated config so Auren deployments do not replace it
+    # with the SPA fallback.
+    location = /sue_goal_tracker {
+        return 301 /sue_goal_tracker/;
+    }
+
+    location ^~ /sue_goal_tracker/ {
+        client_max_body_size 32m;
+        proxy_pass http://127.0.0.1:3012/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Prefix /sue_goal_tracker;
+        proxy_redirect ~^(/.*)\$ /sue_goal_tracker\$1;
+    }
+    # END SUE GOAL TRACKER
+
+    # Vite fingerprints production assets, so they can be cached permanently.
+    location /assets/ {
+        try_files \$uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # Every client-side route falls back to index.html. Apply no-store here—not
+    # only in an exact /index.html location—so /practice and other SPA URLs
+    # always discover the newest fingerprinted bundle after a deployment.
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         try_files \$uri \$uri/ /index.html;
     }
 }

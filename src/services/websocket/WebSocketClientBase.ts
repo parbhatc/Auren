@@ -1,4 +1,4 @@
-import { WebSocketMessage, WebSocketClientOptions, WebSocketStatus, WebSocketClientCallbacks } from '../../types/websocket'
+import type { WebSocketMessage, WebSocketClientOptions, WebSocketStatus, WebSocketClientCallbacks } from '../../types/websocket'
 
 export class WebSocketClientBase {
   protected ws: WebSocket | null = null;
@@ -8,6 +8,7 @@ export class WebSocketClientBase {
   private maxReconnectAttempts: number;
   private reconnectAttempts: number = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private enableHeartbeat: boolean;
   private pingMessage: string;
@@ -46,7 +47,7 @@ export class WebSocketClientBase {
     this.url = opts.url;
     this.protocols = opts.protocols;
     this.reconnectInterval = opts.reconnectInterval || 3000;
-    this.maxReconnectAttempts = opts.maxReconnectAttempts || 5;
+    this.maxReconnectAttempts = opts.maxReconnectAttempts ?? 5;
     this.enableHeartbeat = opts.enableHeartbeat !== false;
     this.pingMessage = opts.pingMessage || 'ping';
     this.pongMessage = opts.pongMessage || 'pong';
@@ -92,13 +93,16 @@ export class WebSocketClientBase {
     }
 
     this.setStatus('connecting');
+    this.clearReconnectTimer();
     
     if (this.isIOS) {
         this.createConnection();
         this.testConnection(this.getHttpUrlFromWsUrl(this.url) + "/health_ios");
 
-        setTimeout(() => {
-            if(this.ws && this.ws.readyState !== WebSocket.OPEN){
+        const pendingSocket = this.ws;
+        this.connectionTimer = setTimeout(() => {
+            this.connectionTimer = null;
+            if(this.ws === pendingSocket && this.ws && this.ws.readyState !== WebSocket.OPEN){
               this.disconnect();
               this.attemptReconnect(true);
             }
@@ -110,7 +114,7 @@ export class WebSocketClientBase {
 
   createConnection(): void {
     try {
-      this.ws = new WebSocket(this.url, this.protocols);
+      this.ws = new WebSocket(this.buildWebSocketUrl(), this.protocols);
       this.setupEventHandlers();
     } catch (error) {
       console.error('[WebSocket Client] Connection error:', error);
@@ -123,30 +127,26 @@ export class WebSocketClientBase {
    */
   disconnect(): void {
     this.clearReconnectTimer();
+    if (this.connectionTimer) clearTimeout(this.connectionTimer);
+    this.connectionTimer = null;
     this.stopHeartbeat();
 
     if (this.ws) {
-      const readyState = this.ws.readyState;
-      
-      // Only close if WebSocket is OPEN
-      // If CONNECTING, just set to null and let it fail naturally to avoid errors
-      if (readyState === WebSocket.OPEN) {
+      const socket = this.ws;
+      const readyState = socket.readyState;
+      this.ws = null;
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
         try {
-          this.ws.close(1000, 'Client disconnect');
+          socket.close(1000, 'Client disconnect');
         } catch (error) {
           // Ignore errors if WebSocket is already closing/closed
           console.warn('[WebSocket Client] Error during disconnect:', error);
         }
-      } else if (readyState === WebSocket.CONNECTING) {
-        // If still connecting, remove error handler to prevent error logs
-        // and set to null - the connection will fail naturally
-        this.ws.onerror = null;
-        this.ws.onopen = null;
-        this.ws.onclose = null;
-        this.ws.onmessage = null;
       }
-      // For CLOSING or CLOSED states, just set to null
-      this.ws = null;
     }
 
     this.setStatus('disconnected');
@@ -188,8 +188,12 @@ export class WebSocketClientBase {
    */
   private setupEventHandlers(): void {
     if (!this.ws) return;
+    const socket = this.ws;
 
     this.ws.onopen = () => {
+      if (this.ws !== socket) return;
+      if (this.connectionTimer) clearTimeout(this.connectionTimer);
+      this.connectionTimer = null;
       console.log('[WebSocket Client] Connected');
       this.setStatus('connected');
       this.reconnectAttempts = 0;
@@ -205,6 +209,9 @@ export class WebSocketClientBase {
     };
 
     this.ws.onclose = (event: CloseEvent) => {
+      if (this.ws !== socket) return;
+      if (this.connectionTimer) clearTimeout(this.connectionTimer);
+      this.connectionTimer = null;
       console.log('[WebSocket Client] Disconnected', event.code, event.reason);
       this.stopHeartbeat();
       this.ws = null;
@@ -230,6 +237,7 @@ export class WebSocketClientBase {
     };
 
     this.ws.onerror = (error: Event) => {
+      if (this.ws !== socket) return;
       console.error('[WebSocket Client] Error:', error);
       this.setStatus('error');
 
@@ -239,6 +247,7 @@ export class WebSocketClientBase {
     };
 
     this.ws.onmessage = (event: MessageEvent) => {
+      if (this.ws !== socket) return;
       this.handleMessage(event);
     };
   }
@@ -282,6 +291,8 @@ export class WebSocketClientBase {
         return;
       }
 
+      if (typeof data === 'object' && data !== null && this.handleCustomMessage(data)) return;
+
       if (this.onMessageCallback) {
         this.onMessageCallback(data);
       }
@@ -303,11 +314,22 @@ export class WebSocketClientBase {
     }
   }
 
+  /** Subclasses refresh credentials here on every connection attempt. */
+  protected buildWebSocketUrl(): string {
+    return this.url;
+  }
+
+  /** Parsed messages reach feature handlers once, after heartbeat processing. */
+  protected handleCustomMessage(_data: WebSocketMessage): boolean {
+    return false;
+  }
+
 
   /**
    * Attempt to reconnect
    */
   private attemptReconnect(instant = false): void {
+    this.clearReconnectTimer();
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('[WebSocket Client] Max reconnect attempts reached');
       this.setStatus('disconnected');

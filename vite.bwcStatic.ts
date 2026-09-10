@@ -68,7 +68,11 @@ function copyDir(src: string, dest: string): void {
     const from = path.join(src, entry.name)
     const to = path.join(dest, entry.name)
     if (entry.isDirectory()) copyDir(from, to)
-    else fs.copyFileSync(from, to)
+    else if (entry.name.endsWith('.js') || entry.name.endsWith('.mjs')) {
+      // Production is served directly by Nginx, so apply the same graph-wide
+      // cache busting used by the dev middleware before copying modules to dist.
+      fs.writeFileSync(to, bustModuleSpecifiers(fs.readFileSync(from, 'utf8')), 'utf8')
+    } else fs.copyFileSync(from, to)
   }
 }
 

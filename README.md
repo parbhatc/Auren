@@ -1,6 +1,6 @@
 # Auren
 
-**Practice-only** futures trading simulator. A safe layer between you and your real prop firm or eval account.
+Futures practice, replay, journaling, and a connected **Tradesea live trading** terminal. Practice/replay accounts are simulated; connected live trading can affect your real account.
 
 Create simulated **eval** and **funded** accounts, trade on live charts with real market data, and let rules, drawdowns, and lockouts play out on Auren. If you overtrade, revenge trade, or blow the account, your real prop firm balance stays untouched.
 
@@ -70,6 +70,18 @@ There is **no third-party prop-firm order routing** beyond Tradesea accounts you
 - **Simulated DOM trading** on replayed bars with eval rules (balance, drawdown, consistency)
 - **Admin CSV pipeline** — download/update historical data from Tradesea or TradingView ([data management](#backtester-csv-data-admin))
 
+### Journal and in-session recaps
+
+- **Log setup** in Practice, Live or Replay without leaving the chart, with current-position details prefilled.
+- Review by month/day, playbook, result, and taken/missed/observation status.
+- Four built-in sweep/FVG/SMT/IFVG templates, custom playbooks, confirmations, process grades, mistakes and lessons.
+- Up to four uploaded or directly captured chart screenshots with captions, timeframe/cursor metadata, and arrow/level annotations; saved checklists survive playbook changes.
+- Reopen an identified trade or preview **Update from closed execution**. Notes/evidence survive updates; Live partial fills require manual reconciliation, and imported net P&L needs manual entry where round-trip fees are unavailable. No orders are sent.
+- Device-local recap draft recovery, retry-safe create IDs and version conflict warnings.
+- Real journal analytics with source/date filters, expectancy, R distribution and setup/process breakdowns.
+- Daily/weekly reviews link journal evidence and carry forward a focus rule. Reviews use explicit saving; recap drafts autosave separately.
+- [Feature inventory and roadmap](docs/AUREN_REVIEW.md) · [Journal API and streams](docs/API_AND_STREAMS.md) · [Architecture](ARCHITECTURE.md)
+
 ## Product preview
 
 The desktop terminal combines the shared Auren navigation rail, live account metrics, BetterweightChartPro charting, and a docked order ticket. Both the sidebar and ticket collapse independently when maximum chart space is needed. On mobile, the chart remains primary while Quick Trade and the full ticket move into compact touch-friendly controls.
@@ -83,6 +95,7 @@ The desktop terminal combines the shared Auren navigation rail, live account met
 | `/practice/trade/:id` | Practice trading terminal (chart + trade panel) |
 | `/trade` | Live Tradesea trading terminal |
 | `/journal` | Journal and trade log |
+| `/journal/reviews` | Daily/weekly evidence-linked reviews |
 | `/analytics` | Playbooks and trading analytics |
 | `/news` | Economic news calendar |
 | `/backtester` | Historical backtester — session list |

@@ -142,31 +142,26 @@ class WebSocketBase {
    * @param {Object} clientInfo - Client information
    * @param {Object} serverInfo - Server information
    */
-  handleMessage(ws, message, clientInfo, serverInfo) {
+  async handleMessage(ws, message, clientInfo, serverInfo) {
+    let data
     try {
-      const data = JSON.parse(message.toString())
-      
-      // Handle heartbeat pong response first (before subclass processing)
-      if (this.enableHeartbeat && this.isPongMessage(data)) {
-        this.handlePong(clientInfo.id)
-        return // Don't process further if it's a pong - no log needed
-      }
-      
-      // Log only if message is not handled (will be logged in onMessage if not handled)
-      this.onMessage(ws, data, clientInfo, serverInfo)
+      data = JSON.parse(message.toString())
+    } catch {
+      // Plain-text messages remain supported, including legacy heartbeat pongs.
+      data = message.toString()
+    }
+
+    if (this.enableHeartbeat && this.isPongMessage(data)) {
+      this.handlePong(clientInfo.id)
+      return
+    }
+
+    try {
+      // Dispatch exactly once. Operation failures are not JSON parse failures.
+      await this.onMessage(ws, data, clientInfo, serverInfo)
     } catch (error) {
-      console.error(`[${this.serverName} WS] Error parsing message:`, error)
-      // If message is not JSON, treat as plain text
-      const messageStr = message.toString()
-      
-      // Handle heartbeat pong response first (before subclass processing)
-      if (this.enableHeartbeat && this.isPongMessage(messageStr)) {
-        this.handlePong(clientInfo.id)
-        return // Don't process further if it's a pong - no log needed
-      }
-      
-      // Log only if message is not handled (will be logged in onMessage if not handled)
-      this.onMessage(ws, messageStr, clientInfo, serverInfo)
+      console.error(`[${this.serverName} WS] Error processing message:`, error)
+      this.send(ws, { type: 'error', message: 'The requested operation failed.' })
     }
   }
 

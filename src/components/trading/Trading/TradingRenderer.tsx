@@ -22,8 +22,16 @@ import {
   savePracticeShowNav,
 } from '../../../utils/practiceTradePreferences'
 import { schedulePageScrollReset } from '../../../utils/resetPageScroll'
-import { getTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange, saveTradePadSymbol } from '../../../utils/tradePadSymbol'
-import { PRACTICE_MOBILE_TRADE_PREFS_EVENT, setMobileFloatingPad } from '../../../utils/mobileTradePrefs'
+import {
+  getTradePadSymbol,
+  getTradePadAutoChange,
+  saveTradePadAutoChange,
+  saveTradePadSymbol,
+} from '../../../utils/tradePadSymbol'
+import {
+  PRACTICE_MOBILE_TRADE_PREFS_EVENT,
+  setMobileFloatingPad,
+} from '../../../utils/mobileTradePrefs'
 import { isPwaPinnedNav } from '../../../utils/pwa'
 import {
   getActivePropFirm,
@@ -40,6 +48,8 @@ import { publishAccountStats } from '../../../services/trading/accountStatsStore
 import { TerminalTradeLayout } from './tradingRenderer/TerminalTradeLayout'
 import { ClassicTradePanel } from './tradingRenderer/ClassicTradePanel'
 import ProductHeader from '../../layout/ProductHeader'
+import InSessionJournalCapture from '../../../journal/InSessionJournalCapture'
+import { captureOpenPosition } from '../../../journal/journalCapture'
 
 /**
  * Trading renderer component
@@ -93,6 +103,20 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
   private getHandler() {
     return getTradeHandler(this.props.practiceMode)
+  }
+
+  private captureJournalSnapshot = () => {
+    const cache = this.getHandler()?.tradeCache
+    const chart = cache?.getChart?.()
+    const symbol = String(chart?.symbol?.() || this.state.selectedSymbol)
+    return captureOpenPosition({
+      position: cache?.getPosition?.(symbol),
+      symbol,
+      source: this.props.liveMode ? 'live' : 'practice',
+      accountId: this.getPadSessionId() || undefined,
+      accountName: this.state.selectedAccount,
+      resolution: String(chart?.resolution?.() || ''),
+    })
   }
 
   private bindMdsConnectionState() {
@@ -225,10 +249,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           const root = chartSymbolToProductRoot(chartSym)
           const padId = this.getPadSessionId()
           const shouldSyncPad = Boolean(
-            root &&
-              padId &&
-              getTradePadAutoChange(padId) &&
-              root !== this.state.tradePadSymbol
+            root && padId && getTradePadAutoChange(padId) && root !== this.state.tradePadSymbol
           )
           const shouldSyncChart = Boolean(root && root !== this.state.selectedSymbol)
           debugPracticeChartSymbol(
@@ -363,8 +384,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private hasOpenPositionNow(): boolean {
     const handler = this.getHandler()
     return this.props.practiceMode
-      ? (handler as PracticeTradeHandler | undefined)?.hasAnyOpenPosition?.() ??
-          Boolean(handler?.tradeCache?.getPosition?.(this.state.selectedSymbol))
+      ? ((handler as PracticeTradeHandler | undefined)?.hasAnyOpenPosition?.() ??
+          Boolean(handler?.tradeCache?.getPosition?.(this.state.selectedSymbol)))
       : Boolean(handler?.tradeCache?.getPosition?.(this.state.selectedSymbol))
   }
 
@@ -710,9 +731,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     return (
       <div
         className={`flex ${terminalShell ? 'auren-shell-offset' : 'transition-all duration-300 ease-in-out'} ${
-          terminalShell
-            ? 'auren-terminal-shell'
-            : 'h-screen max-h-screen overflow-hidden'
+          terminalShell ? 'auren-terminal-shell' : 'h-screen max-h-screen overflow-hidden'
         } ${
           terminalShell
             ? isDark
@@ -764,6 +783,13 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
           {terminalShell ? (
             <TradeHeader
               isDark={isDark}
+              headerConnectionAccessory={
+                <InSessionJournalCapture
+                  key={`${this.props.liveMode ? 'live' : 'practice'}:${padSessionId}`}
+                  isDark={isDark}
+                  getSnapshot={this.captureJournalSnapshot}
+                />
+              }
               navigate={navigate}
               toggleTheme={toggleTheme}
               hideDesktopLogo
@@ -778,8 +804,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
               upl={accountInfo.upl}
               hasOpenPosition={
                 practiceMode
-                  ? (this.getHandler() as PracticeTradeHandler | undefined)?.hasAnyOpenPosition?.() ??
-                    Boolean(this.getHandler()?.tradeCache?.getPosition?.(selectedSymbol))
+                  ? ((
+                      this.getHandler() as PracticeTradeHandler | undefined
+                    )?.hasAnyOpenPosition?.() ??
+                    Boolean(this.getHandler()?.tradeCache?.getPosition?.(selectedSymbol)))
                   : Boolean(this.getHandler()?.tradeCache?.getPosition?.(selectedSymbol))
               }
               mdsClient={mdsClient}

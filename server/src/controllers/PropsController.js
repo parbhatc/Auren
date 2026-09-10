@@ -154,7 +154,10 @@ class PropsController {
         updatedAt: firm.updated_at
       }
 
-      propFirmResponse.sessionId = type === 'tradingview' ? null : firm.session_id || null
+      // This endpoint is authenticated and scoped to the requesting user. Return
+      // the saved TradingView value so the settings form can show and replace the
+      // account's current session instead of presenting an unexplained blank field.
+      propFirmResponse.sessionId = firm.session_id || null
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,

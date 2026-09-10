@@ -24,9 +24,12 @@ export const handleApiError = (error: unknown): string => {
   if (error instanceof Error) {
     // Axios error with response
     if ('response' in error) {
-      const axiosError = error as AxiosError<{ message?: string }>
+      const axiosError = error as AxiosError<{ message?: string; error?: string }>
       const status = axiosError.response?.status
-      const serverMessage = axiosError.response?.data?.message
+      const responseData = axiosError.response?.data
+      const serverMessage = typeof responseData?.message === 'string'
+        ? responseData.message
+        : typeof responseData?.error === 'string' ? responseData.error : undefined
 
       // Map server messages to user-friendly messages
       if (serverMessage) {

@@ -1,5 +1,8 @@
 # Auren documentation
 
+- [Feature inventory, review and roadmap](./AUREN_REVIEW.md)
+- [Journal API and socket integration](./API_AND_STREAMS.md)
+
 - [TradingView chart guide](./TRADINGVIEW_CHART_GUIDE.md)
 - [TradingView API notes](./TRADINGVIEW_API.md)
 - [Restart guide](./RESTART_GUIDE.md)

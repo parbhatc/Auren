@@ -1,4 +1,4 @@
-import { BacktesterChartClientCallbacks, BacktesterChartClientOptions, BacktestSession } from '../../types/backtester'
+import type { BacktesterChartClientCallbacks, BacktesterChartClientOptions, BacktestSession } from '../../types/backtester'
 import { WebSocketClientBase } from '../../services/websocket/WebSocketClientBase'
 import { WebSocketClientCallbacks } from '../../types/websocket'
 import { getWebSocketUrl } from '../../api/api'
@@ -52,7 +52,7 @@ export class BacktesterChartClient extends WebSocketClientBase {
   private static buildWebSocketUrl(): string {
     const token = localStorage.getItem('token')
     const wsUrl = getWebSocketUrl('/backtester-ws')
-    return `${wsUrl}${token ? `?token=${token}` : ''}`
+    return `${wsUrl}${token ? `?token=${encodeURIComponent(token)}` : ''}`
   }
 
   /**
@@ -75,18 +75,6 @@ export class BacktesterChartClient extends WebSocketClientBase {
     this.chartReady = false
     this.sessionReady = false
     super.disconnect()
-  }
-
-  protected handleMessage(event: MessageEvent): void {
-    try {
-      const data = JSON.parse(event.data)
-      if (this.handleCustomMessage(data)) {
-        return
-      }
-      super.handleMessage(event)
-    } catch (error) {
-      super.handleMessage(event)
-    }
   }
 
   /**

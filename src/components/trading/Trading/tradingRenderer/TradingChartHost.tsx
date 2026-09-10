@@ -13,6 +13,7 @@ export function TradingChartHost({
 }: TradingChartHostProps) {
   return (
     <div
+      data-journal-chart
       className={`trading-chart-host flex flex-col flex-1 min-h-0 h-full overflow-hidden ${
         terminalShell
           ? 'max-lg:rounded-none max-lg:border-0 max-lg:bg-transparent lg:rounded-2xl lg:border lg:border-slate-700/80 lg:bg-slate-900/90'

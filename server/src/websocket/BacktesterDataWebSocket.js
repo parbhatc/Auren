@@ -395,6 +395,13 @@ class BacktesterDataWebSocket extends WebSocketBase {
       
       // The legacy wire message is retained, but TradingView values are session IDs.
       this.saveTokenToConfig(source, tokenValue)
+
+      // A TradingView session ID is exchanged for a separate websocket token.
+      // Re-saving the same session ID must still force a fresh exchange because
+      // TradingView can update that token's market-data entitlements in place.
+      if (source === 'tradingview') {
+        this.tradingViewHandler?.marketData?.close?.()
+      }
       
       this.send(ws, {
         type: 'save_token_response',

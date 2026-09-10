@@ -1,5 +1,7 @@
 import Database from '../config/Database.js'
 import crypto from 'crypto'
+import { journalAnalytics, journalPeriod } from '../../../shared/journalAnalytics.js'
+import { normalizeJournalRecap, validateJournalEntry } from '../../../shared/journalRecap.js'
 
 class TradingJournalController {
   // ========== USER-CURATED JOURNAL ENTRIES ==========
@@ -8,19 +10,21 @@ class TradingJournalController {
     return `jt_${crypto.randomBytes(9).toString('base64url')}`
   }
 
+  parseJournalObject(value) {
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
   parseJournalEntry(record) {
     if (!record) return record
-    const parseObject = (value) => {
-      if (value && typeof value === 'object' && !Array.isArray(value)) return value
-      try {
-        const parsed = JSON.parse(value || '{}')
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-      } catch {
-        return {}
-      }
-    }
     return {
       id: record.id,
+      version: record.version ?? 1,
+      clientRequestId: record.request_key || undefined,
       strategyId: record.strategy_id,
       playbook: record.playbook_name,
       dateTime: record.entry_datetime,
@@ -32,12 +36,13 @@ class TradingJournalController {
       size: record.position_size || '',
       pnl: record.pnl || '',
       outcome: record.outcome || 'planned',
-      conditionResponses: parseObject(record.condition_responses),
-      source: record.source === 'replay' ? 'replay' : 'manual',
+      conditionResponses: this.parseJournalObject(record.condition_responses),
+      source: ['replay', 'practice', 'live'].includes(record.source) ? record.source : 'manual',
       sourceSessionId: record.source_session_id || undefined,
       sourceTradeId: record.source_trade_id || undefined,
-      sourceContext: parseObject(record.source_context),
-      riskPlan: parseObject(record.risk_plan),
+      sourceContext: this.parseJournalObject(record.source_context),
+      riskPlan: this.parseJournalObject(record.risk_plan),
+      recap: this.parseJournalObject(record.recap),
       notes: record.notes || '',
       createdAt: record.created_at,
       updatedAt: record.updated_at,
@@ -47,8 +52,7 @@ class TradingJournalController {
   journalEntryValues(body) {
     const allowedOutcomes = new Set(['planned', 'win', 'loss', 'breakeven'])
     const allowedSides = new Set(['long', 'short'])
-    const allowedSources = new Set(['manual', 'replay'])
-    const objectOrEmpty = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+    const allowedSources = new Set(['manual', 'replay', 'practice', 'live'])
     return {
       strategyId: body.strategyId || null,
       playbook: String(body.playbook || '').trim(),
@@ -61,40 +65,62 @@ class TradingJournalController {
       size: body.size == null ? '' : String(body.size),
       pnl: body.pnl == null ? '' : String(body.pnl),
       outcome: allowedOutcomes.has(body.outcome) ? body.outcome : 'planned',
-      conditionResponses: body.conditionResponses && typeof body.conditionResponses === 'object'
-        ? body.conditionResponses
-        : {},
+      conditionResponses: this.parseJournalObject(body.conditionResponses),
       source: allowedSources.has(body.source) ? body.source : 'manual',
       sourceSessionId: body.sourceSessionId == null ? null : String(body.sourceSessionId),
       sourceTradeId: body.sourceTradeId == null ? null : String(body.sourceTradeId),
-      sourceContext: objectOrEmpty(body.sourceContext),
-      riskPlan: objectOrEmpty(body.riskPlan),
+      sourceContext: this.parseJournalObject(body.sourceContext),
+      riskPlan: this.parseJournalObject(body.riskPlan),
       notes: body.notes == null ? '' : String(body.notes),
     }
+  }
+
+  async prepareJournalEntry(body, userId, existingRecap) {
+    const values = this.journalEntryValues(body || {})
+    const error = validateJournalEntry(values)
+    if (error) return { error }
+    let recap
+    try {
+      // Older clients omit recap. Preserve its screenshots and review notes.
+      recap = body?.recap === undefined && existingRecap !== undefined
+        ? this.parseJournalObject(existingRecap)
+        : normalizeJournalRecap(body?.recap)
+    } catch (error) {
+      return { error: error.message }
+    }
+    if (values.strategyId && !await Database.get('SELECT id FROM strategies WHERE id = ? AND user_id = ?', [values.strategyId, userId])) {
+      return { error: 'Playbook not found for this user' }
+    }
+    return { values, recap }
   }
 
   async createJournalEntry(req, res) {
     try {
       const userId = req.user.id
-      const values = this.journalEntryValues(req.body)
-      if (!values.playbook || !values.dateTime || !values.symbol) {
-        return res.status(400).json({ success: false, error: 'Playbook, date/time, and symbol are required' })
-      }
+      const { values, recap, error } = await this.prepareJournalEntry(req.body, userId)
+      if (error) return res.status(400).json({ success: false, error })
+      const requestKey = req.body?.clientRequestId
+      if (requestKey != null && (typeof requestKey !== 'string' || !/^[\w-]{8,100}$/.test(requestKey))) return res.status(400).json({ success: false, error: 'Invalid save request ID' })
+      const requestHash = crypto.createHash('sha256').update(JSON.stringify({ values, recap })).digest('hex')
       const entryId = this.journalEntryId()
       await Database.run(`
         INSERT INTO journal_entries (
           id, user_id, strategy_id, playbook_name, entry_datetime, exit_datetime, symbol, side,
           entry_price, close_price, position_size, pnl, outcome, condition_responses,
-          source, source_session_id, source_trade_id, source_context, risk_plan, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          source, source_session_id, source_trade_id, source_context, risk_plan, notes, recap, request_key, request_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, request_key) DO NOTHING
       `, [
         entryId, userId, values.strategyId, values.playbook, values.dateTime, values.exitDateTime || null, values.symbol,
         values.side, values.entryPrice, values.closePrice, values.size, values.pnl,
         values.outcome, JSON.stringify(values.conditionResponses), values.source,
         values.sourceSessionId, values.sourceTradeId, JSON.stringify(values.sourceContext),
-        JSON.stringify(values.riskPlan), values.notes,
+        JSON.stringify(values.riskPlan), values.notes, JSON.stringify(recap), requestKey || null, requestHash,
       ])
-      const record = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      const record = requestKey
+        ? await Database.get('SELECT * FROM journal_entries WHERE request_key = ? AND user_id = ?', [requestKey, userId])
+        : await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      if (record.request_hash !== requestHash) return res.status(409).json({ success: false, error: 'This save request was already used. Reload the saved entry before editing it.' })
       res.json({ success: true, entry: this.parseJournalEntry(record) })
     } catch (error) {
       console.error('Error creating journal entry:', error)
@@ -102,13 +128,22 @@ class TradingJournalController {
     }
   }
 
+  async journalSummaries(userId) {
+      const records = await Database.query(
+        `SELECT id, strategy_id, playbook_name, entry_datetime, exit_datetime, symbol, side,
+          entry_price, close_price, position_size, pnl, outcome, condition_responses,
+          source, source_session_id, source_trade_id, source_context, risk_plan, notes,
+          created_at, updated_at, version,
+          json_remove(CASE WHEN json_valid(recap) THEN recap ELSE '{}' END, '$.screenshots') AS recap
+        FROM journal_entries WHERE user_id = ? ORDER BY entry_datetime DESC, created_at DESC`,
+        [userId]
+      )
+      return records.map((record) => this.parseJournalEntry(record))
+  }
+
   async getJournalEntries(req, res) {
     try {
-      const records = await Database.query(
-        'SELECT * FROM journal_entries WHERE user_id = ? ORDER BY entry_datetime DESC, created_at DESC',
-        [req.user.id]
-      )
-      res.json({ success: true, entries: records.map((record) => this.parseJournalEntry(record)) })
+      res.json({ success: true, entries: await this.journalSummaries(req.user.id) })
     } catch (error) {
       console.error('Error fetching journal entries:', error)
       res.status(500).json({ success: false, error: error.message })
@@ -133,26 +168,35 @@ class TradingJournalController {
     try {
       const userId = req.user.id
       const entryId = req.params.id
-      const existing = await Database.get('SELECT id FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      const existing = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
       if (!existing) return res.status(404).json({ success: false, error: 'Journal entry not found' })
-      const values = this.journalEntryValues(req.body)
-      if (!values.playbook || !values.dateTime || !values.symbol) {
-        return res.status(400).json({ success: false, error: 'Playbook, date/time, and symbol are required' })
-      }
-      await Database.run(`
+      const expected = req.body?.version ?? existing.version
+      const { values, recap, error } = await this.prepareJournalEntry(req.body, userId, existing.recap)
+      if (error) return res.status(400).json({ success: false, error })
+      // A lost response can be retried without another write. Never overwrite a different stale edit.
+      const matches = (row) => row && Number.isInteger(expected) && expected < row.version &&
+        JSON.stringify(this.journalEntryValues(this.parseJournalEntry(row))) === JSON.stringify(values) &&
+        JSON.stringify(this.parseJournalObject(row.recap)) === JSON.stringify(recap)
+      if (matches(existing)) return res.json({ success: true, entry: this.parseJournalEntry(existing) })
+      if (!Number.isInteger(expected) || expected !== existing.version) return res.status(409).json({ success: false, error: 'This entry changed in another window. Reload before saving; your draft is preserved.' })
+      const record = await Database.get(`
         UPDATE journal_entries SET
           strategy_id = ?, playbook_name = ?, entry_datetime = ?, exit_datetime = ?, symbol = ?, side = ?,
           entry_price = ?, close_price = ?, position_size = ?, pnl = ?, outcome = ?,
           condition_responses = ?, source = ?, source_session_id = ?, source_trade_id = ?,
-          source_context = ?, risk_plan = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
+          source_context = ?, risk_plan = ?, notes = ?, recap = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ? AND version = ? RETURNING *
       `, [
         values.strategyId, values.playbook, values.dateTime, values.exitDateTime || null, values.symbol, values.side,
         values.entryPrice, values.closePrice, values.size, values.pnl, values.outcome,
         JSON.stringify(values.conditionResponses), values.source, values.sourceSessionId, values.sourceTradeId,
-        JSON.stringify(values.sourceContext), JSON.stringify(values.riskPlan), values.notes, entryId, userId,
+        JSON.stringify(values.sourceContext), JSON.stringify(values.riskPlan), values.notes, JSON.stringify(recap), entryId, userId, expected,
       ])
-      const record = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+      if (!record) {
+        const current = await Database.get('SELECT * FROM journal_entries WHERE id = ? AND user_id = ?', [entryId, userId])
+        if (matches(current)) return res.json({ success: true, entry: this.parseJournalEntry(current) })
+        return res.status(409).json({ success: false, error: 'This entry changed while saving. Reload before retrying; your draft is preserved.' })
+      }
       res.json({ success: true, entry: this.parseJournalEntry(record) })
     } catch (error) {
       console.error('Error updating journal entry:', error)
@@ -170,6 +214,62 @@ class TradingJournalController {
       console.error('Error deleting journal entry:', error)
       res.status(500).json({ success: false, error: error.message })
     }
+  }
+
+
+  async getJournalAnalytics(req, res) {
+    try {
+      const { from = '', to = '', source = 'all' } = req.query
+      if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) ||
+          !['all', 'manual', 'practice', 'live', 'replay'].includes(source)) return res.status(400).json({ success: false, error: 'Invalid analytics filters' })
+      try {
+        if (from) journalPeriod('daily', from)
+        if (to) journalPeriod('daily', to)
+        if (from && to && from > to) throw new Error('Reversed range')
+      } catch { return res.status(400).json({ success: false, error: 'Invalid analytics date range' }) }
+      const entries = (await this.journalSummaries(req.user.id)).filter((e) =>
+        (!from || e.dateTime.slice(0, 10) >= from) && (!to || e.dateTime.slice(0, 10) <= to) &&
+        (source === 'all' || e.source === source))
+      res.json({ success: true, analytics: journalAnalytics(entries) })
+    } catch { res.status(500).json({ success: false, error: 'Could not load journal analytics' }) }
+  }
+
+  async getJournalReview(req, res) {
+    try {
+      const { kind, start } = req.params
+      const period = journalPeriod(kind, start)
+      const row = await Database.get('SELECT * FROM journal_reviews WHERE user_id = ? AND kind = ? AND period_start = ?', [req.user.id, kind, start])
+      const entries = (await this.journalSummaries(req.user.id)).filter((e) => e.dateTime.slice(0, 10) >= start && e.dateTime.slice(0, 10) < period.end)
+      res.json({ success: true, review: { ...this.parseJournalObject(row?.content), kind, start, version: row?.version ?? 0 }, entries, analytics: journalAnalytics(entries) })
+    } catch (error) { res.status(400).json({ success: false, error: error.message }) }
+  }
+
+  async saveJournalReview(req, res) {
+    try {
+      const { kind, start } = req.params
+      const period = journalPeriod(kind, start)
+      const version = req.body.version
+      if (!Number.isInteger(version) || version < 0) return res.status(400).json({ success: false, error: 'Review version required' })
+      const content = {}
+      for (const key of ['focusRule', 'bestExecution', 'mistake', 'notes']) content[key] = String(req.body[key] ?? '').slice(0, 8000)
+      content.followedRules = ['yes', 'no', 'mixed', ''].includes(req.body.followedRules) ? req.body.followedRules : ''
+      content.entryIds = [...new Set(Array.isArray(req.body.entryIds) ? req.body.entryIds.filter((id) => typeof id === 'string') : [])].slice(0, 200)
+      if (content.entryIds.length) {
+        const owned = (await this.journalSummaries(req.user.id)).filter((e) => e.dateTime.slice(0, 10) >= start && e.dateTime.slice(0, 10) < period.end)
+        if (content.entryIds.some((id) => !owned.some((e) => e.id === id))) return res.status(400).json({ success: false, error: 'Linked entries must belong to you and this review period' })
+      }
+      const json = JSON.stringify(content)
+      const params = [req.user.id, kind, start]
+      const row = version === 0
+        ? await Database.get('INSERT INTO journal_reviews (user_id, kind, period_start, content) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *', [...params, json])
+        : await Database.get('UPDATE journal_reviews SET content = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND kind = ? AND period_start = ? AND version = ? RETURNING *', [json, ...params, version])
+      if (!row) {
+        const current = await Database.get('SELECT * FROM journal_reviews WHERE user_id = ? AND kind = ? AND period_start = ?', params)
+        if (current?.content === json) return res.json({ success: true, review: { ...content, kind, start, version: current.version } })
+        return res.status(409).json({ success: false, error: 'Review changed in another window. Reload before saving.' })
+      }
+      res.json({ success: true, review: { ...content, kind, start, version: row.version } })
+    } catch (error) { res.status(400).json({ success: false, error: error.message }) }
   }
 
   // ========== TRADES ==========
@@ -471,7 +571,8 @@ class TradingJournalController {
         WHERE id = ? AND user_id = ?
       `, [name, JSON.stringify(timeframes || []), JSON.stringify(entry_conditions || []), JSON.stringify(invalidation_rules || []), max_risk || null, new Date().toISOString(), id, userId])
       
-      const strategy = await Database.get('SELECT * FROM strategies WHERE id = ?', [id])
+      const strategy = await Database.get('SELECT * FROM strategies WHERE id = ? AND user_id = ?', [id, userId])
+      if (!strategy) return res.status(404).json({ success: false, error: 'Playbook not found' })
       res.json({ success: true, strategy })
     } catch (error) {
       console.error('Error updating strategy:', error)
@@ -758,7 +859,8 @@ class TradingJournalController {
         WHERE id = ? AND user_id = ?
       `, [followed_rules ? 1 : 0, biggest_mistake || null, best_execution || null, new Date().toISOString(), id, userId])
       
-      const review = await Database.get('SELECT * FROM daily_reviews WHERE id = ?', [id])
+      const review = await Database.get('SELECT * FROM daily_reviews WHERE id = ? AND user_id = ?', [id, userId])
+      if (!review) return res.status(404).json({ success: false, error: 'Daily review not found' })
       res.json({ success: true, review })
     } catch (error) {
       console.error('Error updating daily review:', error)
