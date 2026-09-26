@@ -65,11 +65,11 @@ export async function refreshPaperFeed() {
   return pending
 }
 
-export function startPaperFeedPolling(intervalMs = 2000) {
+export function startPaperFeedPolling(intervalMs = 30000, shouldPoll = () => true) {
   if (timer != null) return
-  void refreshPaperFeed()
+  if (shouldPoll()) void refreshPaperFeed()
   timer = window.setInterval(() => {
-    if (document.visibilityState === 'visible') void refreshPaperFeed()
+    if (document.visibilityState === 'visible' && shouldPoll()) void refreshPaperFeed()
   }, Math.max(1000, intervalMs))
 }
 

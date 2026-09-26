@@ -25,8 +25,13 @@ function runtimeImport<T>(url: string): Promise<T> {
 
 let sdkPromise: Promise<BwcSdk> | null = null
 let registered = false
+const paperWidgets = new Set<BwcWidget>()
+const hasActivePaperIndicator = () => [...paperWidgets].some((widget) =>
+  widget.indicators?.list?.().some((instance) => instance.defId === 'custom-setups-paper')
+)
 let paperFeedPromise: Promise<{
-  startPaperFeedPolling: (intervalMs?: number) => void
+  startPaperFeedPolling: (intervalMs?: number, shouldPoll?: () => boolean) => void
+  refreshPaperFeed: () => Promise<unknown>
   subscribePaperFeed: (listener: () => void) => () => void
 }> | null = null
 
@@ -59,10 +64,11 @@ export async function registerAurenChartIndicators(): Promise<void> {
   panels.registerTestingInputPanels()
   presets.registerTestingIndicatorPresets()
   const paperFeed = customSetups as typeof customSetups & {
-    startPaperFeedPolling: (intervalMs?: number) => void
+    startPaperFeedPolling: (intervalMs?: number, shouldPoll?: () => boolean) => void
+    refreshPaperFeed: () => Promise<unknown>
     subscribePaperFeed: (listener: () => void) => () => void
   }
-  paperFeed.startPaperFeedPolling(2000)
+  paperFeed.startPaperFeedPolling(30000, hasActivePaperIndicator)
   paperFeedPromise = Promise.resolve(paperFeed)
   registered = true
 }
@@ -70,6 +76,7 @@ export async function registerAurenChartIndicators(): Promise<void> {
 export async function bootChart(options?: Record<string, unknown>): Promise<BwcWidget> {
   const sdk = await getSdk()
   const widget = await sdk.bootChart(options)
+  paperWidgets.add(widget)
   const feed = paperFeedPromise ? await paperFeedPromise : null
   const indicatorApi = widget.indicators as {
     list?: () => Array<{ instanceId: string; defId: string }>
@@ -80,10 +87,12 @@ export async function bootChart(options?: Record<string, unknown>): Promise<BwcW
       if (instance.defId === 'custom-setups-paper') indicatorApi?.patch?.(instance.instanceId, {})
     }
   })
+  if (hasActivePaperIndicator()) void feed?.refreshPaperFeed()
   if (unsubscribe && widget.destroy) {
     const originalDestroy = widget.destroy.bind(widget)
     widget.destroy = () => {
       unsubscribe()
+      paperWidgets.delete(widget)
       originalDestroy()
     }
   }

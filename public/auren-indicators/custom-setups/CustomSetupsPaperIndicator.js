@@ -4,6 +4,7 @@ import { buildPositionBoxes, filterPaperSnapshotToBars } from './positionBoxes.j
 import {
   getPaperFeedSnapshot,
   getPaperFeedVersion,
+  refreshPaperFeed,
   startPaperFeedPolling,
   subscribePaperFeed,
 } from './paperFeed.js?v=2'
@@ -85,5 +86,5 @@ class CustomSetupsPaperIndicator extends BaseIndicator {
 }
 
 BaseIndicator.define(CustomSetupsPaperIndicator)
-export { startPaperFeedPolling, subscribePaperFeed }
+export { startPaperFeedPolling, refreshPaperFeed, subscribePaperFeed }
 export default CustomSetupsPaperIndicator
