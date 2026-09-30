@@ -22,6 +22,7 @@ import {
   TRADESEA_INTRADAY_MULTIPLIERS,
   TRADESEA_SECONDS_MULTIPLIERS,
   TRADESEA_SUPPORTED_RESOLUTIONS,
+  alignTradeseaBarTimeSec,
   tradeseaResolutionToSeconds,
   tradeseaWireResolution,
 } from './tradeseaResolutions'
@@ -583,6 +584,57 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return bars
   }
 
+  /**
+   * Tradesea's native multi-hour candles can use a different origin than the
+   * CME session. Build them from hourly candles so both their timestamp and
+   * their OHLC describe the same 18:00 ET-anchored window.
+   */
+  private historySourceResolution(resolution: string): string {
+    const normalized = tradeseaWireResolution(resolution)
+    const minutes = /^\d+$/.test(normalized) ? Number(normalized) : 0
+    return minutes >= 120 && minutes % 60 === 0 ? '60' : normalized
+  }
+
+  private aggregateBarsForResolution(bars: Bar[], resolution: string): Bar[] {
+    const target = tradeseaWireResolution(resolution)
+    if (this.historySourceResolution(target) === target) return bars
+
+    const aggregated: Bar[] = []
+    for (const source of bars) {
+      const time = this.alignBarTimeMs(source.time, target)
+      const previous = aggregated[aggregated.length - 1]
+      if (previous?.time === time) {
+        previous.high = Math.max(previous.high, source.high)
+        previous.low = Math.min(previous.low, source.low)
+        previous.close = source.close
+        previous.volume = Number(previous.volume ?? 0) + Number(source.volume ?? 0)
+        previous.tickVolume = Number(previous.tickVolume ?? 0) + Number(source.tickVolume ?? 0)
+      } else {
+        aggregated.push({ ...source, time })
+      }
+    }
+    return aggregated
+  }
+
+  private mergeLiveSourceBar(key: string, source: Bar, resolution: string): Bar {
+    const time = this.alignBarTimeMs(source.time, resolution)
+    const previous = this.lastBarByKey.get(key)
+    if (!previous || this.alignBarTimeMs(previous.time, resolution) !== time) {
+      return { ...source, time }
+    }
+    return {
+      ...previous,
+      time,
+      high: Math.max(Number(previous.high), Number(source.high)),
+      low: Math.min(Number(previous.low), Number(source.low)),
+      close: source.close,
+      // Candle frames can update the same source hour repeatedly. Preserve the
+      // accumulated target volume rather than double-counting those updates.
+      volume: Math.max(Number(previous.volume ?? 0), Number(source.volume ?? 0)),
+      tickVolume: Math.max(Number(previous.tickVolume ?? 0), Number(source.tickVolume ?? 0)),
+    }
+  }
+
   private dispatchBarToSubscribers(
     resKey: string,
     resolution: string,
@@ -759,18 +811,15 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return time < 1e12 ? time * 1000 : time
   }
 
-  /** Snap bar open time to resolution boundary (ms) so history + MDS ticks match. */
+  /** Snap bar opens to TradingView's CME-session boundaries. */
   private alignBarTimeMs(time: number, resolution: string): number {
-    const periodSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
     const ms = this.normalizeBarTimeMs(time)
     const sec = Math.floor(ms / 1000)
-    return Math.floor(sec / periodSec) * periodSec * 1000
+    return alignTradeseaBarTimeSec(sec, resolution) * 1000
   }
 
   private alignBarTimeSec(timeSec: number, resolution: string): number {
-    const barSec = Math.max(1, tradeseaResolutionToSeconds(resolution))
-    const sec = Math.floor(timeSec)
-    return Math.floor(sec / barSec) * barSec
+    return alignTradeseaBarTimeSec(timeSec, resolution)
   }
 
   private buildHistoryParams(
@@ -1297,18 +1346,22 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         { force: true }
       )
     }
-    const barSec = tradeseaResolutionToSeconds(String(resolution))
-    const from = this.alignBarTimeSec(Math.floor(periodParams.from), String(resolution))
-    const to = this.alignBarTimeSec(Math.floor(periodParams.to), String(resolution)) + barSec
+    const targetResolution = String(resolution)
+    const sourceResolution = this.historySourceResolution(targetResolution)
+    const barSec = tradeseaResolutionToSeconds(targetResolution)
+    const sourceBarSec = tradeseaResolutionToSeconds(sourceResolution)
+    const from = this.alignBarTimeSec(Math.floor(periodParams.from), targetResolution)
+    const to = this.alignBarTimeSec(Math.floor(periodParams.to), targetResolution) + barSec
     const estimatedBars = Math.ceil((to - from) / barSec) + 2
+    const sourceBarsPerTarget = Math.max(1, Math.ceil(barSec / sourceBarSec))
     const countback = Math.min(
       HISTORY_MAX_BARS_PER_REQUEST,
       periodParams.countBack != null
-        ? Math.max(1, periodParams.countBack)
-        : Math.max(301, estimatedBars)
+        ? Math.max(1, periodParams.countBack * sourceBarsPerTarget + sourceBarsPerTarget)
+        : Math.max(301, estimatedBars * sourceBarsPerTarget)
     )
 
-    const params = this.buildHistoryParams(symbol, String(resolution), from, to, countback)
+    const params = this.buildHistoryParams(symbol, sourceResolution, from, to, countback)
 
     this.fetchHistoryUdf(params)
       .then((data) => {
@@ -1326,7 +1379,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
         if (data.s !== 'ok') {
           throw new Error(data.errmsg || data.message || `History status: ${data.s}`)
         }
-        const bars = this.udfRowsToBars(data, String(resolution))
+        const sourceBars = this.udfRowsToBars(data, sourceResolution)
+        const bars = this.aggregateBarsForResolution(sourceBars, targetResolution)
         candleDebug.history({
           chartSymbol,
           resolution: String(resolution),
@@ -1402,7 +1456,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           this.ensureMarketBookSubscription(chartSymbol)
           const id = this.mds.subscribeCandles(
             [symbol],
-            [tradeseaWireResolution(String(resolution))]
+            [this.historySourceResolution(String(resolution))]
           )
           this.subIdByKey.set(key, id)
           return id
@@ -1437,10 +1491,14 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             res
           )
           const routes = this.candleSubscriptionKeys(streamId).filter(
-            ({ resolution }) => tradeseaWireResolution(resolution) === res
+            ({ resolution }) => this.historySourceResolution(resolution) === res
           )
-          for (const { key } of routes) {
-            this.dispatchBarToSubscribers(key, res, streamId, bar)
+          for (const { key, resolution } of routes) {
+            const targetBar =
+              this.historySourceResolution(resolution) === tradeseaWireResolution(resolution)
+                ? bar
+                : this.mergeLiveSourceBar(key, bar, resolution)
+            this.dispatchBarToSubscribers(key, resolution, streamId, targetBar)
           }
         })
       }
