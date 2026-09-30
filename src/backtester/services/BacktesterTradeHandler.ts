@@ -885,7 +885,7 @@ export class BacktesterTradeHandler {
         cursorSec: Math.floor(current),
         targetSec: Math.floor(targetSec),
         playbackTimeframe: stepResolution,
-        chartSymbol: this.resolveChartSymbol(),
+        chartSymbol: this.normalizeSymbol(this.resolveChartSymbol()),
       })
     } else {
       this.nextCandleInFlight = false

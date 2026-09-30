@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 import TradingViewDirectClient from '../src/services/tradingview/TradingViewDirectClient.js'
 
@@ -69,4 +72,26 @@ test('direct TradingView client explains when no session ID is configured', asyn
     client.history('CME_MINI:NQ1!', { interval: '1', bars: 1 }),
     /TradingView session ID is required/
   )
+})
+
+test('CSV TradingView client prefers the saved session over a server fallback', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-tv-session-'))
+  const configPath = path.join(directory, 'config.json')
+  const envName = 'AUREN_TEST_TV_SESSION_ID'
+  const previous = process.env[envName]
+  t.after(() => {
+    if (previous === undefined) delete process.env[envName]
+    else process.env[envName] = previous
+    fs.rmSync(directory, { recursive: true, force: true })
+  })
+  process.env[envName] = 'older-server-session'
+  fs.writeFileSync(configPath, JSON.stringify({ sessions: { tradingview: 'newer-csv-session' } }))
+
+  const csvClient = new TradingViewDirectClient({ configPath, sessionIdEnv: envName, configFirst: true })
+  const defaultClient = new TradingViewDirectClient({ configPath, sessionIdEnv: envName })
+  assert.equal(csvClient.sessionId, 'newer-csv-session')
+  assert.equal(defaultClient.sessionId, 'older-server-session')
+
+  fs.writeFileSync(configPath, JSON.stringify({ sessions: { tradingview: '' } }))
+  assert.equal(csvClient.sessionId, 'older-server-session')
 })

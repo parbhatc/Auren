@@ -47,7 +47,7 @@ test('TradingView CSV update starts after the latest stored candle', async (t) =
   const result = await handler.update('CME_MINI:NQ1!', 'NQ', '1', { chunkSize: 10_000 })
 
   assert.equal(request.symbol, 'CME_MINI:NQ1!')
-  assert.equal(request.options.after, AUGUST_10_2026)
+  assert.equal(request.options.after, AUGUST_10_2026 - 60)
   assert.equal(request.options.chunkSize, 10_000)
   assert.equal(request.options.session, 'extended')
   assert.equal(result.newBars, 2)
@@ -57,6 +57,26 @@ test('TradingView CSV update starts after the latest stored candle', async (t) =
     fs.readFileSync(harness.monthFile, 'utf8').split('\n').map((line) => Number(line.split(',')[0])),
     [AUGUST_10_2026, AUGUST_10_2026 + 60, AUGUST_10_2026 + 120]
   )
+})
+
+test('TradingView CSV update revises the latest stored candle', async (t) => {
+  const harness = createHarness()
+  t.after(() => fs.rmSync(harness.csvDir, { recursive: true, force: true }))
+  const handler = new TradingViewDataHandler(harness.ws)
+  let requestedAfter
+  handler.marketData = {
+    async loadAllBars(_symbol, options) {
+      requestedAfter = options.after
+      return { bars: [{ time: AUGUST_10_2026, open: 1, high: 3, low: 0, close: 2.5, volume: 12 }] }
+    },
+  }
+
+  const result = await handler.update('CME_MINI:NQ1!', 'NQ', '1')
+
+  assert.equal(requestedAfter, AUGUST_10_2026 - 60)
+  assert.equal(result.newBars, 0)
+  assert.equal(result.revisedBars, 1)
+  assert.match(fs.readFileSync(harness.monthFile, 'utf8'), /,1,3,0,2\.5,12/)
 })
 
 test('TradingView CSV update succeeds when no newer candles exist', async (t) => {

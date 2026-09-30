@@ -12,7 +12,8 @@ import TradingViewDirectClient from '../../services/tradingview/TradingViewDirec
 class TradingViewDataHandler {
   constructor(websocketInstance) {
     this.ws = websocketInstance
-    this.marketData = new TradingViewDirectClient({ configPath: websocketInstance.configPath })
+    // CSV settings entered by the admin take precedence over a server-wide fallback.
+    this.marketData = new TradingViewDirectClient({ configPath: websocketInstance.configPath, configFirst: true })
   }
 
   getMonthName(monthIndex) {
@@ -27,6 +28,13 @@ class TradingViewDataHandler {
     const latest = action === 'update'
       ? findLatestBarTimestamp(this.ws.csvDir, folderSymbol.replace(/:/g, '__'), csvResolution)
       : null
+    // The newest stored bar may have been captured before it closed. Re-fetch it.
+    const intervalSeconds = /^\d+S$/i.test(interval)
+      ? Number.parseInt(interval, 10)
+      : /^\d+$/.test(interval) ? Number(interval) * 60 : 0
+    const after = latest && intervalSeconds > 0
+      ? Math.max(1, latest.timestampSeconds - intervalSeconds)
+      : latest?.timestampSeconds
 
     const startMessage = latest
       ? `Updating after ${new Date(latest.timestampMs).toISOString()} in ${chunkSize.toLocaleString()}-bar batches`
@@ -37,7 +45,7 @@ class TradingViewDataHandler {
       interval,
       chunkSize,
       session: 'extended',
-      ...(latest ? { after: latest.timestampSeconds } : {}),
+      ...(latest ? { after } : {}),
       onProgress: ({ bars }) => {
         this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `Loaded ${Number(bars || 0).toLocaleString()} bars`)
       },
@@ -95,6 +103,7 @@ class TradingViewDataHandler {
     let filesWritten = 0
     let filesWithNewCandles = 0
     let totalNewCandles = 0
+    let totalRevisedCandles = 0
     const totalFiles = Object.keys(barsByMonth).length
 
     for (const key of Object.keys(barsByMonth).sort()) {
@@ -111,6 +120,8 @@ class TradingViewDataHandler {
           if (!linesByTimestamp.has(timestamp)) {
             newCandlesInFile += 1
             totalNewCandles += 1
+          } else if (linesByTimestamp.get(timestamp) !== `${timestamp},${bar.open},${bar.high},${bar.low},${bar.close},${bar.volume}`) {
+            totalRevisedCandles += 1
           }
           linesByTimestamp.set(timestamp, `${timestamp},${bar.open},${bar.high},${bar.low},${bar.close},${bar.volume}`)
         }
@@ -135,16 +146,16 @@ class TradingViewDataHandler {
     this.ws.sendProgress(null, action, folderSymbol, 'tradingview', 0, `${actionLabel} complete!`)
     let message
     if (action === 'update') {
-      message = totalNewCandles === 0
+      message = totalNewCandles === 0 && totalRevisedCandles === 0
         ? 'No new data to update. All data is already up to date.'
-        : `Successfully updated: ${totalNewCandles} new bars added to ${filesWithNewCandles} ${filesWithNewCandles === 1 ? 'file' : 'files'}`
+        : `Successfully updated: ${totalNewCandles} new bars, ${totalRevisedCandles} revised bars across ${filesWritten} ${filesWritten === 1 ? 'file' : 'files'}`
     } else {
       const verb = action === 'reset' ? 'reset' : action === 'overwrite' ? 'overwritten' : 'downloaded'
       message = `Successfully ${verb} ${allBars.length} bars to ${filesWritten} CSV files`
     }
     this.ws.broadcast({ type: this.getResponseType(action), success: true, message })
     console.log(`[TradingViewDataHandler] ${actionLabel} completed for ${symbol}: ${allBars.length} bars in ${filesWritten} files`)
-    return { filesWritten, newBars: totalNewCandles, message }
+    return { filesWritten, newBars: totalNewCandles, revisedBars: totalRevisedCandles, message }
   }
 
   getResponseType(action) {

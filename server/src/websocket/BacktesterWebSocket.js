@@ -4,6 +4,11 @@ import { csvFolderForChartResolution } from '../utils/backtesterCsvPaths.js'
 import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, resolutionToMinutes, alignTimeToResolutionSec, alignBarOpenSec } from '../utils/backtesterResolution.js'
 import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 
+function normalizeReplaySymbol(value) {
+  const symbol = String(value || '').trim().toUpperCase()
+  return (symbol.includes(':') ? symbol.split(':').pop() : symbol).replace(/^\//, '')
+}
+
 class BacktesterWebSocket extends WebSocketBase {
 
   constructor(server) {
@@ -423,8 +428,12 @@ class BacktesterWebSocket extends WebSocketBase {
       // clock slot. Probe the active chart's source data so maintenance breaks,
       // weekends, and other data gaps are crossed in one click.
       let targetWallSec = requestedTargetWallSec
+      const requestedPrimaryRoot = normalizeReplaySymbol(data?.chartSymbol)
       const primarySymbol =
-        String(data?.chartSymbol || '').trim() ||
+        [...groups.values()].find(
+          (group) => normalizeReplaySymbol(group.symbol) === requestedPrimaryRoot,
+        )?.symbol ||
+        requestedPrimaryRoot ||
         groups.values().next().value?.symbol ||
         ''
       if (primarySymbol && typeof this.csvLoader?.loadForward === 'function') {

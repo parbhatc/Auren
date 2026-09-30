@@ -4,6 +4,7 @@ import { readTradingViewSessionId } from './TradingViewSessionConfig.js'
 export default class TradingViewDirectClient {
   constructor(options = {}) {
     this.configPath = options.configPath
+    this.configFirst = options.configFirst || false
     this.sessionIdEnv = options.sessionIdEnv || 'TRADINGVIEW_SESSION_ID'
     this.apiFactory = options.apiFactory
     this.api = null
@@ -15,6 +16,7 @@ export default class TradingViewDirectClient {
     return readTradingViewSessionId({
       sessionIdEnv: this.sessionIdEnv,
       configPath: this.configPath,
+      configFirst: this.configFirst,
     })
   }
 

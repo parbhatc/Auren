@@ -643,13 +643,32 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     this.pendingWsMessages.push(message)
   }
 
-  flushPendingMessages(): void {
+  flushPendingMessages(options?: { restoreSubscriptions?: boolean }): void {
     if (!this.wsClient?.isConnected?.() || !this.wsClient.isChartReady?.()) {
       return
     }
     const queue = this.pendingWsMessages.splice(0)
+    const queuedSubscriptions = new Set<string>()
     for (const message of queue) {
+      if (message.type === 'subscribeBars' && typeof message.subscriberUID === 'string') {
+        queuedSubscriptions.add(message.subscriberUID)
+      }
       this.wsClient.send(message)
+    }
+
+    // A reconnect creates fresh server-side socket state while the chart keeps
+    // its existing local subscriptions. Restore every pane after the new
+    // session handshake; pending first-connect subscriptions are not duplicated.
+    if (options?.restoreSubscriptions) {
+      for (const [subscriberUID, subscription] of this.subscriptions) {
+        if (queuedSubscriptions.has(subscriberUID)) continue
+        this.wsClient.send({
+          type: 'subscribeBars',
+          symbol: subscription.symbol,
+          resolution: subscription.resolution,
+          subscriberUID,
+        })
+      }
     }
 
     const historyQueue = Array.from(this.pendingHistoryFetches.values())
@@ -724,6 +743,9 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     this.loadSymbols().then((symbols) => {
       const allSymbols = Object.keys(symbols).map(s => ({
         symbol: s,
+        // BWC prefers ticker when selecting a search result. Keep replay
+        // symbols unprefixed so its pane state and our CSV keys agree.
+        ticker: s,
         full_name: s,
         description: s,
         exchange: 'CME',
@@ -739,7 +761,10 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   }
 
   resolveSymbol(symbolName: string, onSymbolResolvedCallback: (symbolInfo: LibrarySymbolInfo) => void, onResolveErrorCallback: (reason: string) => void): void {
-    symbolName = symbolName.toUpperCase()
+    // Older BWC layouts saved search results as CME:ES/CME:NQ. Accept those
+    // aliases when restoring a pane instead of leaving its previous candles
+    // visible under the newly selected symbol label.
+    symbolName = this.normalizeSymbol(symbolName)
 
     const cached = this.resolvedSymbolCache.get(symbolName)
     if (cached) {

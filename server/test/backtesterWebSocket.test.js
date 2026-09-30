@@ -228,3 +228,86 @@ test('next candle skips the NQ maintenance gap from 4:59 PM to 6:00 PM', () => {
     emitted: 2,
   })
 })
+
+test('exchange-prefixed active pane advances every 30s subscription without skipping a half-minute', () => {
+  const cursorSec = 1_790_602_260 // 9:31:00 AM local in the replay fixture
+  const barsBySymbol = {
+    NQ: [cursorSec + 30, cursorSec + 60],
+    ES: [cursorSec + 30, cursorSec + 60],
+  }
+  const requestedSymbols = []
+  const replay = new BacktesterWebSocket({
+    csvLoader: {
+      loadForward(symbol, afterMs, count) {
+        requestedSymbols.push(symbol)
+        return (barsBySymbol[symbol] ?? [])
+          .filter((time) => time * 1000 > afterMs)
+          .slice(0, count)
+          .map((time) => ({
+            time: time * 1000,
+            open: 100,
+            high: 101,
+            low: 99,
+            close: 100.5,
+            volume: 10,
+          }))
+      },
+    },
+  })
+  const client = { id: 'socket-prefixed-pane', userId: 'user' }
+  replay.onSubscribeBars(createSocket(), {
+    symbol: 'NQ',
+    resolution: '30S',
+    subscriberUID: 'nq-pane',
+  }, client)
+  replay.onSubscribeBars(createSocket(), {
+    symbol: 'ES',
+    resolution: '30S',
+    subscriberUID: 'es-pane',
+  }, client)
+
+  const state = replay.getClientState(client)
+  state.cursor = new Date(cursorSec * 1000)
+  state.barCache = {
+    last: state.cursor,
+    getNewest: () => null,
+    addBars: () => {},
+    clearAll: () => {},
+  }
+
+  const firstSocket = createSocket()
+  replay.onNextCandle(firstSocket, {
+    playbackTimeframe: '30S',
+    chartSymbol: 'CME:ES',
+    cursorSec,
+    stepSec: 30,
+    targetSec: cursorSec + 30,
+  }, client)
+
+  const firstBars = firstSocket.sent.filter((message) => message.type === 'realtimeBars')
+  assert.equal(firstBars.length, 2)
+  assert.deepEqual(
+    firstBars.map((message) => message.candles.at(-1).time),
+    [(cursorSec + 30) * 1000, (cursorSec + 30) * 1000],
+  )
+  assert.deepEqual(
+    firstSocket.sent.find((message) => message.type === 'nextCandleAck'),
+    { type: 'nextCandleAck', cursorSec: cursorSec + 30, emitted: 2 },
+  )
+
+  const secondSocket = createSocket()
+  replay.onNextCandle(secondSocket, {
+    playbackTimeframe: '30S',
+    chartSymbol: 'CME:ES',
+    cursorSec: cursorSec + 30,
+    stepSec: 30,
+    targetSec: cursorSec + 60,
+  }, client)
+
+  assert.deepEqual(
+    secondSocket.sent.find((message) => message.type === 'nextCandleAck'),
+    { type: 'nextCandleAck', cursorSec: cursorSec + 60, emitted: 2 },
+  )
+  assert.equal(requestedSymbols.includes('CME:ES'), false)
+  assert.equal(requestedSymbols.every((symbol) => symbol === 'NQ' || symbol === 'ES'), true)
+})

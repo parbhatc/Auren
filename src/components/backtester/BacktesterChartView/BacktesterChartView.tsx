@@ -27,7 +27,7 @@ import { getInitialChartSymbol } from '../../../backtester/constants'
 import { publishAccountStats } from '../../../services/trading/accountStatsStore'
 import Logo from '../../common/Logo'
 import { HeaderThemeButton } from '../../trading/shared/header/HeaderThemeButton'
-import { ArrowLeft, LogOut } from 'lucide-react'
+import { ArrowLeft, LogOut, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import ReplayJournalCapture, { type ReplayJournalSnapshot } from './ReplayJournalCapture'
 import InSessionJournalCapture from '../../../journal/InSessionJournalCapture'
 import { createJournalDraft } from '../../../journal/journalCapture'
@@ -68,6 +68,29 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     unrealizedPnL: 0,
     showKeyboardShortcutsHelp: false,
     journalOpenRequest: 0,
+    orderPaneCollapsed: false,
+  }
+
+  private readOrderPaneCollapsed = (sessionId?: string | null): boolean => {
+    if (!sessionId) return false
+    try {
+      return localStorage.getItem(`auren-order-pane-collapsed:${sessionId}`) === '1'
+    } catch {
+      return false
+    }
+  }
+
+  private toggleOrderPane = () => {
+    const sessionId = this.props.session?.id
+    const collapsed = !this.state.orderPaneCollapsed
+    if (sessionId) {
+      try {
+        localStorage.setItem(`auren-order-pane-collapsed:${sessionId}`, collapsed ? '1' : '0')
+      } catch {
+        // Storage is optional.
+      }
+    }
+    this.setState({ orderPaneCollapsed: collapsed })
   }
 
   componentDidMount() {
@@ -94,6 +117,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
     // Initialize trade handler with session and null client (will be updated when WebSocket connects)
     const { session } = this.props
+    this.setState({ orderPaneCollapsed: this.readOrderPaneCollapsed(session?.id) })
     this.tradeHandler = new BacktesterTradeHandler(session, null)
     this.tradeHandler.setDatafeed(this.datafeed)
 
@@ -157,6 +181,9 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     // Update trade handler if session changes
     if (prevProps.session?.id !== this.props.session?.id) {
       this.lastReplayTrade = null
+      this.setState({
+        orderPaneCollapsed: this.readOrderPaneCollapsed(this.props.session?.id),
+      })
       if (this.tradeHandler) {
         this.tradeHandler.updateSession(this.props.session)
         this.tradeHandler.setDatafeed(this.datafeed)
@@ -1295,12 +1322,34 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             <div className="relative flex-1 flex flex-col min-h-0">
               {renderPracticeTradeLayout(
                 chartElement,
-                padDetached || !tradePadProps ? null : <TradePanel {...tradePadProps} />,
+                padDetached || this.state.orderPaneCollapsed || !tradePadProps
+                  ? null
+                  : <TradePanel {...tradePadProps} />,
                 {
                   mobileScalpBar: mobileBar,
                   showMobileNav: this.state.showNav,
                 }
               )}
+              {!padDetached && tradePadProps ? (
+                <button
+                  type="button"
+                  onClick={this.toggleOrderPane}
+                  aria-label={this.state.orderPaneCollapsed ? 'Show order ticket' : 'Hide order ticket'}
+                  title={this.state.orderPaneCollapsed ? 'Show order ticket' : 'Hide order ticket'}
+                  className={`absolute top-12 z-[200] hidden h-8 w-8 items-center justify-center rounded-md border lg:inline-flex ${
+                    isDark
+                      ? 'border-[#3F3F46] bg-[#18181B] text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
+                      : 'border-[#E4E4E7] bg-white text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
+                  }`}
+                  style={{ right: this.state.orderPaneCollapsed ? 8 : 324 }}
+                >
+                  {this.state.orderPaneCollapsed ? (
+                    <PanelRightOpen className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                  ) : (
+                    <PanelRightClose className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                  )}
+                </button>
+              ) : null}
               {padDetached && tradePadProps && (
                 <div className="hidden lg:block">
                   <DetachedTradePanel

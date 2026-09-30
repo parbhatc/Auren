@@ -78,10 +78,7 @@ export async function bootChart(options?: Record<string, unknown>): Promise<BwcW
   const widget = await sdk.bootChart(options)
   paperWidgets.add(widget)
   const feed = paperFeedPromise ? await paperFeedPromise : null
-  const indicatorApi = widget.indicators as {
-    list?: () => Array<{ instanceId: string; defId: string }>
-    patch?: (instanceId: string, patch: Record<string, unknown>) => void
-  } | undefined
+  const indicatorApi = widget.indicators
   const unsubscribe = feed?.subscribePaperFeed(() => {
     for (const instance of indicatorApi?.list?.() ?? []) {
       if (instance.defId === 'custom-setups-paper') indicatorApi?.patch?.(instance.instanceId, {})

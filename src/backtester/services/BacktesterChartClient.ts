@@ -23,6 +23,11 @@ export class BacktesterChartClient extends WebSocketClientBase {
     super(callbacks as WebSocketClientCallbacks, {
       url: wsUrl,
       reconnectInterval: 2000, // 2 seconds for Safari
+      // The development server restarts when watched files change, and a
+      // production connection can be unavailable longer than the old
+      // five-attempt window. Keep the replay session waiting for the server
+      // instead of leaving Next candle permanently disconnected.
+      maxReconnectAttempts: Number.POSITIVE_INFINITY,
       enableHeartbeat: true,
       pingMessage: 'ServerTime',
       pongMessage: 'ClientTime'
@@ -130,7 +135,7 @@ export class BacktesterChartClient extends WebSocketClientBase {
       case 'sessionDataAck':
         this.sessionReady = true
         if (this.datafeed && typeof this.datafeed.flushPendingMessages === 'function') {
-          this.datafeed.flushPendingMessages()
+          this.datafeed.flushPendingMessages({ restoreSubscriptions: true })
         }
         {
           const callbacks = this.callbacks as BacktesterChartClientCallbacks
