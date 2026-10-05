@@ -65,15 +65,16 @@ export function isWsPong(raw) {
   }
 }
 
-/** Reply in the same wire format Tradesea prod expects ({ action: pong } when ping used action). */
+/** Reply in the same wire format and field Tradesea used for its ping. */
 export function buildWsPongReply(pingRaw) {
   const text = typeof pingRaw === 'string' ? pingRaw.trim() : pingRaw.toString('utf8').trim()
   if (text.startsWith('{')) {
     try {
       const json = JSON.parse(text)
-      if (json.action != null || json.op != null) {
-        return JSON.stringify({ action: 'pong' })
-      }
+      if (json.action != null) return JSON.stringify({ action: 'pong' })
+      if (json.op != null) return JSON.stringify({ op: 'pong' })
+      if (json.type != null) return JSON.stringify({ type: 'pong' })
+      if (json.event != null) return JSON.stringify({ event: 'pong' })
     } catch {
       /* fall through */
     }

@@ -90,6 +90,8 @@ test('next candle streams only the requesting socket subscriptions', () => {
 
   assert.equal(bars.length, 1)
   assert.equal(bars[0].subscriberUID, 'second-sub')
+  assert.equal(bars[0].symbol, 'NQ')
+  assert.equal(bars[0].resolution, '1')
   assert.equal(bars[0].candles.length, 1)
   assert.deepEqual(ack, { type: 'nextCandleAck', cursorSec: targetSec, emitted: 1 })
 })
@@ -155,6 +157,8 @@ test('1m step after a 30s-aligned cursor completes the current minute before app
   const message = ws.sent.find((item) => item.type === 'realtimeBars')
   assert.ok(message)
   assert.equal(message.subscriberUID, 'one-minute-sub')
+  assert.equal(message.symbol, 'NQ')
+  assert.equal(message.resolution, '1')
   assert.deepEqual(
     message.candles.map((bar) => bar.time),
     [currentBar.time, nextBar.time],

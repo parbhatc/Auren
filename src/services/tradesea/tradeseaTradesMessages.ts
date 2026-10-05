@@ -56,7 +56,10 @@ export interface TradeseaTradesWsMessage {
 }
 
 export function encodeTradesPing(): string {
-  return JSON.stringify({ action: 'ping' })
+  // The unified trades endpoint requires its original plain-text heartbeat.
+  // JSON action pings are accepted by MDS, but the trades endpoint ignores
+  // them and closes the socket with "ping timeout" after about 30 seconds.
+  return 'ping'
 }
 
 export function isTradesPong(raw: string): boolean {

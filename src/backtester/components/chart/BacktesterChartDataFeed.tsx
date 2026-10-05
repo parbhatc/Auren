@@ -1037,8 +1037,18 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    * Handle realtime bar updates from WebSocket
    * Called when the server sends a realtimeBar message
    */
-  handleRealtimeBar(data: { subscriberUID: string; candle: Bar }): void {
-    this.handleRealtimeBars({ subscriberUID: data.subscriberUID, candles: [data.candle] })
+  handleRealtimeBar(data: {
+    subscriberUID: string
+    symbol?: string
+    resolution?: ResolutionString | string
+    candle: Bar
+  }): void {
+    this.handleRealtimeBars({
+      subscriberUID: data.subscriberUID,
+      symbol: data.symbol,
+      resolution: data.resolution,
+      candles: [data.candle],
+    })
   }
 
   /** Server acks every nextCandle, even when no bars were emitted (data gaps,
@@ -1055,10 +1065,37 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
    * per batch instead of once per bar — avoids k+1 RAF schedules and k
    * market-book fan-outs when a step returns k bars.
    */
-  handleRealtimeBars(data: { subscriberUID: string; candles: Bar[] }): void {
+  handleRealtimeBars(data: {
+    subscriberUID: string
+    symbol?: string
+    resolution?: ResolutionString | string
+    candles: Bar[]
+  }): void {
     const subscription = this.subscriptions.get(data.subscriberUID)
     if (!subscription) {
       console.warn(`[BacktesterChartDataFeed] No subscription found for subscriberUID: ${data.subscriberUID}`)
+      return
+    }
+
+    // A pane UID is reused when its symbol or timeframe changes. A replay batch
+    // already in flight can therefore arrive after that UID has been rebound to
+    // another series. Without identity on the wire, an ES candle can be applied
+    // to the newly rebound NQ pane (or vice versa), producing impossible gaps and
+    // indicator levels such as a midpoint between 29k and 7k. Drop stale batches
+    // whose server-side subscription identity no longer matches the local pane.
+    const incomingSymbol = data.symbol ? this.normalizeSymbol(data.symbol) : ''
+    const expectedSymbol = this.normalizeSymbol(subscription.symbol)
+    const incomingResolution = String(data.resolution ?? '').trim().toUpperCase()
+    const expectedResolution = String(subscription.resolution ?? '').trim().toUpperCase()
+    if (
+      (incomingSymbol && incomingSymbol !== expectedSymbol) ||
+      (incomingResolution && incomingResolution !== expectedResolution)
+    ) {
+      console.warn(
+        `[BacktesterChartDataFeed] Dropped stale replay batch for ${data.subscriberUID}: ` +
+        `${incomingSymbol || '?'}@${incomingResolution || '?'} != ` +
+        `${expectedSymbol}@${expectedResolution}`,
+      )
       return
     }
 

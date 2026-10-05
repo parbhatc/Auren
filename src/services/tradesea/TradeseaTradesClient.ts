@@ -1,13 +1,12 @@
 /**
  * Tradesea unified user-data WebSocket.
- * Keepalive: wait for unifiedSnapshot → ping → pong → 3s → repeat.
+ * Keepalive: ping as soon as the socket opens → pong → 3s → repeat.
  */
 import { getAuthToken, getWebSocketUrl } from '../../api/api'
 import {
   encodeTradesPing,
   isTradesPing,
   isTradesPong,
-  isUnifiedSnapshotMessage,
   parseTradeseaTradesMessage,
   TradeseaTradesWsMessage,
 } from './tradeseaTradesMessages'
@@ -16,7 +15,6 @@ export type TradeseaTradesListener = (message: TradeseaTradesWsMessage) => void
 
 const PING_INTERVAL_MS = 3000
 const PONG_TIMEOUT_MS = 15_000
-const SNAPSHOT_WAIT_MS = 30_000
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -44,7 +42,6 @@ export class TradeseaTradesClient {
   private shouldReconnect = false
   private connectGeneration = 0
   private keepaliveAbort: AbortController | null = null
-  private snapshotReceived = false
   private pongWaiter: ((ok: boolean) => void) | null = null
 
   onMessage(listener: TradeseaTradesListener): () => void {
@@ -74,7 +71,6 @@ export class TradeseaTradesClient {
     const generation = ++this.connectGeneration
     const ws = new WebSocket(url)
     this.ws = ws
-    this.snapshotReceived = false
     console.info('[Tradesea Trades WS] Connecting…', {
       accountId: accountId.slice(0, 12) + '…',
     })
@@ -100,9 +96,6 @@ export class TradeseaTradesClient {
       try {
         const parsed = parseTradeseaTradesMessage(JSON.parse(text))
         if (parsed) {
-          if (isUnifiedSnapshotMessage(parsed)) {
-            this.snapshotReceived = true
-          }
           this.listeners.forEach((fn) => fn(parsed))
         }
       } catch {
@@ -172,16 +165,6 @@ export class TradeseaTradesClient {
 
     void (async () => {
       try {
-        const deadline = Date.now() + SNAPSHOT_WAIT_MS
-        while (!this.snapshotReceived && !ac.signal.aborted) {
-          if (Date.now() > deadline) {
-            console.warn('[TradeseaTradesClient] unifiedSnapshot not received before timeout')
-            break
-          }
-          if (this.ws !== ws || generation !== this.connectGeneration) return
-          await sleep(50, ac.signal)
-        }
-
         while (
           !ac.signal.aborted &&
           this.ws === ws &&
@@ -206,7 +189,6 @@ export class TradeseaTradesClient {
   private stopKeepalive(): void {
     this.keepaliveAbort?.abort()
     this.keepaliveAbort = null
-    this.snapshotReceived = false
     this.resolvePongWaiter(false)
   }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  buildWsPongReply,
   translateClientToUpstream,
   translateUpstreamToClient,
 } from '../src/websocket/mds/MdsProtocol.js'
@@ -17,6 +18,14 @@ function translateUpstream(frame) {
     translateUpstreamToClient(Buffer.from(JSON.stringify(frame)), false)
   )
 }
+
+test('answers heartbeat pings using the same wire field', () => {
+  assert.equal(buildWsPongReply('ping'), 'pong')
+  assert.equal(buildWsPongReply('{"action":"ping"}'), '{"action":"pong"}')
+  assert.equal(buildWsPongReply('{"op":"ping"}'), '{"op":"pong"}')
+  assert.equal(buildWsPongReply('{"type":"ping"}'), '{"type":"pong"}')
+  assert.equal(buildWsPongReply('{"event":"ping"}'), '{"event":"pong"}')
+})
 
 test('keeps f:7 TTV enabled for a two-pane NQ/ES layout', () => {
   assert.deepEqual(

@@ -500,7 +500,13 @@ class BacktesterWebSocket extends WebSocketBase {
             volume,
           }
           for (const uid of uids) {
-            this.send(ws, { type: "realtimeBars", subscriberUID: uid, candles: [partial] })
+            this.send(ws, {
+              type: "realtimeBars",
+              subscriberUID: uid,
+              symbol,
+              resolution,
+              candles: [partial],
+            })
           }
           emittedFrames += 1
           continue
@@ -579,6 +585,8 @@ class BacktesterWebSocket extends WebSocketBase {
           this.send(ws, {
             type: "realtimeBars",
             subscriberUID: uid,
+            symbol,
+            resolution,
             candles: framesToSend
           })
         }
