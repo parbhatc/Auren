@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
   getPositionPnlDisplay,
+  getShowMicroPositionsOnMiniCharts,
   setPositionPnlDisplay,
+  setShowMicroPositionsOnMiniCharts,
 } from '../../../../constants/tradePanelSettings'
 import { TRADE_PANEL_SETTINGS_CHANGED_EVENT } from '../../../../constants/tradePanel'
+import Switch from '../../Practice/Switch'
 
 type PnlDisplayMode = 'dollars' | 'ticks' | 'points'
 
@@ -19,9 +22,15 @@ const OPTIONS: Array<{ value: PnlDisplayMode; label: string }> = [
  */
 export default function PositionPnlDisplaySetting({ isDark }: { isDark: boolean }) {
   const [mode, setMode] = useState<PnlDisplayMode>(() => getPositionPnlDisplay())
+  const [showMicroPositions, setShowMicroPositions] = useState(
+    getShowMicroPositionsOnMiniCharts
+  )
 
   useEffect(() => {
-    const onChange = () => setMode(getPositionPnlDisplay())
+    const onChange = () => {
+      setMode(getPositionPnlDisplay())
+      setShowMicroPositions(getShowMicroPositionsOnMiniCharts())
+    }
     window.addEventListener(TRADE_PANEL_SETTINGS_CHANGED_EVENT, onChange)
     return () => window.removeEventListener(TRADE_PANEL_SETTINGS_CHANGED_EVENT, onChange)
   }, [])
@@ -68,6 +77,21 @@ export default function PositionPnlDisplaySetting({ isDark }: { isDark: boolean 
       <p className={`text-[11px] mt-1.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
         How the position line on the chart shows P&L — e.g. +$50.00, +10 ticks, or +2.5 pts.
       </p>
+
+      <div className={`mt-3 border-t pt-3 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+        <Switch
+          checked={showMicroPositions}
+          onChange={(enabled) => {
+            setShowMicroPositions(enabled)
+            setShowMicroPositionsOnMiniCharts(enabled)
+          }}
+          isDark={isDark}
+          label="Show micro positions on mini charts"
+        />
+        <p className={`mt-1.5 text-[10px] leading-4 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          Shows MNQ on NQ, MES on ES, MYM on YM, M2K on RTY, MGC on GC, and MCL on CL.
+        </p>
+      </div>
     </div>
   )
 }

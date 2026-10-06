@@ -3,7 +3,12 @@
  * Manages caching of trade-related data for charts
  */
 
-import { BwcPositionBridge, BwcPositionLineHandle, type BwcWidgetWithOverlay } from '../../chart/bwcPositionBridge'
+import {
+  BwcPositionBridge,
+  BwcPositionLineHandle,
+  type BwcPositionPresentation,
+  type BwcWidgetWithOverlay,
+} from '../../chart/bwcPositionBridge'
 import { chartSymbolToProductRoot } from '../../services/tradesea/tradeseaSymbolInfo'
 import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 
@@ -93,9 +98,9 @@ class ChartTradeCache {
       let symbol = info.symbol
 
       if(symbol === chartSymbol){
-        this.onOpenPosition(symbol, info.entry, info.contracts, info.stopLoss, info.takeProfit, info.entryTime, info.id, info.stopLossOrderId, info.takeProfitOrderId)
+        this.onOpenPosition(symbol, info.entry, info.contracts, info.stopLoss, info.takeProfit, info.entryTime, info.id, info.stopLossOrderId, info.takeProfitOrderId, info.stopLossMode, info.softStopTrigger)
       }else{
-        let data = this.setData(symbol, info.entry, info.stopLoss, info.takeProfit, info.contracts, info.entryTime, info.id, info.stopLossOrderId, info.takeProfitOrderId)
+        let data = this.setData(symbol, info.entry, info.stopLoss, info.takeProfit, info.contracts, info.entryTime, null, info.id, info.stopLossOrderId, info.takeProfitOrderId, info.stopLossMode, info.softStopTrigger)
         this.handleOpenPosition(data)
       }
     }
@@ -289,7 +294,7 @@ class ChartTradeCache {
     return ((originalContracts * entry) + (contracts * price)) / totalContracts;
   }
 
-  onOpenPosition(symbol: string, price: number, contracts: number, stopLoss: number | null = null, takeProfit: number | null = null, entryTime: number | null = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null) {
+  onOpenPosition(symbol: string, price: number, contracts: number, stopLoss: number | null = null, takeProfit: number | null = null, entryTime: number | null = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null, stopLossMode: 'hard' | 'soft' = 'hard', softStopTrigger: 'bar_close' = 'bar_close') {
     const chartSymbol = this.chart.symbol()
     const cacheKey = this.symbolMatchesActiveChart(symbol) ? chartSymbol : symbol
     let update = cacheKey === chartSymbol
@@ -318,7 +323,7 @@ class ChartTradeCache {
           this.clearPositionLocal(position)
         }
         if (reopenContracts !== 0) {
-          return this.onOpenPosition(cacheKey, price, reopenContracts, stopLoss, takeProfit, entryTime, id, stopLossOrderId, takeProfitOrderId)
+          return this.onOpenPosition(cacheKey, price, reopenContracts, stopLoss, takeProfit, entryTime, id, stopLossOrderId, takeProfitOrderId, stopLossMode, softStopTrigger)
         }
         return null
       }
@@ -354,7 +359,7 @@ class ChartTradeCache {
     } else {
       console.log('[ChartTradeCache] onOpenPosition: update is false, not creating line:', { symbol, chartSymbol })
     }
-    let data = this.setData(cacheKey, price, stopLoss, takeProfit, contracts, entryTime ?? lastBarTime, line, id, stopLossOrderId, takeProfitOrderId)
+    let data = this.setData(cacheKey, price, stopLoss, takeProfit, contracts, entryTime ?? lastBarTime, line, id, stopLossOrderId, takeProfitOrderId, stopLossMode, softStopTrigger)
     this.handleOpenPosition(data)
     return data
   }
@@ -498,17 +503,25 @@ class ChartTradeCache {
     }
   }
 
+  protected getPositionPresentation(
+    _symbol: string,
+    _contracts: number
+  ): BwcPositionPresentation | null {
+    return null
+  }
+
   createLines(symbol: string, entryPrice: number, _price: number, contracts: number, stopLoss: number | null | undefined, takeProfit: number | null | undefined){
     const bridge = this.getPositionBridge()
     if (!bridge) return null
     void bridge.sync(symbol, entryPrice, contracts, stopLoss ?? null, takeProfit ?? null, {
       createBrackets: this.create_stop_loss_and_take_profit_lines,
+      presentation: this.getPositionPresentation(symbol, contracts),
     })
     return bridge.createCompatHandle(symbol)
   }
 
-  setData(symbol: string, entry: number, stopLoss: number | null, takeProfit: number | null, contracts: number, entryTime: number, line: BwcPositionLineHandle | null | undefined = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null) {
-    let data = {symbol, entry, stopLoss, takeProfit, contracts, type: contracts > 0 ? "long" : "short", entryTime, line, id, stopLossOrderId, takeProfitOrderId, positionId: null as string | null}
+  setData(symbol: string, entry: number, stopLoss: number | null, takeProfit: number | null, contracts: number, entryTime: number, line: BwcPositionLineHandle | null | undefined = null, id: number | null = null, stopLossOrderId: number | string | null = null, takeProfitOrderId: number | string | null = null, stopLossMode: 'hard' | 'soft' = 'hard', softStopTrigger: 'bar_close' = 'bar_close') {
+    let data = {symbol, entry, stopLoss, takeProfit, contracts, type: contracts > 0 ? "long" : "short", entryTime, line, id, stopLossOrderId, takeProfitOrderId, positionId: null as string | null, stopLossMode, softStopTrigger}
     this.cache.set(symbol, data)
     return data
   }

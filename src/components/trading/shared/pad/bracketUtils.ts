@@ -139,3 +139,34 @@ export function bracketDollarAmount(
   const perContract = deltaToDistance(Math.abs(ref - price), 'dollars', tickSize, tickValue)
   return perContract == null ? null : Math.round(perContract * qty * 100) / 100
 }
+
+export type RiskPositionSize = {
+  quantity: number
+  perContractRisk: number
+  plannedRisk: number
+}
+
+/** Size a position within risk + optional round-up buffer and the account quantity cap. */
+export function positionSizeForRisk(
+  riskBudget: number,
+  entryPrice: number,
+  stopPrice: number,
+  tickSize: number,
+  tickValue: number,
+  maxQty: number,
+  riskBuffer = 0
+): RiskPositionSize | null {
+  if (!Number.isFinite(riskBudget) || riskBudget <= 0 || maxQty < 1) return null
+  const perContractRisk = bracketDollarAmount(entryPrice, stopPrice, 1, tickSize, tickValue)
+  if (perContractRisk == null || perContractRisk <= 0) return null
+  const floorQty = Math.max(0, Math.floor(riskBudget / perContractRisk))
+  const ceilQty = Math.ceil(riskBudget / perContractRisk)
+  const allowedRisk = riskBudget + Math.max(0, Number(riskBuffer) || 0)
+  const bufferedQty = perContractRisk * ceilQty <= allowedRisk ? ceilQty : floorQty
+  const quantity = Math.min(bufferedQty, Math.floor(maxQty))
+  return {
+    quantity,
+    perContractRisk,
+    plannedRisk: Math.round(perContractRisk * quantity * 100) / 100,
+  }
+}

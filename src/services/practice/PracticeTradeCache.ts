@@ -14,9 +14,15 @@ import {
   writeBracketCheckpointSec,
 } from './practiceBracketReplay'
 import { resolveBracketCrossHit } from '../../utils/practiceBracketMath'
+import {
+  practiceContractRoot,
+  practiceMicroRoot,
+} from './practiceContractFamily'
 
 import type { TradeseaDatafeed } from '../tradesea/TradeseaDatafeed'
 import { isBwcChartPanning } from '../../utils/bwcPan'
+import { TRADE_PANEL_SETTINGS_CHANGED_EVENT } from '../../constants/tradePanel'
+import { getShowMicroPositionsOnMiniCharts } from '../../constants/tradePanelSettings'
 
 
 
@@ -36,6 +42,9 @@ export class PracticeTradeCache extends ChartTradeCache {
   /** Previous mark per cache key — detect bracket crosses between ticks. */
   private lastBracketMark = new Map<string, number>()
 
+  /** Last live mark in each one-minute bucket for browser-managed soft stops. */
+  private softStopMinuteMarks = new Map<string, { minute: number; close: number; time: number }>()
+
   private pendingBracketCloses = new Map<
     string,
     { price: number; time?: number; reason: 'stop_loss' | 'take_profit' }
@@ -48,6 +57,10 @@ export class PracticeTradeCache extends ChartTradeCache {
     } | null
     widget?.positionOverlay?.refreshLayout?.()
     widget?.orderLines?.requestRefresh?.()
+    this.scheduleReconcilePositionLines()
+  }
+
+  private readonly onTradePanelSettingsChanged = () => {
     this.scheduleReconcilePositionLines()
   }
 
@@ -68,6 +81,10 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.onChartLayoutResize, { passive: true })
       window.visualViewport?.addEventListener('resize', this.onChartLayoutResize, { passive: true })
+      window.addEventListener(
+        TRADE_PANEL_SETTINGS_CHANGED_EVENT,
+        this.onTradePanelSettingsChanged
+      )
     }
 
   }
@@ -77,6 +94,10 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (typeof window !== 'undefined') {
       window.removeEventListener('resize', this.onChartLayoutResize)
       window.visualViewport?.removeEventListener('resize', this.onChartLayoutResize)
+      window.removeEventListener(
+        TRADE_PANEL_SETTINGS_CHANGED_EVENT,
+        this.onTradePanelSettingsChanged
+      )
     }
     for (const timer of this.reconcileTimers) clearTimeout(timer)
     this.reconcileTimers = []
@@ -90,6 +111,7 @@ export class PracticeTradeCache extends ChartTradeCache {
     this.cache.clear()
     this.positionIds.clear()
     this.lastBracketMark.clear()
+    this.softStopMinuteMarks.clear()
     this.pendingBracketCloses.clear()
     this.closingBracketIds.clear()
   }
@@ -138,6 +160,16 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     return { tickSize, tickValue }
 
+  }
+
+  protected getPositionPresentation(symbol: string, contracts: number) {
+    const { tickSize, tickValue } = this.resolveTicks(symbol)
+    return {
+      symbolLabel: practiceContractRoot(symbol),
+      quantityLabel: String(Math.abs(contracts)),
+      tickSize,
+      tickValue,
+    }
   }
 
 
@@ -256,11 +288,17 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     stopLossOrderId: number | string | null = null,
 
-    takeProfitOrderId: number | string | null = null
+    takeProfitOrderId: number | string | null = null,
+
+    stopLossMode: 'hard' | 'soft' = 'hard',
+
+    softStopTrigger: 'bar_close' = 'bar_close'
 
   ) {
 
     const cacheKey = String(symbol || '').trim() || this.activeChartSymbol()
+
+    const existingBeforeOpen = this.cache.get(cacheKey)
 
     const datafeed = this.getDatafeed()
 
@@ -294,7 +332,11 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         stopLossOrderId,
 
-        takeProfitOrderId
+        takeProfitOrderId,
+
+        stopLossMode,
+
+        softStopTrigger
 
       )
 
@@ -332,9 +374,27 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       stopLossOrderId,
 
-      takeProfitOrderId
+      takeProfitOrderId,
+
+      stopLossMode,
+
+      softStopTrigger
 
     )
+
+    if (existingBeforeOpen && opened?.contracts) {
+      opened.stopLoss = stopLoss
+      opened.takeProfit = takeProfit
+      opened.stopLossMode = stopLossMode
+      opened.softStopTrigger = softStopTrigger
+      if (opened.line && typeof opened.line.updateStopLossLine === 'function') {
+        opened.line.updateStopLossLine(opened.entry, stopLoss, opened.contracts, true, 'sync')
+      }
+      if (opened.line && typeof opened.line.updateTakeProfitLine === 'function') {
+        opened.line.updateTakeProfitLine(opened.entry, takeProfit, opened.contracts, true, 'sync')
+      }
+      this.schedulePersistPosition(opened)
+    }
 
     if (mark != null && Number.isFinite(mark)) {
       this.lastBracketMark.set(cacheKey, mark)
@@ -547,8 +607,42 @@ export class PracticeTradeCache extends ChartTradeCache {
     const chartSym = this.activeChartSymbol()
     if (!chartSym) return false
     const chartProduct = this.productSymbol(chartSym).toUpperCase()
-    const keyProduct = this.productSymbol(cacheKey).toUpperCase()
-    return Boolean(chartProduct && keyProduct && chartProduct === keyProduct)
+    if (!chartProduct) return false
+    const chartMicroProduct = practiceMicroRoot(chartProduct)
+    const chartIsSupportedMini = Boolean(
+      chartMicroProduct && chartMicroProduct !== chartProduct
+    )
+
+    // Prefer the exact contract when both the mini and micro are open. If the
+    // active contract is flat, display its related contract on the same chart
+    // (for example, an MNQ position line while viewing NQ).
+    let familyFallback: string | null = null
+    for (const [key, position] of this.cache.entries()) {
+      if (!position?.contracts) continue
+      const keyProduct = this.productSymbol(key).toUpperCase()
+      if (keyProduct === chartProduct) return key === cacheKey
+      if (
+        getShowMicroPositionsOnMiniCharts() &&
+        chartIsSupportedMini &&
+        !familyFallback &&
+        keyProduct === chartMicroProduct
+      ) {
+        familyFallback = key
+      }
+    }
+    return familyFallback === cacheKey
+  }
+
+  getActivePositionForUpl(): { key: string; entry: number; contracts: number } | null {
+    for (const [key, position] of this.cache.entries()) {
+      if (!position?.contracts || !this.positionBelongsOnActiveChart(key)) continue
+      return {
+        key,
+        entry: Number(position.entry),
+        contracts: Number(position.contracts),
+      }
+    }
+    return null
   }
 
   /** Create chart lines for open positions that match the active chart product (e.g. NQ vs MNQ). */
@@ -641,6 +735,9 @@ export class PracticeTradeCache extends ChartTradeCache {
         this.updateActivePositionMark(price)
       }
       this.mergeOverlayBracketsIntoCache(cacheKey)
+      if (position.stopLossMode === 'soft' && position.stopLoss != null) {
+        this.updateSoftStopMinute(cacheKey, position, price, book?.updatedAt)
+      }
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
     }
@@ -672,11 +769,38 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (position.stopLoss == null && position.takeProfit == null) return
 
     const prev = this.lastBracketMark.get(key)
-    const hit = resolveBracketCrossHit(position as never, prev, mark)
+    const bracketPosition = position.stopLossMode === 'soft'
+      ? { ...position, stopLoss: null }
+      : position
+    const hit = resolveBracketCrossHit(bracketPosition as never, prev, mark)
     this.lastBracketMark.set(key, mark)
     if (!hit) return
 
     this.closeOnBracketHit(key, position, hit.exitPrice, time, hit.reason)
+  }
+
+  private updateSoftStopMinute(
+    cacheKey: string,
+    position: Record<string, any>,
+    mark: number,
+    rawTime?: number
+  ): void {
+    const timeMs = rawTime && rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime ?? Date.now()
+    const minute = Math.floor(timeMs / 60_000)
+    const previous = this.softStopMinuteMarks.get(cacheKey)
+    this.softStopMinuteMarks.set(cacheKey, { minute, close: mark, time: timeMs })
+    if (!previous || previous.minute >= minute) return
+    const stop = Number(position.stopLoss)
+    const triggered = Number(position.contracts) > 0
+      ? previous.close <= stop
+      : previous.close >= stop
+    if (triggered) {
+      aurenToast.warning(
+        'Soft stop triggered',
+        `1-minute close ${previous.close} crossed ${stop}. Closing the full position.`
+      )
+      this.closeOnBracketHit(cacheKey, position, previous.close, previous.time, 'stop_loss')
+    }
   }
 
   private clearBracketMark(cacheKey: string): void {
@@ -795,10 +919,10 @@ export class PracticeTradeCache extends ChartTradeCache {
   handleUpdateStopLoss(
     price: number | null,
     oldPrice: number | null,
-    position: { symbol: string; entry: number; contracts: number; stopLoss?: number | null; takeProfit?: number | null; entryTime: number; type: string },
+    position: { symbol: string; entry: number; contracts: number; stopLoss?: number | null; takeProfit?: number | null; entryTime: number; type: string; stopLossMode?: 'hard' | 'soft'; softStopTrigger?: 'bar_close' },
     context?: string
   ) {
-    if (this.shouldCloseOnBracketDrag(position, 'stopLoss', price, context)) {
+    if (position.stopLossMode !== 'soft' && this.shouldCloseOnBracketDrag(position, 'stopLoss', price, context)) {
       this.closePositionAtMarket(position)
       return
     }
@@ -877,6 +1001,8 @@ export class PracticeTradeCache extends ChartTradeCache {
       takeProfit?: number | null
       entryTime: number
       type: string
+      stopLossMode?: 'hard' | 'soft'
+      softStopTrigger?: 'bar_close'
     },
     context?: string
   ) {
@@ -896,6 +1022,8 @@ export class PracticeTradeCache extends ChartTradeCache {
       takeProfit?: number | null
       entryTime: number
       type: string
+      stopLossMode?: 'hard' | 'soft'
+      softStopTrigger?: 'bar_close'
     }
   ) {
     super.handleUpdateSize(oldSize, newSize, position)
@@ -912,6 +1040,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     entryTime: number
     type: string
     positionId?: string | null
+    stopLossMode?: 'hard' | 'soft'
+    softStopTrigger?: 'bar_close'
   } | null = null
 
   /** Debounce SL/TP — one WS upsert after the line settles. */
@@ -924,6 +1054,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     entryTime: number
     type: string
     positionId?: string | null
+    stopLossMode?: 'hard' | 'soft'
+    softStopTrigger?: 'bar_close'
   }) {
     this.pendingPersist = position
     if (this.persistTimer) clearTimeout(this.persistTimer)
@@ -944,6 +1076,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     entryTime: number
     type: string
     positionId?: string | null
+    stopLossMode?: 'hard' | 'soft'
+    softStopTrigger?: 'bar_close'
   }) {
     const tradeSymbol = this.productSymbol(position.symbol)
     const cacheKey = position.symbol
@@ -963,7 +1097,7 @@ export class PracticeTradeCache extends ChartTradeCache {
       instrument: tradeSymbol,
       contracts: position.contracts,
       entry: position.entry,
-      stopLoss: position.stopLoss ?? null,
+      stopLoss: position.stopLossMode === 'soft' ? null : position.stopLoss ?? null,
       takeProfit: position.takeProfit ?? null,
       entryTime: entryTimeSec,
       type: (position.type === 'short' ? 'short' : 'long') as 'long' | 'short',
@@ -980,6 +1114,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     entryTime: number
     type: string
     positionId?: string | null
+    stopLossMode?: 'hard' | 'soft'
+    softStopTrigger?: 'bar_close'
   },
     action: 'open' | 'modify'
   ) {
@@ -1112,10 +1248,11 @@ export class PracticeTradeCache extends ChartTradeCache {
     this.flushPendingBracketClose(cacheKey)
     if (!existing) return
 
+    const nextStopLoss = existing.stopLossMode === 'soft' ? existing.stopLoss : position.stopLoss
     const unchanged =
       existing.entry === position.entry &&
       existing.contracts === position.contracts &&
-      existing.stopLoss === position.stopLoss &&
+      existing.stopLoss === nextStopLoss &&
       existing.takeProfit === position.takeProfit &&
       existing.entryTime === position.entryTime &&
       existing.type === position.type &&
@@ -1124,13 +1261,13 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     existing.entry = position.entry
     existing.contracts = position.contracts
-    existing.stopLoss = position.stopLoss
+    if (existing.stopLossMode !== 'soft') existing.stopLoss = position.stopLoss
     existing.takeProfit = position.takeProfit
     existing.entryTime = position.entryTime
     existing.type = position.type
     ;(existing as { positionId?: string }).positionId = position.id
-    if (existing.line && typeof existing.line.updateStopLossLine === 'function' && position.stopLoss != null) {
-      existing.line.updateStopLossLine(existing.entry, position.stopLoss, existing.contracts, false, 'sync')
+    if (existing.line && typeof existing.line.updateStopLossLine === 'function' && nextStopLoss != null) {
+      existing.line.updateStopLossLine(existing.entry, nextStopLoss, existing.contracts, false, 'sync')
     }
     if (existing.line && typeof existing.line.updateTakeProfitLine === 'function' && position.takeProfit != null) {
       existing.line.updateTakeProfitLine(existing.entry, position.takeProfit, existing.contracts, false, 'sync')

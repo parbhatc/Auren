@@ -3,6 +3,7 @@ import type { TradeseaMarketBook, MarketBookUpdateKind } from '../services/trade
 import type { DomPositionContext } from '../services/tradesea/tradeseaPnL'
 import type { TradeseaSearchSymbolResult } from '../services/tradesea/tradeseaSymbolInfo'
 import type { TradingMode } from './tradingMode'
+import type { PracticePositionFamilySummary } from '../services/practice/practiceContractFamily'
 
 export type TradePanelTab = 'quick' | 'dom' | 'ticket'
 
@@ -15,6 +16,8 @@ export type PracticeTradePanelTab = TradePanelTab
 export type TradePanelSettings = {
   /** How the chart position line shows running P&L: $0.00 vs 3 ticks vs points. */
   positionPnlDisplay?: 'dollars' | 'ticks' | 'points'
+  /** Show a related micro position line while viewing its mini chart (MNQ on NQ, etc.). */
+  showMicroPositionsOnMiniCharts?: boolean
   hideBuySell: boolean
   hideJoinBidAsk: boolean
   hideClosePosition: boolean
@@ -35,6 +38,9 @@ export type PracticeTradePanelSettings = TradePanelSettings
 export type BracketOptions = {
   stopLoss: number | null
   takeProfit: number | null
+  /** Hard submits a broker/server bracket; soft is monitored only by the open browser tab. */
+  stopLossMode?: 'hard' | 'soft'
+  softStopTrigger?: 'bar_close'
 }
 
 /** @deprecated use BracketOptions */
@@ -44,6 +50,8 @@ export type OrderSubmitOptions = {
   orderType: OrderType
   entryPrice?: number
   stopLimitPrice?: number
+  /** Product selected by automatic risk routing (for example MNQ on an NQ chart). */
+  executionSymbol?: string
 }
 
 /** @deprecated use OrderSubmitOptions */
@@ -86,6 +94,24 @@ export type TradePanelProps = {
   tickSize?: number
   /** $ per tick per contract — enables the $ bracket unit and risk summary. */
   tickValue?: number
+  /** Practice-only quantity cap for an execution product selected by risk routing. */
+  getMaxQuantityForSymbol?: (symbol: string) => number
+  /** Practice-only: allow automatic mini-to-micro execution routing. */
+  autoRiskContractRouting?: boolean
+  /** Route Auto sizing without changing the chart or manually selected contract. */
+  riskExecutionProductRoot?: string
+  /** Arm a one-shot click on the active chart and return its snapped price. */
+  pickChartPriceOnce?: (onPrice: (price: number) => void) => (() => void) | null
+  /** Draw one cursor-following stop line while Auto waits for chart selection. */
+  showAutoPositionPreview?: (options: {
+    side: OrderSide
+    entry: number
+    stopLoss: number
+    tickSize: number
+    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+  }) => (() => void) | null
+  /** Open mini/micro positions related to the chart product. */
+  getPositionFamilySummary?: () => PracticePositionFamilySummary | null
   getMarketBook?: () => TradeseaMarketBook | null
   subscribeMarketBook?: (
     onUpdate: (streamId: string, kind: MarketBookUpdateKind) => void

@@ -566,7 +566,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
     const settings = getPracticeSettings()
     const requestedMarketId =
-      this.practiceAccountId || settings.accountId || sim.marketDataAccountId || ''
+      this.practiceAccountId || sim.marketDataAccountId || settings.accountId || ''
 
     this.accountsLoading = true
     try {
@@ -784,7 +784,11 @@ export class TradeseaPropFirm extends PropFirmBase {
           },
           {
             connectTrades: !this.practiceMode,
-            usePracticeMarketData: this.practiceMode,
+            // The server-managed practice feed is the TradingView provider.
+            // A Tradesea practice account must keep using its selected
+            // Tradesea/Lucid UDF + MDS connection; wrapping every practice
+            // chart here silently routed Tradesea charts through TradingView.
+            usePracticeMarketData: this.practiceMode && this.serverManagedPracticeData,
           }
         )
       if (this.selectedAccountId !== accountId) {

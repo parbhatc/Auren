@@ -24,14 +24,14 @@ export function saveTradePadSymbol(accountId: string, root: string): void {
   }
 }
 
-/** When true (default), chart symbol changes also update the trade contract. */
+/** When true, chart symbol changes also update the trade contract. Off by default. */
 export function getTradePadAutoChange(accountId: string): boolean {
   try {
     const raw = localStorage.getItem(autoChangeKey(accountId))
     if (raw === '0' || raw === 'false') return false
-    return true
+    return false
   } catch {
-    return true
+    return false
   }
 }
 

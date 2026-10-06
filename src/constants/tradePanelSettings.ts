@@ -10,6 +10,7 @@ export type { TradePanelSettings, PracticeTradePanelSettings } from '../types/tr
 
 const DEFAULT_TRADE_PANEL_SETTINGS: TradePanelSettings = {
   positionPnlDisplay: 'dollars',
+  showMicroPositionsOnMiniCharts: true,
   hideBuySell: false,
   hideJoinBidAsk: false,
   hideClosePosition: false,
@@ -50,6 +51,16 @@ export function setPositionPnlDisplay(
   const settings = getTradePanelSettings()
   if (settings.positionPnlDisplay === mode) return
   saveTradePanelSettings({ ...settings, positionPnlDisplay: mode })
+}
+
+export function getShowMicroPositionsOnMiniCharts(): boolean {
+  return getTradePanelSettings().showMicroPositionsOnMiniCharts !== false
+}
+
+export function setShowMicroPositionsOnMiniCharts(enabled: boolean): void {
+  const settings = getTradePanelSettings()
+  if (settings.showMicroPositionsOnMiniCharts === enabled) return
+  saveTradePanelSettings({ ...settings, showMicroPositionsOnMiniCharts: enabled })
 }
 
 /** @deprecated use getTradePanelSettings */

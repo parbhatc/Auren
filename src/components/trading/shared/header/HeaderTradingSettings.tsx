@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
 import { usePracticeLockout } from '../../../../hooks/usePracticeLockout'
 import { t } from '../../../../utils/translator'
 import { TradingLimitsSettingsPanel } from './TradingLimitsSettingsPanel'
 import PositionPnlDisplaySetting from './PositionPnlDisplaySetting'
+import RiskPositionSizeSetting from './RiskPositionSizeSetting'
 
 /**
  * Header settings gear. Always offers the global trade-panel settings
@@ -18,18 +20,32 @@ export default function HeaderTradingSettings({
   isDark: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'display' | 'risk' | 'limits'>('display')
   const rootRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const { status, isActiveAccount } = usePracticeLockout(practiceAccountId)
 
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(target) &&
+        !dialogRef.current?.contains(target)
+      ) {
         setOpen(false)
       }
     }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKeyDown)
+    }
   }, [open])
 
   const showLimits = Boolean(practiceAccountId && isActiveAccount && status)
@@ -67,24 +83,67 @@ export default function HeaderTradingSettings({
         ) : null}
       </button>
 
-      {open ? (
-        <div
-          role="dialog"
-          aria-label={t('practice.lockout.settingsTitle')}
-          className={`absolute right-0 top-full mt-1.5 z-[200] w-[min(20rem,calc(100vw-1rem))] rounded-xl border overflow-hidden ${menuClass}`}
-        >
-          <PositionPnlDisplaySetting isDark={isDark} />
-          {showLimits && practiceAccountId ? (
-            <div className={`border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-              <TradingLimitsSettingsPanel
-                practiceAccountId={practiceAccountId}
-                isDark={isDark}
-                onDismiss={() => setOpen(false)}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/20 p-3 backdrop-blur-[1px] sm:p-6"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setOpen(false)
+              }}
+            >
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('practice.lockout.settingsTitle')}
+                className={`flex h-[min(42rem,calc(100vh-2rem))] w-[min(32rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border ${menuClass}`}
+              >
+                <div
+                  className={`grid shrink-0 ${showLimits ? 'grid-cols-3' : 'grid-cols-2'} border-b p-1.5 ${
+                    isDark ? 'border-slate-700 bg-slate-950/50' : 'border-slate-200 bg-slate-50'
+                  }`}
+                  role="tablist"
+                  aria-label="Trading settings sections"
+                >
+                  {([
+                    ['display', 'Display'],
+                    ['risk', 'Risk & sizing'],
+                    ...(showLimits ? ([['limits', 'Limits & lockout']] as const) : []),
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === id}
+                      onClick={() => setActiveTab(id)}
+                      className={`h-8 rounded-lg px-2 text-[11px] font-semibold transition ${
+                        activeTab === id
+                          ? 'bg-violet-600 text-white shadow-sm'
+                          : isDark
+                            ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                            : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {activeTab === 'display' ? <PositionPnlDisplaySetting isDark={isDark} /> : null}
+                  {activeTab === 'risk' ? <RiskPositionSizeSetting isDark={isDark} /> : null}
+                  {activeTab === 'limits' && showLimits && practiceAccountId ? (
+                    <TradingLimitsSettingsPanel
+                      practiceAccountId={practiceAccountId}
+                      isDark={isDark}
+                      onDismiss={() => setOpen(false)}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </div>,
+          document.body,
+        )
+        : null}
     </div>
   )
 }

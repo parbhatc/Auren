@@ -18,6 +18,7 @@ import { debugTradeseaUpl } from './tradeseaDebug'
 import { toTradeseaDelayedTicker } from './tradeseaStreamSymbol'
 import { isMarketClosedApiError, MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { findPositionsForInstrument, instrumentsMatch } from './tradeseaPositions'
+import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
 
 export class TradeseaTradeHandler {
   private widget: any = null
@@ -26,6 +27,7 @@ export class TradeseaTradeHandler {
   tradeCache: TradeseaTradeCache | null = null
   private streamSyncTimer: ReturnType<typeof setTimeout> | null = null
   private marketBookUnsub: (() => void) | null = null
+  private cancelChartPricePick: (() => void) | null = null
   /** Fired when candle-driven UP&L changes (account bar). */
   onUnrealizedPnLUpdate?: (upl: number) => void
 
@@ -62,6 +64,7 @@ export class TradeseaTradeHandler {
             ? (book.bestBid + book.bestAsk) / 2
             : book?.bestBid ?? book?.bestAsk)
         if (mark != null && Number.isFinite(mark)) {
+          this.tradeCache?.onMarketPrice(streamId, mark, Date.now())
           this.updateUnrealizedFromMark(mark, streamId)
         }
       })
@@ -183,6 +186,60 @@ export class TradeseaTradeHandler {
 
   resolveInstrumentPublic(chartSymbol: string): string {
     return this.resolveInstrument(chartSymbol)
+  }
+
+  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+    this.cancelChartPricePick?.()
+    const chart = this.widget?.lcChart as {
+      subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+      unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+    } | undefined
+    const series = this.widget?.series as {
+      coordinateToPrice?: (coordinate: number) => number | null
+    } | undefined
+    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
+      return null
+    }
+
+    let active = true
+    const cancel = () => {
+      if (!active) return
+      active = false
+      chart.unsubscribeClick?.(handler)
+      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+    }
+    const handler = (event: { point?: { y?: number } }) => {
+      const y = event.point?.y
+      if (!active || y == null || !Number.isFinite(y)) return
+      const rawPrice = series.coordinateToPrice?.(y)
+      if (rawPrice == null || !Number.isFinite(rawPrice)) return
+      const symbol = this.getChartSymbol()
+      const tickSize = this.propFirm.chartServices?.datafeed?.getTickSize?.(symbol) ?? 0.25
+      const price = tickSize > 0
+        ? Math.round(rawPrice / tickSize) * tickSize
+        : rawPrice
+      cancel()
+      onPrice(Number(price.toFixed(8)))
+    }
+
+    chart.subscribeClick(handler)
+    this.cancelChartPricePick = cancel
+    return cancel
+  }
+
+  showAutoPositionPreview(options: {
+    side: 'buy' | 'sell'
+    entry: number
+    stopLoss: number
+    tickSize: number
+    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+  }): (() => void) | null {
+    if (this.tradeCache?.getChartPositionSnapshot()) return null
+    return createBwcAutoRiskPreview(this.widget, {
+      stopLoss: options.stopLoss,
+      tickSize: options.tickSize,
+      appearanceAt: options.appearanceAt,
+    })
   }
 
   /** Apply WS positions + bracket orders to chart lines (retries until chart/bars exist). */
@@ -425,7 +482,14 @@ export class TradeseaTradeHandler {
     return matches[0]
   }
 
-  async logButtonPress(buttonName: string, data?: { quantity?: number; symbol?: string }): Promise<void> {
+  async logButtonPress(buttonName: string, data?: {
+    quantity?: number
+    symbol?: string
+    stopLoss?: number | null
+    takeProfit?: number | null
+    stopLossMode?: 'hard' | 'soft'
+    softStopTrigger?: 'bar_close'
+  }): Promise<void> {
     const accountId = this.propFirm.selectedAccountId
     if (!accountId) {
       aurenToast.error('Select a Tradesea account first')
@@ -458,9 +522,15 @@ export class TradeseaTradeHandler {
             side,
             type: 'market',
             durationType: 'day',
+            stopLoss:
+              data?.stopLossMode === 'soft' ? undefined : data?.stopLoss ?? undefined,
+            takeProfit: data?.takeProfit ?? undefined,
           })
 
           if (result.success && result.s === 'ok') {
+            if (data?.stopLossMode === 'soft' && data.stopLoss != null) {
+              await this.tradeCache?.armSoftStop(chartSymbol, data.stopLoss)
+            }
             aurenToast.success(`${buttonName} order placed (${qty} @ ${instrument})`)
             this.scheduleRefresh(chartSymbol)
           } else {
@@ -495,6 +565,7 @@ export class TradeseaTradeHandler {
             amount,
           })
           if (result.success && result.s === 'ok') {
+            this.tradeCache?.clearSoftStop(chartSymbol)
             aurenToast.success(amount ? `Closed ${amount} contract(s)` : 'Position closed')
             this.scheduleRefresh(chartSymbol)
           } else {
@@ -518,6 +589,7 @@ export class TradeseaTradeHandler {
             positionId: position.id,
           })
           if (result.success && result.s === 'ok') {
+            this.tradeCache?.clearSoftStop(chartSymbol)
             aurenToast.success('Position reversed')
             this.scheduleRefresh(chartSymbol)
           } else {
@@ -533,6 +605,7 @@ export class TradeseaTradeHandler {
         try {
           const result = await tradeseaAPI.flattenAll(accountId)
           if (result.success && result.s === 'ok') {
+            this.tradeCache?.clearAllSoftStops()
             aurenToast.success('Flattened all positions')
             this.scheduleRefresh(chartSymbol)
           } else {

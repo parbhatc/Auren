@@ -4,6 +4,8 @@ import { aurenToast } from '../../../../utils/aurenToast'
 export type TradeActionExtra = {
   stopLoss?: number | null
   takeProfit?: number | null
+  stopLossMode?: 'hard' | 'soft'
+  softStopTrigger?: 'bar_close'
   orderType?: 'market' | 'limit' | 'stop'
   entryPrice?: number
 }
@@ -37,6 +39,8 @@ export function createRunTrade(ctx: RunTradeContext) {
                   entryPrice: extra?.entryPrice,
                   stopLoss: extra?.stopLoss ?? null,
                   takeProfit: extra?.takeProfit ?? null,
+                  stopLossMode: extra?.stopLossMode ?? 'hard',
+                  softStopTrigger: extra?.softStopTrigger ?? 'bar_close',
                 }
               : {}),
           }
@@ -48,6 +52,8 @@ export function createRunTrade(ctx: RunTradeContext) {
               entryPrice: extra?.entryPrice,
               stopLoss: extra?.stopLoss ?? null,
               takeProfit: extra?.takeProfit ?? null,
+              stopLossMode: extra?.stopLossMode ?? 'hard',
+              softStopTrigger: extra?.softStopTrigger ?? 'bar_close',
             }
           : undefined
     if (handler) {

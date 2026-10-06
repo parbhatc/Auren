@@ -40,6 +40,11 @@ import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 import { snapPracticePriceToTick } from './practiceInstrumentTicks'
+import {
+  summarizePracticePositionFamily,
+  type PracticePositionFamilySummary,
+} from './practiceContractFamily'
+import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
 
 /** Keep quote-driven P&L/risk UI responsive without running it on every MDS packet. */
 const UPL_REFRESH_MIN_INTERVAL_MS = 120
@@ -50,6 +55,7 @@ export class PracticeTradeHandler {
   tradeCache: PracticeTradeCache | null = null
   private pendingOrders: PracticePendingOrder[] = []
   private widget: unknown = null
+  private cancelChartPricePick: (() => void) | null = null
   private upl = 0
   private disconnectAccountWs: (() => void) | null = null
   private accountWs: PracticeAccountWsClient | null = null
@@ -253,6 +259,8 @@ export class PracticeTradeHandler {
   }
 
   dispose(): void {
+    this.cancelChartPricePick?.()
+    this.cancelChartPricePick = null
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
     if (this.uplRefreshTimer != null) {
@@ -272,6 +280,58 @@ export class PracticeTradeHandler {
     this.accountWs = null
     this.tradeCache?.dispose()
     this.tradeCache = null
+  }
+
+  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+    this.cancelChartPricePick?.()
+    const widget = this.widget as {
+      lcChart?: {
+        subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+        unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+      }
+      series?: { coordinateToPrice?: (coordinate: number) => number | null }
+    } | null
+    const chart = widget?.lcChart
+    const series = widget?.series
+    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
+      return null
+    }
+
+    let active = true
+    const cancel = () => {
+      if (!active) return
+      active = false
+      chart.unsubscribeClick?.(handler)
+      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+    }
+    const handler = (event: { point?: { y?: number } }) => {
+      const y = event.point?.y
+      if (!active || y == null || !Number.isFinite(y)) return
+      const rawPrice = series.coordinateToPrice?.(y)
+      if (rawPrice == null || !Number.isFinite(rawPrice)) return
+      const price = snapPracticePriceToTick(this.getChartSymbol(), rawPrice)
+      cancel()
+      onPrice(price)
+    }
+
+    chart.subscribeClick(handler)
+    this.cancelChartPricePick = cancel
+    return cancel
+  }
+
+  showAutoPositionPreview(options: {
+    side: 'buy' | 'sell'
+    entry: number
+    stopLoss: number
+    tickSize: number
+    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+  }): (() => void) | null {
+    if (this.hasActiveChartPosition()) return null
+    return createBwcAutoRiskPreview(this.widget as Parameters<typeof createBwcAutoRiskPreview>[0], {
+      stopLoss: options.stopLoss,
+      tickSize: options.tickSize,
+      appearanceAt: options.appearanceAt,
+    })
   }
 
   hasAnyOpenPosition(): boolean {
@@ -904,6 +964,16 @@ export class PracticeTradeHandler {
     return this.getDomPositionContextFor(symbolKey)
   }
 
+  getPositionFamilySummaryFor(symbolKey: string): PracticePositionFamilySummary | null {
+    const cache = this.tradeCache?.getCache()
+    if (!cache) return null
+    const positions = [...cache.entries()].flatMap(([symbol, position]) => {
+      const contracts = Number(position?.contracts)
+      return Number.isFinite(contracts) && contracts !== 0 ? [{ symbol, contracts }] : []
+    })
+    return summarizePracticePositionFamily(symbolKey, positions)
+  }
+
   getPositionUplFor(symbolKey: string): number | null {
     const ctx = this.getDomPositionContextFor(symbolKey)
     if (!ctx) return null
@@ -953,6 +1023,8 @@ export class PracticeTradeHandler {
       entryPrice?: number
       stopLoss?: number | null
       takeProfit?: number | null
+      stopLossMode?: 'hard' | 'soft'
+      softStopTrigger?: 'bar_close'
     }
   ): Promise<void> {
     const lockMsg = this.getTradingLockMessage()
@@ -1027,7 +1099,19 @@ export class PracticeTradeHandler {
           aurenToast.error('Waiting for ask…')
           return
         }
-        cache.onOpenPosition(tradeSymbol, fillPrice, qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
+        cache.onOpenPosition(
+          tradeSymbol,
+          fillPrice,
+          qty,
+          data?.stopLoss ?? null,
+          data?.takeProfit ?? null,
+          null,
+          null,
+          null,
+          null,
+          data?.stopLossMode ?? 'hard',
+          data?.softStopTrigger ?? 'bar_close'
+        )
         if (currentContracts + qty !== 0) {
           const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
           showPracticeOrderToast(
@@ -1059,7 +1143,19 @@ export class PracticeTradeHandler {
           aurenToast.error('Waiting for bid…')
           return
         }
-        cache.onOpenPosition(tradeSymbol, fillPrice, -qty, data?.stopLoss ?? null, data?.takeProfit ?? null)
+        cache.onOpenPosition(
+          tradeSymbol,
+          fillPrice,
+          -qty,
+          data?.stopLoss ?? null,
+          data?.takeProfit ?? null,
+          null,
+          null,
+          null,
+          null,
+          data?.stopLossMode ?? 'hard',
+          data?.softStopTrigger ?? 'bar_close'
+        )
         if (currentContracts - qty !== 0) {
           const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
           showPracticeOrderToast(

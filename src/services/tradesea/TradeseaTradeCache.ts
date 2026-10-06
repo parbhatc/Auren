@@ -22,12 +22,17 @@ type TradeseaCachedPosition = {
   takeProfitOrderId?: number | string | null
   positionId?: string | null
   bracketPendingUntil?: number
+  stopLossMode?: 'hard' | 'soft'
+  softStopTrigger?: 'bar_close'
   line?: unknown
   [key: string]: unknown
 }
 
 export class TradeseaTradeCache extends ChartTradeCache {
   private stopLossCancelInFlight = false
+  private softStops = new Map<string, { price: number; createdAt: number }>()
+  private softStopMinuteMarks = new Map<string, { minute: number; close: number; time: number }>()
+  private softStopCloseInFlight = new Set<string>()
 
   constructor(handler: TradeseaTradeHandler, widget: any) {
     super(handler, widget.chart())
@@ -44,6 +49,84 @@ export class TradeseaTradeCache extends ChartTradeCache {
 
   onRealTimeBar(symbol: string, bar: { close?: number }): void {
     super.onRealTimeBar(symbol, bar)
+  }
+
+  /** Register a browser-only stop. Nothing is sent to Tradesea as a stop order. */
+  async armSoftStop(symbol: string, price: number): Promise<void> {
+    const instrument = this.handler.resolveInstrumentPublic(symbol)
+    if (!instrument || !Number.isFinite(price)) return
+    const existing = this.getPosition(symbol) as TradeseaCachedPosition | undefined
+    const existingHardStopOrderId = existing?.stopLossOrderId
+    const accountId = this.propFirm.selectedAccountId
+    if (existingHardStopOrderId && accountId) {
+      try {
+        const result = await tradeseaAPI.cancelOrder({
+          accountId,
+          orderId: String(existingHardStopOrderId),
+        })
+        if (!result.success || result.s !== 'ok') {
+          aurenToast.error(result.error || result.errmsg || 'Could not replace the hard stop')
+          return
+        }
+      } catch (err) {
+        aurenToast.error(err instanceof Error ? err.message : 'Could not replace the hard stop')
+        return
+      }
+    }
+
+    this.softStops.set(instrument, { price, createdAt: Date.now() })
+    if (!existing?.contracts) return
+    existing.stopLoss = price
+    existing.stopLossMode = 'soft'
+    existing.softStopTrigger = 'bar_close'
+    existing.stopLossOrderId = null
+    this.ensurePositionLines(symbol, existing.entry, existing.contracts, price, existing.takeProfit)
+  }
+
+  clearSoftStop(symbol: string): void {
+    const instrument = this.handler.resolveInstrumentPublic(symbol)
+    this.softStops.delete(instrument)
+    this.softStopMinuteMarks.delete(instrument)
+  }
+
+  clearAllSoftStops(): void {
+    this.softStops.clear()
+    this.softStopMinuteMarks.clear()
+    this.softStopCloseInFlight.clear()
+  }
+
+  /** Build a one-minute close from the live mark stream and evaluate soft stops. */
+  onMarketPrice(symbol: string, price: number, time = Date.now()): void {
+    if (!Number.isFinite(price)) return
+    const instrument = this.handler.resolveInstrumentPublic(symbol)
+    if (!instrument) return
+    const minute = Math.floor(time / 60_000)
+    const previous = this.softStopMinuteMarks.get(instrument)
+    this.softStopMinuteMarks.set(instrument, { minute, close: price, time })
+    if (!previous || previous.minute >= minute) return
+    void this.evaluateSoftStopClose(instrument, previous.close, previous.time)
+  }
+
+  private async evaluateSoftStopClose(instrument: string, close: number, time: number): Promise<void> {
+    const configured = this.softStops.get(instrument)
+    if (!configured) return
+    const entry = [...this.cache.entries()].find(([key, position]) =>
+      Boolean(position?.contracts) && this.handler.resolveInstrumentPublic(key) === instrument
+    )
+    const position = entry?.[1] as TradeseaCachedPosition | undefined
+    if (!position?.contracts || position.stopLossMode !== 'soft') return
+    const stop = Number(position.stopLoss ?? configured.price)
+    const triggered = position.contracts > 0 ? close <= stop : close >= stop
+    const positionId = String(position.positionId || '')
+    if (!triggered || !positionId || this.softStopCloseInFlight.has(positionId)) return
+
+    this.softStopCloseInFlight.add(positionId)
+    aurenToast.warning('Soft stop triggered', `1-minute close ${close} crossed ${stop}. Closing the full position.`)
+    try {
+      await this.handleClosePosition(position, close, time, 'onCancel')
+    } finally {
+      this.softStopCloseInFlight.delete(positionId)
+    }
   }
 
   onOpenPosition(
@@ -121,6 +204,23 @@ export class TradeseaTradeCache extends ChartTradeCache {
     position: Record<string, unknown>,
     context?: string
   ): Promise<void> {
+    const cached = position as TradeseaCachedPosition
+    if (cached.stopLossMode === 'soft') {
+      const instrument = this.handler.resolveInstrumentPublic(String(position.symbol || this.activeChartSymbol()))
+      if (context === 'onCancel' || price == null) {
+        this.softStops.delete(instrument)
+        cached.stopLoss = null
+        cached.stopLossMode = 'hard'
+        this.forceRemoveBracketLine(String(position.symbol || this.activeChartSymbol()), 'stop_loss')
+        aurenToast.success('Soft stop removed')
+        return
+      }
+      this.softStops.set(instrument, { price, createdAt: Date.now() })
+      cached.stopLoss = price
+      cached.stopLossOrderId = null
+      aurenToast.success(`Soft stop moved to ${price}`)
+      return
+    }
     if (context === 'sync') {
       debugTradeseaSl('handler:skip-sync', {
         price,
@@ -368,8 +468,11 @@ export class TradeseaTradeCache extends ChartTradeCache {
     const brackets = bracketOrdersForPosition(this.propFirm.orders, pos.id)
     const existing = this.getPosition(cacheKey) as TradeseaCachedPosition | undefined
 
-    const { stopLoss, takeProfit, stopLossOrderId, takeProfitOrderId } =
+    const softStop = this.softStops.get(instrument)
+    const { stopLoss: brokerStopLoss, takeProfit, stopLossOrderId: brokerStopLossOrderId, takeProfitOrderId } =
       this.resolveBracketPrices(existing, brackets)
+    const stopLoss = softStop?.price ?? brokerStopLoss
+    const stopLossOrderId = softStop ? null : brokerStopLossOrderId
 
     const syncKey = `${cacheKey}|${pos.id}|${stopLoss}|${takeProfit}|${entry}|${contracts}`
     if (syncKey !== lastSyncPositionSlKey) {
@@ -401,6 +504,8 @@ export class TradeseaTradeCache extends ChartTradeCache {
       existing.entry = entry
       existing.contracts = contracts
       existing.stopLoss = stopLoss
+      existing.stopLossMode = softStop ? 'soft' : 'hard'
+      existing.softStopTrigger = softStop ? 'bar_close' : undefined
       existing.takeProfit = takeProfit
 
       this.ensurePositionLines(cacheKey, entry, contracts, stopLoss, takeProfit)
@@ -419,7 +524,11 @@ export class TradeseaTradeCache extends ChartTradeCache {
       brackets.takeProfit?.id ?? null
     )
     const created = this.getPosition(cacheKey)
-    if (created) created.positionId = pos.id
+    if (created) {
+      created.positionId = pos.id
+      created.stopLossMode = softStop ? 'soft' : 'hard'
+      created.softStopTrigger = softStop ? 'bar_close' : undefined
+    }
     this.ensurePositionLines(cacheKey, entry, contracts, stopLoss, takeProfit)
   }
 
@@ -605,6 +714,8 @@ export class TradeseaTradeCache extends ChartTradeCache {
       const result = await tradeseaAPI.closePosition({ accountId, positionId })
       if (result.success && result.s === 'ok') {
         aurenToast.success('Position closed')
+        const instrument = this.handler.resolveInstrumentPublic(String(position.symbol || this.activeChartSymbol()))
+        this.clearSoftStop(instrument)
         super.handleClosePosition(position, _price, _exitTime, context)
         setTimeout(() => this.handler.syncFromStream(), 600)
       } else {

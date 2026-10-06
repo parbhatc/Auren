@@ -36,8 +36,9 @@ export default function PracticeMarketDataSelector({
     setSuccess('')
     try {
       const saved = getPracticeMarketDataSettings()
-      const storedProviderId = localStorage.getItem('activePropFirm')
-      const activeProvider = getPracticePropFirmConfig(storedProviderId || saved.propFirmId)
+      // `activePropFirm` is shared with the trading workspace and can be
+      // stale. The API-backed Practice setting is authoritative here.
+      const activeProvider = getPracticePropFirmConfig(saved.propFirmId)
       const activeSettings = applyActiveFirmToMarketDataSettings(saved, activeProvider.id)
       if (activeProvider.marketDataConnection === 'server-managed') {
         const next = updateFirmMarketDataSelection(activeSettings, activeProvider.id, {

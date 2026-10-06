@@ -233,9 +233,9 @@ class PracticeService {
     )
     await Database.run(
       `UPDATE practice_accounts
-       SET market_data_account_id = ?, market_data_account_label = ?, updated_at = CURRENT_TIMESTAMP
+       SET prop_firm_id = ?, market_data_account_id = ?, market_data_account_label = ?, updated_at = CURRENT_TIMESTAMP
        WHERE user_id = ?`,
-      [settings.accountId || '', settings.accountLabel || '', userId]
+      [propFirmId, settings.accountId || '', settings.accountLabel || '', userId]
     )
     return this.getMarketData(userId)
   }

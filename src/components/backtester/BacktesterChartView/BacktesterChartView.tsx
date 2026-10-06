@@ -1336,7 +1336,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
                   onClick={this.toggleOrderPane}
                   aria-label={this.state.orderPaneCollapsed ? 'Show order ticket' : 'Hide order ticket'}
                   title={this.state.orderPaneCollapsed ? 'Show order ticket' : 'Hide order ticket'}
-                  className={`absolute top-12 z-[200] hidden h-8 w-8 items-center justify-center rounded-md border lg:inline-flex ${
+                  className={`absolute top-12 z-[100] hidden h-8 w-8 items-center justify-center rounded-md border lg:inline-flex ${
                     isDark
                       ? 'border-[#3F3F46] bg-[#18181B] text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
                       : 'border-[#E4E4E7] bg-white text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'

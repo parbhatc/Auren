@@ -10,6 +10,7 @@ import { tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaRes
 import type { ResolutionString } from '../../types/chart'
 import type { BracketOptions } from '../../types/tradePanel'
 import type { OrderSide } from '../../types/order'
+import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
 
 /**
  * Backtester Trade Handler
@@ -30,6 +31,7 @@ export class BacktesterTradeHandler {
   private onStatsRefresh?: () => void
   private tradeCache: BacktesterTradeCache | null = null
   private replayPaneSyncRaf: number | null = null
+  private cancelChartPricePick: (() => void) | null = null
   private nextCandleInFlight: boolean = false
   private nextCandleTimeout: NodeJS.Timeout | null = null
   /** A select-bar jump uses bars already loaded in BWC, so its ack must not refetch them. */
@@ -155,8 +157,9 @@ export class BacktesterTradeHandler {
     const contracts = Number(position?.contracts)
     if (!position || !contracts) return null
     const datafeed = this.getDatafeed()
-    const tickSize = datafeed?.getTickSize?.(chartSymbol) ?? datafeed?.getTickSize?.(this.normalizeSymbol(chartSymbol)) ?? 0.25
-    const tickValue = datafeed?.getTickValue?.(chartSymbol) ?? datafeed?.getTickValue?.(this.normalizeSymbol(chartSymbol)) ?? tickSize * 2
+    const executionSymbol = String(position.executionSymbol || chartSymbol)
+    const tickSize = datafeed?.getTickSize?.(executionSymbol) ?? datafeed?.getTickSize?.(this.normalizeSymbol(executionSymbol)) ?? 0.25
+    const tickValue = datafeed?.getTickValue?.(executionSymbol) ?? datafeed?.getTickValue?.(this.normalizeSymbol(executionSymbol)) ?? tickSize * 2
     return {
       entry: position.entry as number,
       signedContracts: contracts,
@@ -171,6 +174,63 @@ export class BacktesterTradeHandler {
     const mark = this.getMarkPrice(symbolKey)
     if (mark == null) return null
     return calcTradeseaTickPnL(ctx.entry, mark, ctx.signedContracts, ctx.tickSize, ctx.tickValue)
+  }
+
+  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+    this.cancelChartPricePick?.()
+    const widget = this.widget as {
+      lcChart?: {
+        subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+        unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+      }
+      series?: { coordinateToPrice?: (coordinate: number) => number | null }
+    } | null
+    const chart = widget?.lcChart
+    const series = widget?.series
+    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
+      return null
+    }
+
+    let active = true
+    const cancel = () => {
+      if (!active) return
+      active = false
+      chart.unsubscribeClick?.(handler)
+      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+    }
+    const handler = (event: { point?: { y?: number } }) => {
+      const y = event.point?.y
+      if (!active || y == null || !Number.isFinite(y)) return
+      const rawPrice = series.coordinateToPrice?.(y)
+      if (rawPrice == null || !Number.isFinite(rawPrice)) return
+      const symbol = this.resolveChartSymbol()
+      const tickSize = this.datafeed?.getTickSize(symbol) ?? 0.25
+      const price = tickSize > 0 ? Math.round(rawPrice / tickSize) * tickSize : rawPrice
+      cancel()
+      onPrice(Number(price.toFixed(8)))
+    }
+
+    chart.subscribeClick(handler)
+    this.cancelChartPricePick = cancel
+    return cancel
+  }
+
+  showAutoPositionPreview(options: {
+    side: OrderSide
+    entry: number
+    stopLoss: number
+    tickSize: number
+    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+  }): (() => void) | null {
+    if (this.getDomPositionFor(this.resolveChartSymbol())) return null
+    return createBwcAutoRiskPreview(
+      this.widget as Parameters<typeof createBwcAutoRiskPreview>[0],
+      {
+        stopLoss: options.stopLoss,
+        tickSize: options.tickSize,
+        appearanceAt: options.appearanceAt,
+      }
+    )
   }
 
   /** Session replay anchor as Unix seconds (startDate + startTime, local). */
@@ -616,7 +676,13 @@ export class BacktesterTradeHandler {
    * Backtester has no resting orders — entries fill at the current replay bar.
    * SL/TP hits are detected per replay bar by BacktesterTradeCache.handlePriceUpdate.
    */
-  submitBracketOrder(side: OrderSide, quantity: number, symbol: string, brackets: BracketOptions): void {
+  submitBracketOrder(
+    side: OrderSide,
+    quantity: number,
+    symbol: string,
+    brackets: BracketOptions,
+    executionSymbol = symbol
+  ): void {
     const chartSymbol = this.resolveChartSymbol(symbol)
     const lastBar = chartSymbol ? this.resolveLastBar(chartSymbol) : null
     if (!chartSymbol || !lastBar?.close || !this.tradeCache) {
@@ -632,8 +698,9 @@ export class BacktesterTradeHandler {
       brackets.stopLoss != null && (side === 'buy' ? brackets.stopLoss < mark : brackets.stopLoss > mark)
     const validTp =
       brackets.takeProfit != null && (side === 'buy' ? brackets.takeProfit > mark : brackets.takeProfit < mark)
-    this.tradeCache.onOpenPosition(
+    this.tradeCache.openRoutedPosition(
       chartSymbol,
+      this.normalizeSymbol(executionSymbol),
       mark,
       signed,
       validSl ? brackets.stopLoss : null,
@@ -929,6 +996,8 @@ export class BacktesterTradeHandler {
    * Cleanup - stop playback and clear interval
    */
   cleanup(): void {
+    this.cancelChartPricePick?.()
+    this.cancelChartPricePick = null
     this.stopPlayback()
     this.isPlaying = false
   }

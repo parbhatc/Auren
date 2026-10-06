@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownRight, ArrowUpRight, Minus, Plus, RotateCcw } from 'lucide-react'
-import { TradeSideButton } from '../../../../common/TradeSideButton'
-import {
-  PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT,
-  PRACTICE_CONTRACT_QTY_PRESETS,
-} from '../../../../../constants/practice'
+import { ArrowDownRight, ArrowUpDown, ArrowUpRight } from 'lucide-react'
 import type { TradeseaMarketBook } from '../../../../../services/tradesea/tradeseaMarketBook'
 import {
   fmtPrice,
@@ -15,23 +10,32 @@ import {
   convertDistanceValue,
   formatDistanceEquivalents,
   bracketDollarAmount,
-  BRACKET_UNIT_SHORT,
+  positionSizeForRisk,
 } from '../bracketUtils'
-import { PadCheckbox, BracketPriceTicksRow, TickPresetChips } from '../PadControls'
+import { PadCheckbox } from '../PadControls'
+import {
+  getTradeRiskSettings,
+  saveTradeRiskSettings,
+  TRADE_RISK_SETTINGS_CHANGED,
+  type TradeRiskSettings,
+} from '../../../../../utils/tradeRiskSettings'
 import type {
   TradePanelProps,
   OrderSide,
-  OrderType,
   BracketDistanceUnit,
   BracketOptions,
-  OrderSubmitOptions,
 } from '../types'
 import { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../types'
 import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
-
-const ORDER_TYPES: OrderType[] = ['market', 'limit', 'stop']
+import { resolvePracticeInstrumentTicks } from '../../../../../services/practice/practiceInstrumentTicks'
+import {
+  formatPracticePositionFamily,
+  practiceContractRoot,
+  practiceMicroRoot,
+} from '../../../../../services/practice/practiceContractFamily'
 
 const BRACKET_PREFS_PREFIX = 'trade_panel_brackets_'
+type AutoDirectionMode = OrderSide | 'auto'
 
 type BracketPrefs = {
   slTicks?: string
@@ -83,24 +87,29 @@ export function OrderTab({
     : 'border-[#E4E4E7] bg-[#FAFAFA]'
   const strongText = isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'
   const mutedText = isDark ? 'text-[#71717A]' : 'text-[#71717A]'
-  const [orderType, setOrderType] = useState<OrderType>('market')
   const [selectedSide, setSelectedSide] = useState<OrderSide>('buy')
-  const [stopLossOn, setStopLossOn] = useState(false)
+  const [stopLossOn, setStopLossOn] = useState(true)
   const [takeProfitOn, setTakeProfitOn] = useState(false)
   const [slTicks, setSlTicks] = useState(String(DEFAULT_SL_TICKS))
   const [tpTicks, setTpTicks] = useState(String(DEFAULT_TP_TICKS))
   const [slPrice, setSlPrice] = useState('')
   const [tpPrice, setTpPrice] = useState('')
-  const [limitPrice, setLimitPrice] = useState('')
-  const [stopPrice, setStopPrice] = useState('')
-  const [stopLimitPrice, setStopLimitPrice] = useState('')
+  const [riskSettings, setRiskSettings] = useState<TradeRiskSettings>(getTradeRiskSettings)
+  const [armedSide, setArmedSide] = useState<AutoDirectionMode | null>(null)
+  const [chartStopSelected, setChartStopSelected] = useState(false)
+  const [autoSubmitRequest, setAutoSubmitRequest] = useState<{
+    side: OrderSide
+    price: number
+    basis: TradeRiskSettings['sizingBasis']
+  } | null>(null)
+  const [autoMessage, setAutoMessage] = useState<string | null>(null)
   const [slDistanceUnit, setSlDistanceUnit] = useState<BracketDistanceUnit>('ticks')
   const [tpDistanceUnit, setTpDistanceUnit] = useState<BracketDistanceUnit>('ticks')
   const slBracketSourceRef = useRef<'price' | 'ticks' | null>(null)
   const tpBracketSourceRef = useRef<'price' | 'ticks' | null>(null)
-  const prevOrderTypeRef = useRef<OrderType>('market')
-  const pendingOrderPriceSeedRef = useRef<OrderType | null>(null)
   const prefsLoadedForRef = useRef<string | null>(null)
+  const cancelPricePickRef = useRef<(() => void) | null>(null)
+  const cancelPositionPreviewRef = useRef<(() => void) | null>(null)
 
   // Restore last-used bracket distances/units for this symbol.
   useEffect(() => {
@@ -137,37 +146,46 @@ export function OrderTab({
     return () => clearTimeout(timer)
   }, [symbolLabel, slTicks, tpTicks, slDistanceUnit, tpDistanceUnit])
 
+  useEffect(() => {
+    const refresh = () => {
+      const next = getTradeRiskSettings()
+      setRiskSettings(next)
+    }
+    window.addEventListener(TRADE_RISK_SETTINGS_CHANGED, refresh)
+    return () => window.removeEventListener(TRADE_RISK_SETTINGS_CHANGED, refresh)
+  }, [])
+
   const bid = book?.bestBid ?? null
   const ask = book?.bestAsk ?? null
   const refPrice = marketPrice ?? (selectedSide === 'buy' ? ask : bid) ?? book?.last ?? null
+  const liveEntryRef = useRef<number | null>(refPrice)
+  liveEntryRef.current = refPrice
+  const chartRoot = practiceContractRoot(props.chartProductRoot || symbolLabel || '')
+  const currentTradeRoot = practiceContractRoot(props.tradeProductRoot || symbolLabel || '')
+  const automaticMicroRoot = props.autoRiskContractRouting
+    ? practiceContractRoot(props.riskExecutionProductRoot || '') || practiceMicroRoot(chartRoot)
+    : null
+  const riskExecutionRoot = automaticMicroRoot || currentTradeRoot
+  const riskTicks = automaticMicroRoot
+    ? resolvePracticeInstrumentTicks(riskExecutionRoot)
+    : { tickSize, tickValue }
+  const riskDollarEnabled = riskTicks.tickValue > 0
+  const riskMaxQty = props.getMaxQuantityForSymbol?.(riskExecutionRoot) ?? maxQty
+  const executionRoutingPending = Boolean(
+    automaticMicroRoot &&
+    !props.riskExecutionProductRoot &&
+    currentTradeRoot !== riskExecutionRoot
+  )
+  const positionFamilySummary = props.getPositionFamilySummary?.() ?? null
+  const orderEntryReference = refPrice
   const spread =
     bid != null && ask != null && ask >= bid ? Math.round((ask - bid) * 100) / 100 : null
-  const qtyPresets = useMemo(
-    () =>
-      PRACTICE_CONTRACT_QTY_PRESETS.filter((p) => p <= maxQty).slice(
-        0,
-        PRACTICE_CONTRACT_QTY_PRESET_CHIP_LIMIT
-      ),
-    [maxQty]
-  )
   const qtyNum = parseInt(String(props.quantity).replace(/\D/g, ''), 10) || 0
 
   useEffect(() => {
-    if (orderType !== prevOrderTypeRef.current) {
-      prevOrderTypeRef.current = orderType
-      pendingOrderPriceSeedRef.current =
-        orderType === 'limit' || orderType === 'stop' ? orderType : null
-    }
-    const pending = pendingOrderPriceSeedRef.current
-    if (pending == null || refPrice == null) return
-    const p = fmtPrice(refPrice)
-    if (pending === 'limit') setLimitPrice(p)
-    if (pending === 'stop') {
-      setStopPrice(p)
-      setStopLimitPrice(p)
-    }
-    pendingOrderPriceSeedRef.current = null
-  }, [orderType, refPrice])
+    if (!executionRoutingPending || !props.onChartSymbolChange) return
+    props.onChartSymbolChange(riskExecutionRoot)
+  }, [executionRoutingPending, props.onChartSymbolChange, riskExecutionRoot])
 
   const fmtDistance = (amount: number, unit: BracketDistanceUnit) =>
     unit !== 'ticks' && amount % 1 !== 0 ? amount.toFixed(2) : String(amount)
@@ -175,43 +193,43 @@ export function OrderTab({
   const syncSlFromDistance = useCallback(
     (distanceStr: string, unit: BracketDistanceUnit = slDistanceUnit) => {
       const amount = parseBracketDistanceInput(distanceStr, unit)
-      if (refPrice == null || tickSize <= 0 || amount == null) return
+      if (orderEntryReference == null || tickSize <= 0 || amount == null) return
       setSlPrice(
-        fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'sl', selectedSide, tickValue))
+        fmtPrice(priceFromDistance(orderEntryReference, amount, unit, tickSize, 'sl', selectedSide, tickValue))
       )
     },
-    [refPrice, tickSize, tickValue, selectedSide, slDistanceUnit]
+    [orderEntryReference, tickSize, tickValue, selectedSide, slDistanceUnit]
   )
 
   const syncSlFromPrice = useCallback(
     (priceStr: string, unit: BracketDistanceUnit = slDistanceUnit) => {
       const price = parseBracketPriceInput(priceStr)
-      if (refPrice == null || tickSize <= 0 || price == null) return
-      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'sl', selectedSide, tickValue)
+      if (orderEntryReference == null || tickSize <= 0 || price == null) return
+      const amount = distanceFromPrice(orderEntryReference, price, unit, tickSize, 'sl', selectedSide, tickValue)
       if (amount != null) setSlTicks(fmtDistance(amount, unit))
     },
-    [refPrice, tickSize, tickValue, selectedSide, slDistanceUnit]
+    [orderEntryReference, tickSize, tickValue, selectedSide, slDistanceUnit]
   )
 
   const syncTpFromDistance = useCallback(
     (distanceStr: string, unit: BracketDistanceUnit = tpDistanceUnit) => {
       const amount = parseBracketDistanceInput(distanceStr, unit)
-      if (refPrice == null || tickSize <= 0 || amount == null) return
+      if (orderEntryReference == null || tickSize <= 0 || amount == null) return
       setTpPrice(
-        fmtPrice(priceFromDistance(refPrice, amount, unit, tickSize, 'tp', selectedSide, tickValue))
+        fmtPrice(priceFromDistance(orderEntryReference, amount, unit, tickSize, 'tp', selectedSide, tickValue))
       )
     },
-    [refPrice, tickSize, tickValue, selectedSide, tpDistanceUnit]
+    [orderEntryReference, tickSize, tickValue, selectedSide, tpDistanceUnit]
   )
 
   const syncTpFromPrice = useCallback(
     (priceStr: string, unit: BracketDistanceUnit = tpDistanceUnit) => {
       const price = parseBracketPriceInput(priceStr)
-      if (refPrice == null || tickSize <= 0 || price == null) return
-      const amount = distanceFromPrice(refPrice, price, unit, tickSize, 'tp', selectedSide, tickValue)
+      if (orderEntryReference == null || tickSize <= 0 || price == null) return
+      const amount = distanceFromPrice(orderEntryReference, price, unit, tickSize, 'tp', selectedSide, tickValue)
       if (amount != null) setTpTicks(fmtDistance(amount, unit))
     },
-    [refPrice, tickSize, tickValue, selectedSide, tpDistanceUnit]
+    [orderEntryReference, tickSize, tickValue, selectedSide, tpDistanceUnit]
   )
 
   const changeSlDistanceUnit = useCallback(
@@ -237,18 +255,18 @@ export function OrderTab({
   )
 
   useEffect(() => {
-    if (refPrice == null || tickSize <= 0) return
+    if (orderEntryReference == null || tickSize <= 0) return
     if (slBracketSourceRef.current !== 'price') {
       syncSlFromDistance(slTicks, slDistanceUnit)
     }
-  }, [slDistanceUnit, tickSize, refPrice, selectedSide, slTicks, syncSlFromDistance])
+  }, [slDistanceUnit, tickSize, orderEntryReference, selectedSide, slTicks, syncSlFromDistance])
 
   useEffect(() => {
-    if (refPrice == null || tickSize <= 0) return
+    if (orderEntryReference == null || tickSize <= 0) return
     if (tpBracketSourceRef.current !== 'price') {
       syncTpFromDistance(tpTicks, tpDistanceUnit)
     }
-  }, [tpDistanceUnit, tickSize, refPrice, selectedSide, tpTicks, syncTpFromDistance])
+  }, [tpDistanceUnit, tickSize, orderEntryReference, selectedSide, tpTicks, syncTpFromDistance])
 
   const handleSlTicksChange = useCallback(
     (value: string) => {
@@ -328,7 +346,7 @@ export function OrderTab({
   }, [selectedSide])
 
   useEffect(() => {
-    if (refPrice == null || tickSize <= 0) return
+    if (orderEntryReference == null || tickSize <= 0) return
     if (slBracketSourceRef.current === 'price') {
       syncSlFromPrice(slPrice)
     } else {
@@ -340,7 +358,7 @@ export function OrderTab({
       syncTpFromDistance(tpTicks, tpDistanceUnit)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refPrice, tickSize, selectedSide, syncSlFromPrice, syncSlFromDistance, syncTpFromPrice, syncTpFromDistance])
+  }, [orderEntryReference, tickSize, selectedSide, syncSlFromPrice, syncSlFromDistance, syncTpFromPrice, syncTpFromDistance])
 
   const armStopLoss = useCallback(() => {
     setStopLossOn(true)
@@ -363,83 +381,288 @@ export function OrderTab({
     const manual = parseFloat(priceStr.replace(/,/g, ''))
     if (Number.isFinite(manual) && manual > 0) return manual
     const amount = parseBracketDistanceInput(ticksStr, unit)
-    if (refPrice != null && amount != null && tickSize > 0) {
-      return priceFromDistance(refPrice, amount, unit, tickSize, kind, selectedSide, tickValue)
+    if (orderEntryReference != null && amount != null && tickSize > 0) {
+      return priceFromDistance(orderEntryReference, amount, unit, tickSize, kind, selectedSide, tickValue)
     }
     return null
   }
 
   const parseOrderEntry = (): number | null => {
-    if (orderType === 'market') return refPrice
-    if (orderType === 'limit') {
-      const p = parseFloat(limitPrice.replace(/,/g, ''))
-      return Number.isFinite(p) && p > 0 ? p : null
-    }
-    const stop = parseFloat(stopPrice.replace(/,/g, ''))
-    const stopLimit = parseFloat(stopLimitPrice.replace(/,/g, ''))
-    if (Number.isFinite(stopLimit) && stopLimit > 0) return stopLimit
-    if (Number.isFinite(stop) && stop > 0) return stop
-    return null
+    return refPrice
   }
 
-  const handleConfirm = () => {
-    if (tradeDisabled) return
+  const riskSizing = useMemo(() => {
     const entry = parseOrderEntry()
-    if (entry == null) return
-    const brackets: BracketOptions = {
-      stopLoss: resolveBracketPrice(stopLossOn, slPrice, slTicks, 'sl', slDistanceUnit),
-      takeProfit: resolveBracketPrice(takeProfitOn, tpPrice, tpTicks, 'tp', tpDistanceUnit),
+    const sizingFromTarget = riskSettings.sizingBasis === 'take_profit'
+    if (!sizingFromTarget && !chartStopSelected) return null
+    const basisPrice = sizingFromTarget
+      ? resolveBracketPrice(takeProfitOn, tpPrice, tpTicks, 'tp', tpDistanceUnit)
+      : resolveBracketPrice(stopLossOn, slPrice, slTicks, 'sl', slDistanceUnit)
+    if (
+      !riskDollarEnabled ||
+      entry == null ||
+      basisPrice == null ||
+      distanceFromPrice(
+        entry,
+        basisPrice,
+        'ticks',
+        riskTicks.tickSize,
+        sizingFromTarget ? 'tp' : 'sl',
+        selectedSide,
+        riskTicks.tickValue
+      ) == null
+    ) {
+      return null
     }
-    const orderOpts: OrderSubmitOptions = {
-      orderType,
-      entryPrice: orderType === 'market' ? undefined : entry ?? undefined,
-      stopLimitPrice:
-        orderType === 'stop'
-          ? (() => {
-              const p = parseFloat(stopLimitPrice.replace(/,/g, ''))
-              return Number.isFinite(p) && p > 0 ? p : undefined
-            })()
-          : undefined,
-    }
-    if (props.onSubmitOrder) {
-      props.onSubmitOrder(selectedSide, brackets, orderOpts)
+    return positionSizeForRisk(
+      riskSettings.riskPerTrade,
+      entry,
+      basisPrice,
+      riskTicks.tickSize,
+      riskTicks.tickValue,
+      riskMaxQty,
+      riskSettings.riskBuffer
+    )
+  // parseOrderEntry and resolveBracketPrice intentionally read the current ticket state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riskSettings.riskPerTrade, riskSettings.riskBuffer, riskSettings.sizingBasis, refPrice, stopLossOn, slPrice, slTicks, slDistanceUnit, takeProfitOn, tpPrice, tpTicks, tpDistanceUnit, selectedSide, riskTicks.tickSize, riskTicks.tickValue, riskMaxQty, riskDollarEnabled, chartStopSelected])
+
+  const setStopLossMode = (stopLossMode: TradeRiskSettings['stopLossMode']) => {
+    const next = { ...riskSettings, stopLossMode }
+    setRiskSettings(next)
+    saveTradeRiskSettings(next)
+  }
+
+  const cancelChartStopPick = useCallback(() => {
+    cancelPricePickRef.current?.()
+    cancelPricePickRef.current = null
+    cancelPositionPreviewRef.current?.()
+    cancelPositionPreviewRef.current = null
+    setArmedSide(null)
+    setAutoSubmitRequest(null)
+    setAutoMessage(null)
+    setChartStopSelected(false)
+  }, [])
+
+  const armChartStopPick = useCallback((mode: AutoDirectionMode) => {
+    if (armedSide === mode) {
+      cancelChartStopPick()
       return
     }
-    if (selectedSide === 'buy') props.onBuy()
-    else props.onSell()
-  }
+    cancelPricePickRef.current?.()
+    cancelPositionPreviewRef.current?.()
+    cancelPricePickRef.current = null
+    cancelPositionPreviewRef.current = null
+    const basis = riskSettings.sizingBasis
+    if (mode === 'auto' && basis !== 'stop_loss') {
+      setAutoMessage('Auto direction is available when sizing from the stop loss.')
+      setArmedSide(null)
+      return
+    }
+    const initialSide: OrderSide = mode === 'auto' ? 'buy' : mode
+    setSelectedSide(initialSide)
+    if (basis === 'stop_loss') {
+      setStopLossOn(true)
+      setChartStopSelected(false)
+    }
+    else setTakeProfitOn(true)
+    setAutoSubmitRequest(null)
+    const entry = marketPrice ?? (initialSide === 'buy' ? ask : bid) ?? book?.last ?? null
+    if (entry == null || !Number.isFinite(entry)) {
+      setAutoMessage('Waiting for a live market price.')
+      setArmedSide(null)
+      return
+    }
+    if (!props.pickChartPriceOnce) {
+      setAutoMessage('Chart stop selection is unavailable.')
+      setArmedSide(null)
+      return
+    }
+    setArmedSide(mode)
+    setAutoMessage(
+      basis === 'stop_loss'
+        ? mode === 'auto'
+          ? 'Auto mode — below entry is Long; above entry is Short. Click the chart to enter.'
+          : `${mode === 'buy' ? 'Buy' : 'Sell'} mode — move to your stop, then click the chart.`
+        : `${mode === 'buy' ? 'Buy' : 'Sell'} armed — tap the chart for the take profit.`
+    )
+    let selectionCommitted = false
+    const selectChartPrice = (pickedPrice: number) => {
+      if (selectionCommitted) return
+      const liveEntry = liveEntryRef.current ?? entry
+      const side: OrderSide = mode === 'auto'
+        ? pickedPrice < liveEntry ? 'buy' : 'sell'
+        : mode
+      const validSide = basis === 'stop_loss'
+        ? pickedPrice !== liveEntry && (mode === 'auto' || (side === 'buy' ? pickedPrice < liveEntry : pickedPrice > liveEntry))
+        : side === 'buy' ? pickedPrice > liveEntry : pickedPrice < liveEntry
+      if (!validSide) {
+        setAutoMessage(
+          basis === 'stop_loss'
+            ? mode === 'auto'
+              ? 'Move the stop above or below the live entry.'
+              : side === 'buy'
+              ? 'A buy stop must be below the market entry.'
+              : 'A sell stop must be above the market entry.'
+            : side === 'buy'
+              ? 'A buy take profit must be above the market entry.'
+              : 'A sell take profit must be below the market entry.'
+        )
+        return
+      }
+      selectionCommitted = true
+      cancelPricePickRef.current?.()
+      cancelPricePickRef.current = null
+      cancelPositionPreviewRef.current?.()
+      cancelPositionPreviewRef.current = null
+      setArmedSide(null)
+      setSelectedSide(side)
+      const ticks = Math.abs(Math.round((liveEntry - pickedPrice) / tickSize))
+      if (basis === 'stop_loss') {
+        slBracketSourceRef.current = 'price'
+        setSlDistanceUnit('ticks')
+        setSlPrice(fmtPrice(pickedPrice))
+        setSlTicks(String(ticks))
+        setChartStopSelected(true)
+      } else {
+        tpBracketSourceRef.current = 'price'
+        setTpDistanceUnit('ticks')
+        setTpPrice(fmtPrice(pickedPrice))
+        setTpTicks(String(ticks))
+      }
+      setAutoSubmitRequest({ side, price: pickedPrice, basis })
+      setAutoMessage('Calculating contract size…')
+    }
+    const cancel = props.pickChartPriceOnce(selectChartPrice)
+    cancelPricePickRef.current = cancel
 
-  const resetBrackets = () => {
-    setStopLossOn(false)
-    setTakeProfitOn(false)
-    setSlTicks(String(DEFAULT_SL_TICKS))
-    setTpTicks(String(DEFAULT_TP_TICKS))
-    setSlPrice('')
-    setTpPrice('')
-  }
+    if (basis === 'stop_loss' && props.showAutoPositionPreview) {
+      const previewStop = priceFromDistance(
+        entry,
+        DEFAULT_SL_TICKS,
+        'ticks',
+        tickSize,
+        'sl',
+        initialSide,
+        tickValue
+      )
+      cancelPositionPreviewRef.current = props.showAutoPositionPreview({
+        side: initialSide,
+        entry,
+        stopLoss: previewStop,
+        tickSize,
+        appearanceAt: (price) => {
+          const liveEntry = liveEntryRef.current ?? entry
+          const previewSide: OrderSide = mode === 'auto'
+            ? price < liveEntry ? 'buy' : 'sell'
+            : mode
+          const validSide = price !== liveEntry && (
+            mode === 'auto' || (previewSide === 'buy' ? price < liveEntry : price > liveEntry)
+          )
+          if (!validSide) {
+            return {
+              label: mode === 'auto'
+                ? 'Move above or below entry'
+                : `Move ${previewSide === 'buy' ? 'below' : 'above'} entry`,
+              quantityLabel: '',
+            }
+          }
+          const sizing = positionSizeForRisk(
+            riskSettings.riskPerTrade,
+            liveEntry,
+            price,
+            riskTicks.tickSize,
+            riskTicks.tickValue,
+            riskMaxQty,
+            riskSettings.riskBuffer
+          )
+          const dollars = (sizing.quantity > 0
+            ? sizing.plannedRisk
+            : sizing.perContractRisk
+          ).toLocaleString(undefined, { maximumFractionDigits: 2 })
+          return {
+            label: `${mode === 'auto' ? (previewSide === 'buy' ? 'Long' : 'Short') + ' · ' : ''}${sizing.quantity > 0 ? 'Risk' : '1 contract'} $${dollars}`,
+            quantityLabel: sizing.quantity > 0 ? `${sizing.quantity} ${riskExecutionRoot}` : 'Over risk',
+          }
+        },
+      })
+    }
 
-  const orderSummary = useMemo(() => {
-    const side = selectedSide === 'buy' ? 'Buy' : 'Sell'
-    const qty = props.quantity || '—'
-    const sym = symbolLabel ? ` ${symbolLabel}` : ''
-    const typeLabel = orderType.charAt(0).toUpperCase() + orderType.slice(1)
-    const bracketParts: string[] = []
-    if (stopLossOn && slTicks) bracketParts.push(`SL ${slTicks}${BRACKET_UNIT_SHORT[slDistanceUnit]}`)
-    if (takeProfitOn && tpTicks) bracketParts.push(`TP ${tpTicks}${BRACKET_UNIT_SHORT[tpDistanceUnit]}`)
-    const brackets = bracketParts.length ? ` · ${bracketParts.join(' · ')}` : ''
-    return `${side} ${qty}${sym} · ${typeLabel}${brackets}`
-  }, [
-    selectedSide,
-    props.quantity,
-    symbolLabel,
-    orderType,
-    stopLossOn,
-    slTicks,
-    slDistanceUnit,
-    takeProfitOn,
-    tpTicks,
-    tpDistanceUnit,
-  ])
+    if (!cancel && !cancelPositionPreviewRef.current) {
+      setArmedSide(null)
+      setAutoMessage('Chart stop selection is unavailable.')
+    }
+  }, [armedSide, ask, bid, book?.last, cancelChartStopPick, marketPrice, props.pickChartPriceOnce, props.showAutoPositionPreview, riskExecutionRoot, riskMaxQty, riskSettings.riskBuffer, riskSettings.riskPerTrade, riskSettings.sizingBasis, riskTicks.tickSize, riskTicks.tickValue, tickSize, tickValue])
+
+  useEffect(() => () => {
+    cancelPricePickRef.current?.()
+    cancelPositionPreviewRef.current?.()
+  }, [])
+
+  useEffect(() => {
+    if (!armedSide) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      cancelChartStopPick()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [armedSide, cancelChartStopPick])
+
+  useEffect(() => {
+    if (
+      executionRoutingPending ||
+      !riskSizing ||
+      riskSizing.quantity < 1
+    ) return
+    if (Number.parseInt(String(props.quantity), 10) === riskSizing.quantity) return
+    props.onQuantityInputChange(String(riskSizing.quantity))
+  }, [executionRoutingPending, props.quantity, props.onQuantityInputChange, riskSizing])
+
+  useEffect(() => {
+    if (!autoSubmitRequest || executionRoutingPending) return
+    if (!riskSizing || riskSizing.quantity < 1) {
+      setAutoMessage('The selected level cannot be sized within this amount.')
+      setAutoSubmitRequest(null)
+      return
+    }
+    if (Number.parseInt(String(props.quantity), 10) !== riskSizing.quantity) return
+
+    setAutoSubmitRequest(null)
+    setAutoMessage(
+      `Submitting ${riskSizing.quantity} ${riskExecutionRoot} contract${riskSizing.quantity === 1 ? '' : 's'}…`
+    )
+    const brackets: BracketOptions = {
+      stopLoss:
+        autoSubmitRequest.basis === 'stop_loss'
+          ? autoSubmitRequest.price
+          : chartStopSelected
+            ? resolveBracketPrice(stopLossOn, slPrice, slTicks, 'sl', slDistanceUnit)
+            : null,
+      takeProfit:
+        autoSubmitRequest.basis === 'take_profit'
+          ? autoSubmitRequest.price
+          : resolveBracketPrice(takeProfitOn, tpPrice, tpTicks, 'tp', tpDistanceUnit),
+      stopLossMode: riskSettings.stopLossMode,
+      softStopTrigger: riskSettings.softStopTrigger,
+    }
+    if (props.onSubmitOrder) {
+      props.onSubmitOrder(autoSubmitRequest.side, brackets, {
+        orderType: 'market',
+        executionSymbol: riskExecutionRoot,
+      })
+    } else if (autoSubmitRequest.side === 'buy') {
+      props.onBuy()
+    } else {
+      props.onSell()
+    }
+    setAutoMessage(
+      `Order sent: ${riskSizing.quantity} ${riskExecutionRoot}. Drag the chart bracket to adjust it.`
+    )
+  // resolveBracketPrice intentionally reads the current take-profit state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmitRequest, chartStopSelected, executionRoutingPending, props.quantity, props.onSubmitOrder, riskExecutionRoot, riskSettings.softStopTrigger, riskSettings.stopLossMode, riskSizing])
 
   const slEquivalents = useMemo(
     () => (stopLossOn ? formatDistanceEquivalents(slTicks, slDistanceUnit, tickSize, tickValue) : null),
@@ -452,11 +675,16 @@ export function OrderTab({
 
   /** Total $ risk / reward at the armed brackets, and the resulting R:R ratio. */
   const riskSummary = useMemo(() => {
-    if (refPrice == null || qtyNum <= 0 || !dollarEnabled) return null
-    const sl = stopLossOn ? parseBracketPriceInput(slPrice) : null
+    const entry = parseOrderEntry()
+    if (entry == null || qtyNum <= 0 || !riskDollarEnabled) return null
+    const sl = stopLossOn && chartStopSelected ? parseBracketPriceInput(slPrice) : null
     const tp = takeProfitOn ? parseBracketPriceInput(tpPrice) : null
-    const risk = sl != null ? bracketDollarAmount(refPrice, sl, qtyNum, tickSize, tickValue) : null
-    const reward = tp != null ? bracketDollarAmount(refPrice, tp, qtyNum, tickSize, tickValue) : null
+    const risk = sl != null
+      ? bracketDollarAmount(entry, sl, qtyNum, riskTicks.tickSize, riskTicks.tickValue)
+      : null
+    const reward = tp != null
+      ? bracketDollarAmount(entry, tp, qtyNum, riskTicks.tickSize, riskTicks.tickValue)
+      : null
     if (risk == null && reward == null) return null
     const parts: string[] = []
     if (risk != null) parts.push(`Risk $${risk.toLocaleString()}`)
@@ -465,14 +693,9 @@ export function OrderTab({
       parts.push(`1:${(Math.round((reward / risk) * 10) / 10).toLocaleString()}`)
     }
     return parts.join(' · ')
-  }, [refPrice, qtyNum, dollarEnabled, stopLossOn, slPrice, takeProfitOn, tpPrice, tickSize, tickValue])
-
-  const inputClass =
-    `no-spinner h-11 w-full rounded-xl border px-3.5 font-mono outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 ${
-      isDark
-        ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA]'
-        : 'border-[#D4D4D8] bg-white text-[#09090B]'
-    }`
+    // parseOrderEntry intentionally reads the current ticket entry fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refPrice, qtyNum, riskDollarEnabled, stopLossOn, chartStopSelected, slPrice, takeProfitOn, tpPrice, riskTicks.tickSize, riskTicks.tickValue])
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -499,14 +722,14 @@ export function OrderTab({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 p-1.5">
+          <div className="grid grid-cols-3 gap-1 p-1.5">
             <button
               type="button"
               tabIndex={1}
-              aria-pressed={selectedSide === 'buy'}
-              onClick={() => setSelectedSide('buy')}
+              aria-pressed={armedSide === 'buy'}
+              onClick={() => armChartStopPick('buy')}
               className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                selectedSide === 'buy'
+                armedSide === 'buy'
                   ? isDark
                     ? 'border-emerald-500/40 bg-emerald-500/10'
                     : 'border-emerald-300 bg-emerald-50'
@@ -517,19 +740,19 @@ export function OrderTab({
             >
               <ArrowUpRight className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={1.75} aria-hidden />
               <span className="min-w-0">
-                <span className={`block text-xs font-semibold ${strongText}`}>Long</span>
+                <span className={`block text-xs font-semibold ${strongText}`}>Buy</span>
                 <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
-                  Bid {bid != null ? fmtPrice(bid) : '—'}
+                  {riskSettings.sizingBasis === 'stop_loss' ? 'Place stop on chart' : 'Tap chart for target'}
                 </span>
               </span>
             </button>
             <button
               type="button"
               tabIndex={2}
-              aria-pressed={selectedSide === 'sell'}
-              onClick={() => setSelectedSide('sell')}
+              aria-pressed={armedSide === 'sell'}
+              onClick={() => armChartStopPick('sell')}
               className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                selectedSide === 'sell'
+                armedSide === 'sell'
                   ? isDark
                     ? 'border-red-500/40 bg-red-500/10'
                     : 'border-red-300 bg-red-50'
@@ -540,151 +763,74 @@ export function OrderTab({
             >
               <ArrowDownRight className="h-4 w-4 shrink-0 text-red-500" strokeWidth={1.75} aria-hidden />
               <span className="min-w-0">
-                <span className={`block text-xs font-semibold ${strongText}`}>Short</span>
+                <span className={`block text-xs font-semibold ${strongText}`}>Sell</span>
                 <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
-                  Ask {ask != null ? fmtPrice(ask) : '—'}
+                  {riskSettings.sizingBasis === 'stop_loss' ? 'Place stop on chart' : 'Tap chart for target'}
                 </span>
               </span>
             </button>
-          </div>
-        </div>
-
-        <div className={`grid grid-cols-3 border-b ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
-          {ORDER_TYPES.map((t, i) => (
             <button
-              key={t}
               type="button"
-              tabIndex={3 + i}
-              onClick={() => setOrderType(t)}
-              className={`flex h-9 items-center justify-center border-b-2 text-xs font-semibold capitalize transition-colors ${
-                orderType === t
-                  ? 'border-blue-500 text-blue-500'
+              tabIndex={3}
+              disabled={riskSettings.sizingBasis !== 'stop_loss'}
+              aria-pressed={armedSide === 'auto'}
+              aria-label="Auto direction Place stop on chart"
+              title={riskSettings.sizingBasis === 'stop_loss'
+                ? 'Below entry selects Long; above entry selects Short'
+                : 'Auto direction requires stop-loss sizing'}
+              onClick={() => armChartStopPick('auto')}
+              className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                armedSide === 'auto'
+                  ? isDark
+                    ? 'border-violet-500/50 bg-violet-500/10'
+                    : 'border-violet-300 bg-violet-50'
                   : isDark
-                    ? 'border-transparent text-[#71717A] hover:text-[#D4D4D8]'
-                    : 'border-transparent text-[#52525B] hover:text-[#09090B]'
+                    ? 'border-transparent hover:bg-[#27272A]'
+                    : 'border-transparent hover:bg-white'
               }`}
             >
-              {t}
+              <ArrowUpDown className="h-4 w-4 shrink-0 text-violet-400" strokeWidth={1.75} aria-hidden />
+              <span className="min-w-0">
+                <span className={`block text-xs font-semibold ${strongText}`}>Auto</span>
+                <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
+                  Direction by stop
+                </span>
+              </span>
             </button>
-          ))}
+          </div>
+          {autoMessage ? (
+            <div className={`mx-1.5 mb-1.5 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-[10px] font-medium ${
+              armedSide
+                ? 'bg-blue-500/10 text-blue-300'
+                : isDark
+                  ? 'bg-[#27272A] text-[#D4D4D8]'
+                  : 'bg-[#F4F4F5] text-[#52525B]'
+            }`} role="status">
+              <span>{autoMessage}</span>
+              {armedSide ? (
+                <button type="button" onClick={cancelChartStopPick} className="shrink-0 font-semibold text-blue-400 hover:text-blue-300">
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
-        <section className={`flex flex-col gap-3 rounded-xl border p-3 ${surface}`}>
-          {orderType === 'market' && (
-            <div>
-              <p className={`mb-1 text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
-                Market price
-              </p>
-              <p className={`font-mono text-xl font-semibold tabular-nums ${strongText}`}>
-                {marketPrice != null ? fmtPrice(marketPrice) : '—'}
-              </p>
-            </div>
-          )}
-          {orderType === 'limit' && (
-            <label className="flex flex-col gap-1">
-              <span className={`text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
-                Limit price
+        {positionFamilySummary ? (
+          <div className={`rounded-xl border px-3 py-2.5 ${isDark ? 'border-violet-500/25 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-[10px] font-semibold uppercase tracking-wide ${mutedText}`}>Related positions</span>
+              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[9px] font-semibold text-violet-400">
+                {positionFamilySummary.microSymbol
+                  ? `${positionFamilySummary.miniSymbol}/${positionFamilySummary.microSymbol}`
+                  : positionFamilySummary.miniSymbol}
               </span>
-              <input
-                type="text"
-                inputMode="decimal"
-                tabIndex={6}
-                value={limitPrice}
-                onChange={(e) => setLimitPrice(e.target.value)}
-                className={inputClass}
-              />
-            </label>
-          )}
-          {orderType === 'stop' && (
-            <div className="flex flex-col gap-3">
-              <label className="flex flex-col gap-1">
-                <span className={`text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
-                  Stop trigger
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  tabIndex={6}
-                  value={stopPrice}
-                  onChange={(e) => setStopPrice(e.target.value)}
-                  className={inputClass}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={`text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
-                  Stop limit
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  tabIndex={7}
-                  value={stopLimitPrice}
-                  onChange={(e) => setStopLimitPrice(e.target.value)}
-                  className={inputClass}
-                />
-              </label>
             </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className={`text-[10px] font-medium uppercase tracking-wide ${mutedText}`}>
-                Quantity
-              </span>
-              <span className={`text-[9px] ${mutedText}`}>Max {maxQty}</span>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                tabIndex={9}
-                value={props.quantity}
-                onChange={(e) => props.onQuantityInputChange(e.target.value)}
-                onBlur={props.onQuantityBlur}
-                className={`${inputClass} flex-1 min-w-0`}
-              />
-              <div className={`flex shrink-0 items-stretch overflow-hidden rounded-xl border ${isDark ? 'border-[#3F3F46]' : 'border-[#D4D4D8]'}`}>
-                <button
-                  type="button"
-                  onClick={() => props.onQuantityChange(-1)}
-                  className={`px-3 ${isDark ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]' : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'}`}
-                  aria-label="Decrease quantity"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <div className={`w-px ${isDark ? 'bg-[#3F3F46]' : 'bg-[#D4D4D8]'}`} />
-                <button
-                  type="button"
-                  onClick={() => props.onQuantityChange(1)}
-                  className={`px-3 ${isDark ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]' : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'}`}
-                  aria-label="Increase quantity"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {qtyPresets.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {qtyPresets.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => props.onQuantityInputChange(String(p))}
-                    className={`font-mono text-[10px] h-7 min-w-[1.75rem] px-2 rounded-lg border transition ${
-                      qtyNum === p
-                        ? 'border-[#3b82f6] bg-[#3b82f6]/15 text-[#BFDBFE]'
-                        : isDark
-                          ? 'border-[#3F3F46] bg-[#27272A] text-[#A1A1AA] hover:border-[#52525B]'
-                          : 'border-[#D4D4D8] bg-white text-[#52525B] hover:border-[#A1A1AA]'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            )}
+            <p className={`mt-1 font-mono text-[11px] font-semibold tabular-nums ${strongText}`}>
+              {formatPracticePositionFamily(positionFamilySummary)}
+            </p>
           </div>
-        </section>
+        ) : null}
 
         <section className="flex flex-col gap-3">
           <div
@@ -702,149 +848,114 @@ export function OrderTab({
                   isDark={isDark}
                   onChange={(v) => {
                     setStopLossOn(v)
+                    if (!v) setChartStopSelected(false)
                     if (v && !slTicks) applySlTicks(DEFAULT_SL_TICKS)
                   }}
                   tabIndex={13}
                 />
+                {riskSettings.sizingBasis === 'stop_loss' ? (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/15 text-[9px] font-bold text-red-400">1</span>
+                ) : null}
                 <span className={`text-xs font-semibold ${strongText}`}>Stop loss</span>
               </div>
-              {stopLossOn && slPrice && (
+              {stopLossOn && chartStopSelected && slPrice && (
                 <span className="font-mono text-[10px] text-[#f85149] tabular-nums">{slPrice}</span>
               )}
             </div>
-            {stopLossOn ? <><BracketPriceTicksRow
-              priceDisabled={false}
-              ticksDisabled={false}
-              priceValue={slPrice}
-              ticksValue={slTicks}
-              onPriceChange={handleSlPriceChange}
-              onTicksChange={handleSlTicksChange}
-              onPriceFocus={() => {
-                slBracketSourceRef.current = 'price'
-                armStopLoss()
-              }}
-              onTicksFocus={() => {
-                slBracketSourceRef.current = 'ticks'
-                armStopLoss()
-              }}
-              onPriceBlur={handleSlPriceBlur}
-              distanceUnit={slDistanceUnit}
-              onDistanceUnitChange={changeSlDistanceUnit}
-              priceTabIndex={14}
-              ticksTabIndex={15}
-              dimmed={false}
-              dollarEnabled={dollarEnabled}
-              equivalents={slEquivalents}
-              isDark={isDark}
-            />
-            <TickPresetChips
-              disabled={false}
-              variant="sl"
-              activeDistance={slTicks}
-              distanceUnit={slDistanceUnit}
-              tickSize={tickSize}
-              tickValue={tickValue}
-              onSelect={applySlTicks}
-              isDark={isDark}
-            /></> : <p className={`text-[10px] leading-4 ${mutedText}`}>Optional protection below your entry.</p>}
+            {stopLossOn ? (
+              <div>
+                <p className={`mb-1.5 text-[9px] font-medium uppercase tracking-wide ${mutedText}`}>
+                  Protection type
+                </p>
+                <div className={`grid grid-cols-2 rounded-lg border p-1 ${isDark ? 'border-[#3F3F46] bg-[#18181B]' : 'border-[#D4D4D8] bg-white'}`}>
+                  {([['hard', 'Hard stop'], ['soft', 'Soft close']] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={riskSettings.stopLossMode === mode}
+                      onClick={() => setStopLossMode(mode)}
+                      className={`h-8 rounded-md text-[10px] font-semibold transition ${
+                        riskSettings.stopLossMode === mode
+                          ? mode === 'hard'
+                            ? 'bg-red-600 text-white'
+                            : 'bg-amber-500 text-black'
+                          : isDark
+                            ? 'text-[#A1A1AA] hover:bg-[#27272A]'
+                            : 'text-[#52525B] hover:bg-[#F4F4F5]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {props.mode !== 'backtest' ? (
+                  <p className={`mt-1.5 text-[9px] leading-4 ${riskSettings.stopLossMode === 'soft' ? 'text-amber-400' : mutedText}`}>
+                    {riskSettings.stopLossMode === 'soft'
+                      ? 'Browser-managed: closes the full position only after a 1-minute bar closes beyond the line. Keep this page open and connected.'
+                      : 'Closes as soon as price touches the line. On Tradesea, it is sent as broker-side protection.'}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <div className={`rounded-lg border px-3 py-2.5 ${isDark ? 'border-red-500/20 bg-black/10' : 'border-red-200 bg-white/70'}`}>
+              <p className={`text-[10px] font-semibold ${chartStopSelected ? 'text-red-400' : strongText}`}>
+                {chartStopSelected && slPrice
+                  ? `Chart stop selected at ${slPrice}`
+                  : 'Press Buy, Sell, or Auto, then move your cursor to the stop price.'}
+              </p>
+              <p className={`mt-1 text-[9px] leading-4 ${mutedText}`}>
+                The risk and contract size follow your cursor. Click the chart to enter or press Esc to cancel.
+              </p>
+            </div>
           </div>
 
-          <div
-            className={`rounded-xl border p-3 flex flex-col gap-3 transition ${
-              takeProfitOn
-                ? 'border-[#3fb950]/40 bg-[#3fb950]/5'
-                : surface
-            }`}
-          >
+          <div className={`rounded-xl border p-3 ${surface}`}>
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <PadCheckbox
-                  checked={takeProfitOn}
-                  accent="green"
-                  isDark={isDark}
-                  onChange={(v) => {
-                    setTakeProfitOn(v)
-                    if (v && !tpTicks) applyTpTicks(DEFAULT_TP_TICKS)
-                  }}
-                  tabIndex={10}
-                />
-                <span className={`text-xs font-semibold ${strongText}`}>Take profit</span>
-              </div>
-              {takeProfitOn && tpPrice && (
-                <span className="font-mono text-[10px] text-[#3fb950] tabular-nums">{tpPrice}</span>
-              )}
+              <span className={`text-xs font-semibold ${strongText}`}>Contracts</span>
+              <span className={`text-[9px] ${mutedText}`}>
+                Auto ${riskExecutionRoot} · $${riskSettings.riskPerTrade} {riskSettings.sizingBasis === 'stop_loss' ? 'risk' : 'target'} · Max {riskMaxQty}
+              </span>
             </div>
-            {takeProfitOn ? <><BracketPriceTicksRow
-              priceDisabled={false}
-              ticksDisabled={false}
-              priceValue={tpPrice}
-              ticksValue={tpTicks}
-              onPriceChange={handleTpPriceChange}
-              onTicksChange={handleTpTicksChange}
-              onPriceFocus={() => {
-                tpBracketSourceRef.current = 'price'
-                armTakeProfit()
-              }}
-              onTicksFocus={() => {
-                tpBracketSourceRef.current = 'ticks'
-                armTakeProfit()
-              }}
-              onPriceBlur={handleTpPriceBlur}
-              distanceUnit={tpDistanceUnit}
-              onDistanceUnitChange={changeTpDistanceUnit}
-              priceTabIndex={11}
-              ticksTabIndex={12}
-              dimmed={false}
-              dollarEnabled={dollarEnabled}
-              equivalents={tpEquivalents}
-              isDark={isDark}
-            />
-            <TickPresetChips
-              disabled={false}
-              variant="tp"
-              activeDistance={tpTicks}
-              distanceUnit={tpDistanceUnit}
-              tickSize={tickSize}
-              tickValue={tickValue}
-              onSelect={applyTpTicks}
-              isDark={isDark}
-            /></> : <p className={`text-[10px] leading-4 ${mutedText}`}>Optional target above your entry.</p>}
+
+            <div className={`mt-2 rounded-lg border px-3 py-2.5 ${isDark ? 'border-blue-500/25 bg-blue-500/5' : 'border-blue-200 bg-blue-50'}`}>
+                {!riskDollarEnabled ? (
+                  <p className={`text-[10px] ${mutedText}`}>This contract does not report a tick value, so size cannot be calculated.</p>
+                ) : executionRoutingPending ? (
+                  <p className="text-[10px] font-medium text-blue-400">Switching execution contract to {riskExecutionRoot}…</p>
+                ) : !riskSizing ? (
+                  <p className="text-[10px] font-medium text-amber-500">
+                    Choose a valid {riskSettings.sizingBasis === 'stop_loss' ? 'stop' : 'take profit'} on the correct side of the entry.
+                  </p>
+                ) : riskSizing.quantity < 1 ? (
+                  <p className="text-[10px] font-medium text-amber-500">
+                    One contract risks ${riskSizing.perContractRisk.toLocaleString()}, above your ${riskSettings.riskPerTrade.toLocaleString()} limit.
+                  </p>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className={`font-mono text-lg font-semibold tabular-nums ${strongText}`}>
+                        {riskSizing.quantity} {riskExecutionRoot} contract{riskSizing.quantity === 1 ? '' : 's'}
+                      </p>
+                      <p className={`font-mono text-[9px] tabular-nums ${mutedText}`}>
+                        ${riskSizing.perContractRisk.toLocaleString()} each · ${riskSizing.plannedRisk.toLocaleString()} planned {riskSettings.sizingBasis === 'stop_loss' ? 'risk' : 'target'}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[9px] font-semibold text-blue-400">
+                      Applied
+                    </span>
+                  </div>
+                )}
+            </div>
+            {riskSummary ? (
+              <p className={`mt-2 font-mono text-[10px] tabular-nums ${mutedText}`}>
+                {riskSummary}
+              </p>
+            ) : null}
           </div>
+
         </section>
       </div>
 
-      <div className={`sticky bottom-0 mt-auto shrink-0 border-t pb-3 pt-2 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'}`}>
-        <p className={`mb-2 truncate px-0.5 text-[10px] ${mutedText}`} title={orderSummary}>
-          {orderSummary}
-        </p>
-        {riskSummary && (
-          <p className={`-mt-1 mb-2 truncate px-0.5 font-mono text-[10px] tabular-nums ${isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`} title={riskSummary}>
-            {riskSummary}
-          </p>
-        )}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            tabIndex={17}
-            onClick={resetBrackets}
-            aria-label="Reset order protection"
-            title="Reset order protection"
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${isDark ? 'border-[#3F3F46] bg-[#27272A] text-[#A1A1AA] hover:bg-[#3F3F46] hover:text-white' : 'border-[#D4D4D8] bg-white text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'}`}
-          >
-            <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-          <TradeSideButton
-            side={selectedSide}
-            variant="confirm"
-            tabIndex={16}
-            disabled={parseOrderEntry() == null || tradeDisabled}
-            onClick={handleConfirm}
-            className="!h-11 flex-1 !rounded-xl disabled:opacity-50"
-          >
-            Place {selectedSide === 'buy' ? 'long' : 'short'} order
-          </TradeSideButton>
-        </div>
-      </div>
       </fieldset>
     </div>
   )

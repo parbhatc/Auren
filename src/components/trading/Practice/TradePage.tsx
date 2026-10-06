@@ -11,6 +11,7 @@ import { publishAccountStats } from '../../../services/trading/accountStatsStore
 import {
   getPracticeAccountById,
   getPracticeAccountDisplayTitle,
+  getFirmMarketDataSelection,
   getPracticeMarketDataSettings,
   normalizePracticePropFirmId,
   refreshPracticeFromApi,
@@ -71,7 +72,10 @@ function TradePageInner() {
     }
 
     const md = getPracticeMarketDataSettings()
-    const marketFirmId = normalizePracticePropFirmId(md.propFirmId)
+    // Practice accounts retain the provider they were created/configured
+    // with. A later global provider change must not make an existing
+    // Tradesea account render through the TradingView adapter.
+    const marketFirmId = normalizePracticePropFirmId(account.propFirmId || md.propFirmId)
     const activeMarketFirm = propFirmRegistry.find((firm) => firm.id === marketFirmId) as any
     if (!activeMarketFirm) {
       setValidationError(t('practice.page.loadFailed'))
@@ -86,8 +90,11 @@ function TradePageInner() {
       const firmId = marketFirmId
       localStorage.setItem('activePropFirm', firmId)
 
-      let marketAccountId = md.accountId
-      let marketAccountLabel = md.accountLabel
+      const firmSelection = getFirmMarketDataSelection(md, marketFirmId)
+      const marketAccountId =
+        account.marketDataAccountId || firmSelection.accountId
+      const marketAccountLabel =
+        account.marketDataAccountLabel || firmSelection.accountLabel
 
       const validationResult = await activeMarketFirm.validate()
       if (!validationResult.success) {

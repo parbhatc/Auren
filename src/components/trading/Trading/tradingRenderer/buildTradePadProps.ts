@@ -12,6 +12,8 @@ import {
 } from '../../../../utils/practiceTradePanelPopout'
 import type { TradePanelProps } from '../../../../types/tradePanel'
 import type { TradeActionExtra } from './tradeActions'
+import { getPracticeAccountById } from '../../../../constants/practice'
+import { getMaxContractsForSymbol } from '../../../../services/practice/practiceLimits'
 
 export type BuildTradePadPropsContext = {
   padSessionId: string
@@ -191,6 +193,26 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
         : undefined,
     tickSize: activeFirm?.chartServices?.datafeed?.getTickSize?.(padRoot) ?? 0.25,
     tickValue: activeFirm?.chartServices?.datafeed?.getTickValue?.(padRoot) ?? 0,
+    autoRiskContractRouting: !liveMode && tradeHandler instanceof PracticeTradeHandler,
+    pickChartPriceOnce:
+      tradeHandler && typeof tradeHandler.pickChartPriceOnce === 'function'
+        ? (onPrice) => tradeHandler.pickChartPriceOnce(onPrice)
+        : undefined,
+    showAutoPositionPreview:
+      tradeHandler && typeof tradeHandler.showAutoPositionPreview === 'function'
+        ? (options) => tradeHandler.showAutoPositionPreview(options)
+        : undefined,
+    getMaxQuantityForSymbol: !liveMode && tradeHandler instanceof PracticeTradeHandler
+      ? (symbol: string) => {
+          const account = getPracticeAccountById(padSessionId)
+          return account
+            ? getMaxContractsForSymbol(account.size, symbol, account.rules)
+            : 10
+        }
+      : undefined,
+    getPositionFamilySummary: !liveMode && tradeHandler instanceof PracticeTradeHandler
+      ? () => tradeHandler.getPositionFamilySummaryFor(chartProductRoot)
+      : undefined,
     onDetach: () => {
       togglePracticePadDetached(padSessionId)
       onForceUpdate()
@@ -221,6 +243,8 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       runTrade(side === 'buy' ? 'Buy' : 'Sell', {
         stopLoss: brackets.stopLoss,
         takeProfit: brackets.takeProfit,
+        stopLossMode: brackets.stopLossMode,
+        softStopTrigger: brackets.softStopTrigger,
         orderType: order?.orderType,
         entryPrice: order?.orderType === 'market' ? undefined : order?.entryPrice,
       })

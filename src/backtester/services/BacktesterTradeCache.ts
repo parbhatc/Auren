@@ -10,6 +10,7 @@ import type { BacktesterChartDataFeed } from '../components/chart/BacktesterChar
 class BacktesterTradeCache extends ChartTradeCache {
   private tradeHandler: BacktesterTradeHandler
   private sessionId: string | null = null
+  private pendingExecutionSymbol: string | null = null
 
   private normalizeTradeTimestampSec(value: number | null | undefined): number {
     const num = Number(value)
@@ -34,6 +35,50 @@ class BacktesterTradeCache extends ChartTradeCache {
     return this.tradeHandler.getDatafeed()
   }
 
+  /**
+   * Keep a micro execution attached to the visible mini chart while giving the
+   * position overlay and replay accounting the actual execution identity.
+   */
+  openRoutedPosition(
+    chartSymbol: string,
+    executionSymbol: string,
+    price: number,
+    contracts: number,
+    stopLoss: number | null,
+    takeProfit: number | null
+  ) {
+    this.pendingExecutionSymbol = executionSymbol
+    try {
+      const position = super.onOpenPosition(
+        chartSymbol,
+        price,
+        contracts,
+        stopLoss,
+        takeProfit
+      )
+      if (position) position.executionSymbol = executionSymbol
+      return position
+    } finally {
+      this.pendingExecutionSymbol = null
+    }
+  }
+
+  protected getPositionPresentation(symbol: string, contracts: number) {
+    const position = this.getPosition(symbol)
+    const executionSymbol = String(
+      this.pendingExecutionSymbol || position?.executionSymbol || symbol
+    )
+    const datafeed = this.getDatafeed()
+    const tickSize = datafeed?.getTickSize(executionSymbol) ?? 0.25
+    const tickValue = datafeed?.getTickValue(executionSymbol) ?? tickSize * 2
+    return {
+      symbolLabel: executionSymbol,
+      quantityLabel: String(Math.abs(contracts)),
+      tickSize,
+      tickValue,
+    }
+  }
+
   async loadSessionBalance() {
     if (!this.sessionId) return
     try {
@@ -53,7 +98,7 @@ class BacktesterTradeCache extends ChartTradeCache {
     }
 
     this.closeTrade(
-      position.symbol, 
+      position.executionSymbol || position.symbol,
       position.type, 
       position.entry, 
       price, 
@@ -99,6 +144,10 @@ class BacktesterTradeCache extends ChartTradeCache {
 
     const position = this.getPosition(symbol)
     if (position) {
+      const executionSymbol = position.executionSymbol || symbol
+      const datafeed = this.getDatafeed()
+      tickSize = datafeed?.getTickSize(executionSymbol) ?? tickSize
+      tickValue = datafeed?.getTickValue(executionSymbol) ?? tickValue
       let stopLoss = position.stopLoss
       let takeProfit = position.takeProfit
 
@@ -156,7 +205,7 @@ class BacktesterTradeCache extends ChartTradeCache {
 
   getTradeDataFromPosition(position: any, exitPrice: number, exitTime: number) {
     return this.getTradeData(
-      position.symbol,
+      position.executionSymbol || position.symbol,
       position.type,
       position.entry,
       exitPrice,

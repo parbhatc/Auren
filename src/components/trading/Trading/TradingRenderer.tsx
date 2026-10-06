@@ -50,6 +50,7 @@ import { ClassicTradePanel } from './tradingRenderer/ClassicTradePanel'
 import ProductHeader from '../../layout/ProductHeader'
 import InSessionJournalCapture from '../../../journal/InSessionJournalCapture'
 import { captureOpenPosition } from '../../../journal/journalCapture'
+import { formatPracticePositionFamily } from '../../../services/practice/practiceContractFamily'
 
 /**
  * Trading renderer component
@@ -634,11 +635,19 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     const showNav = isPwaPinnedNav() ? true : this.state.showNav
 
     const chartComponent = activeFirm?.getRenderChart?.(selectedSymbol, '1', isDark)
+    const practiceHandler = this.getHandler()
+    const positionFamilySummary =
+      practiceMode && practiceHandler instanceof PracticeTradeHandler
+        ? practiceHandler.getPositionFamilySummaryFor(selectedSymbol)
+        : null
     const chartElement = (
       <TradingChartHost
         terminalShell={terminalShell}
         isDark={isDark}
         chartComponent={chartComponent}
+        positionSummary={
+          positionFamilySummary ? formatPracticePositionFamily(positionFamilySummary) : null
+        }
       />
     )
 

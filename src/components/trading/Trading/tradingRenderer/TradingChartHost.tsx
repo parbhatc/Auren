@@ -4,12 +4,14 @@ type TradingChartHostProps = {
   terminalShell: boolean
   isDark: boolean
   chartComponent: ReactNode
+  positionSummary?: string | null
 }
 
 export function TradingChartHost({
   terminalShell,
   isDark,
   chartComponent,
+  positionSummary,
 }: TradingChartHostProps) {
   return (
     <div
@@ -30,6 +32,18 @@ export function TradingChartHost({
             Chart not available
           </div>
         )}
+        {positionSummary ? (
+          <div
+            className={`pointer-events-none absolute left-3 top-12 z-[80] max-w-[min(32rem,calc(100%-1.5rem))] rounded-lg border px-2.5 py-1.5 font-mono text-[10px] font-semibold tabular-nums shadow-lg backdrop-blur ${
+              isDark
+                ? 'border-violet-500/35 bg-slate-950/85 text-violet-200 shadow-black/30'
+                : 'border-violet-300 bg-white/90 text-violet-800 shadow-slate-300/40'
+            }`}
+            title="Combined mini and micro position"
+          >
+            {positionSummary}
+          </div>
+        ) : null}
       </div>
     </div>
   )

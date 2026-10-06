@@ -8,6 +8,13 @@ export type BwcPositionSnapshot = {
   takeProfit: number | null
 }
 
+export type BwcPositionPresentation = {
+  symbolLabel?: string | null
+  quantityLabel?: string | null
+  tickSize?: number | null
+  tickValue?: number | null
+}
+
 export type BwcPositionOverlayApi = {
   buy: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
   sell: (priceOrOpts?: number | { price?: number; qty?: number }) => Promise<unknown>
@@ -20,6 +27,7 @@ export type BwcPositionOverlayApi = {
   modifyPosition?: (opts: { entry: number; qty: number }) => Promise<unknown> | unknown
   refreshLayout?: () => number
   setMarkPrice?: (price: number) => boolean
+  setPresentation?: (presentation: BwcPositionPresentation) => BwcPositionPresentation
   onClose: (cb: (snapshot: BwcPositionSnapshot) => void) => () => void
   onStopLossChanged: (cb: (oldPrice: number | null, newPrice: number | null) => void) => () => void
   onTakeProfitChanged: (cb: (oldPrice: number | null, newPrice: number | null) => void) => () => void
@@ -270,12 +278,13 @@ export class BwcPositionBridge {
     contracts: number,
     stopLoss: number | null,
     takeProfit: number | null,
-    opts: { createBrackets?: boolean } = {}
+    opts: { createBrackets?: boolean; presentation?: BwcPositionPresentation | null } = {}
   ): Promise<void> {
     const overlay = this.getOverlay()
     if (!overlay) return
 
     this.wire()
+    if (opts.presentation) this.getOverlay()?.setPresentation?.(opts.presentation)
     this.activeSymbol = symbol
     const revision = ++this.syncRevision
     const run = () =>
@@ -300,7 +309,7 @@ export class BwcPositionBridge {
     contracts: number,
     stopLoss: number | null,
     takeProfit: number | null,
-    opts: { createBrackets?: boolean }
+    opts: { createBrackets?: boolean; presentation?: BwcPositionPresentation | null }
   ): Promise<void> {
     const overlay = this.getOverlay()
     if (!overlay || revision !== this.syncRevision || this.activeSymbol !== symbol) return
