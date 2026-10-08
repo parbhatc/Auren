@@ -1,4 +1,5 @@
 import { aurenToast } from '../../utils/aurenToast'
+import { chartResolutionToMs, formatChartResolution, normalizeChartResolution } from '../../utils/chartResolution'
 import { practiceExitSide, practiceOrderLine } from './practiceOrderToasts'
 import { showPracticeOrderToast } from './showPracticeOrderToast'
 import ChartTradeCache from '../../components/common/ChartTradeCache'
@@ -43,7 +44,7 @@ export class PracticeTradeCache extends ChartTradeCache {
   private lastBracketMark = new Map<string, number>()
 
   /** Last live mark in each one-minute bucket for browser-managed soft stops. */
-  private softStopMinuteMarks = new Map<string, { minute: number; close: number; time: number }>()
+  private softStopBarMarks = new Map<string, { bucket: number; close: number; time: number }>()
 
   private pendingBracketCloses = new Map<
     string,
@@ -111,7 +112,7 @@ export class PracticeTradeCache extends ChartTradeCache {
     this.cache.clear()
     this.positionIds.clear()
     this.lastBracketMark.clear()
-    this.softStopMinuteMarks.clear()
+    this.softStopBarMarks.clear()
     this.pendingBracketCloses.clear()
     this.closingBracketIds.clear()
   }
@@ -292,7 +293,9 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     stopLossMode: 'hard' | 'soft' = 'hard',
 
-    softStopTrigger: 'bar_close' = 'bar_close'
+    softStopTrigger: 'bar_close' = 'bar_close',
+
+    softStopResolution = '1'
 
   ) {
 
@@ -340,6 +343,9 @@ export class PracticeTradeCache extends ChartTradeCache {
 
       )
 
+      ;(data as typeof data & { softStopResolution?: string }).softStopResolution =
+        normalizeChartResolution(softStopResolution)
+
       this.handleOpenPosition(data)
 
       if (mark != null && Number.isFinite(mark)) {
@@ -382,6 +388,8 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     )
 
+    if (opened) opened.softStopResolution = normalizeChartResolution(softStopResolution)
+
     if (existingBeforeOpen && opened?.contracts) {
       opened.stopLoss = stopLoss
       opened.takeProfit = takeProfit
@@ -414,6 +422,37 @@ export class PracticeTradeCache extends ChartTradeCache {
     price: number | null = null,
     exitTime: number | null = null
   ) {
+    const resolved = this.resolveCachePosition(symbol)
+    const position = resolved?.position
+    const openContracts = Math.abs(Number(position?.contracts) || 0)
+    const closeContracts = Math.min(Math.max(0, Math.floor(Number(contracts))), openContracts)
+    if (position && closeContracts > 0 && closeContracts < openContracts) {
+      const posId = this.resolvePositionId(String(position.symbol || symbol))
+      const ws = this.tradeHandler.getAccountWs()
+      if (!posId || !ws) {
+        aurenToast.error(!posId ? 'Could not close position' : 'Account connection unavailable')
+        return
+      }
+      const tradeSymbol = this.productSymbol(String(position.symbol || symbol))
+      const fees = practiceFillCommission(this.tradeHandler.getAccount()?.rules, closeContracts, tradeSymbol)
+      ws.closePosition({
+        positionId: posId,
+        amount: closeContracts,
+        exitPrice: price ?? undefined,
+        exitTime: exitTime == null ? undefined : Math.floor(entryTimeToMs(exitTime) / 1000),
+        fees,
+      })
+      showPracticeOrderToast(
+        practiceExitSide(Number(position.contracts), String(position.type || '')),
+        practiceOrderLine(
+          practiceExitSide(Number(position.contracts), String(position.type || '')),
+          closeContracts,
+          tradeSymbol,
+          price ?? Number(position.entry)
+        )
+      )
+      return
+    }
     clearBracketCheckpoint(this.accountId, symbol)
     super.onClosePosition(symbol, contracts, price, exitTime)
   }
@@ -736,7 +775,7 @@ export class PracticeTradeCache extends ChartTradeCache {
       }
       this.mergeOverlayBracketsIntoCache(cacheKey)
       if (position.stopLossMode === 'soft' && position.stopLoss != null) {
-        this.updateSoftStopMinute(cacheKey, position, price, book?.updatedAt)
+        this.updateSoftStopBar(cacheKey, position, price, book?.updatedAt)
       }
       if (position.stopLoss == null && position.takeProfit == null) continue
       this.checkMarkBracketFills(cacheKey, price, book?.updatedAt)
@@ -779,17 +818,19 @@ export class PracticeTradeCache extends ChartTradeCache {
     this.closeOnBracketHit(key, position, hit.exitPrice, time, hit.reason)
   }
 
-  private updateSoftStopMinute(
+  private updateSoftStopBar(
     cacheKey: string,
     position: Record<string, any>,
     mark: number,
     rawTime?: number
   ): void {
     const timeMs = rawTime && rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime ?? Date.now()
-    const minute = Math.floor(timeMs / 60_000)
-    const previous = this.softStopMinuteMarks.get(cacheKey)
-    this.softStopMinuteMarks.set(cacheKey, { minute, close: mark, time: timeMs })
-    if (!previous || previous.minute >= minute) return
+    const resolution = normalizeChartResolution(position.softStopResolution)
+    const durationMs = chartResolutionToMs(resolution)
+    const bucket = Math.floor(timeMs / durationMs)
+    const previous = this.softStopBarMarks.get(cacheKey)
+    this.softStopBarMarks.set(cacheKey, { bucket, close: mark, time: timeMs })
+    if (!previous || previous.bucket >= bucket) return
     const stop = Number(position.stopLoss)
     const triggered = Number(position.contracts) > 0
       ? previous.close <= stop
@@ -797,7 +838,7 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (triggered) {
       aurenToast.warning(
         'Soft stop triggered',
-        `1-minute close ${previous.close} crossed ${stop}. Closing the full position.`
+        `${formatChartResolution(resolution)} close ${previous.close} crossed ${stop}. Closing the full position.`
       )
       this.closeOnBracketHit(cacheKey, position, previous.close, previous.time, 'stop_loss')
     }
@@ -805,6 +846,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   private clearBracketMark(cacheKey: string): void {
     this.lastBracketMark.delete(cacheKey)
+    this.softStopBarMarks.delete(cacheKey)
     const product = this.productSymbol(cacheKey).toUpperCase()
     for (const key of [...this.lastBracketMark.keys()]) {
       if (this.productSymbol(key).toUpperCase() === product) {

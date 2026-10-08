@@ -125,7 +125,7 @@ class BacktesterTradeCache extends ChartTradeCache {
         return;
       }
       this.closeTrade(
-        position.symbol, 
+        position.executionSymbol || position.symbol,
         position.type, 
         position.entry, 
         lastBar.close, 

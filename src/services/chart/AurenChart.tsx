@@ -13,6 +13,7 @@ import {
   bindBwcTradeContextHooks,
   clearChartContextActions,
   registerTradeContextActions,
+  requestChartAutoTrade,
 } from '../../components/common/aurenTradeContextMenu'
 import { setupChartKeyboardShortcuts } from '../../components/common/chartKeyboardShortcuts'
 import { schedulePageScrollReset } from '../../utils/resetPageScroll'
@@ -175,7 +176,7 @@ function resolveInitialSymbol(symbolProp: string | undefined): string {
   return chartSymbolToProductRoot(trimmed) || trimmed
 }
 
-function wireTradeContextActions(handler: ChartTradeHandler): void {
+function wireTradeContextActions(handler: ChartTradeHandler, accountId?: string): void {
   const placeLimit = handler.placeLimitOrder?.bind(handler)
 
   registerTradeContextActions({
@@ -185,6 +186,8 @@ function wireTradeContextActions(handler: ChartTradeHandler): void {
     onMarketSell: (quantity) => {
       void handler.logButtonPress?.('Sell', { quantity, orderType: 'market' })
     },
+    onAutoBuy: () => requestChartAutoTrade('buy', accountId),
+    onAutoSell: () => requestChartAutoTrade('sell', accountId),
     onLimitBuy: placeLimit
       ? (quantity, limitPrice) => {
           void placeLimit('buy', quantity, limitPrice)
@@ -434,7 +437,7 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         if (handler) {
-          wireTradeContextActions(handler)
+          wireTradeContextActions(handler, liveProps.practiceAccountId || liveProps.accountId)
         }
 
         handler?.onReady(widget, datafeedSource)
@@ -487,8 +490,8 @@ export default function AurenChart(props: AurenChartProps) {
   useEffect(() => {
     const handler = props.tradeseaTradeHandler
     if (!handler || !widgetRef.current) return
-    wireTradeContextActions(handler)
-  }, [props.tradeseaTradeHandler])
+    wireTradeContextActions(handler, props.practiceAccountId || props.accountId)
+  }, [props.accountId, props.practiceAccountId, props.tradeseaTradeHandler])
 
   const { style, className } = props
   return (

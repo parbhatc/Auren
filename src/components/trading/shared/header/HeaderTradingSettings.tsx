@@ -6,6 +6,7 @@ import { t } from '../../../../utils/translator'
 import { TradingLimitsSettingsPanel } from './TradingLimitsSettingsPanel'
 import PositionPnlDisplaySetting from './PositionPnlDisplaySetting'
 import RiskPositionSizeSetting from './RiskPositionSizeSetting'
+import ReplaySettingsPanel from './ReplaySettingsPanel'
 
 /**
  * Header settings gear. Always offers the global trade-panel settings
@@ -15,12 +16,14 @@ import RiskPositionSizeSetting from './RiskPositionSizeSetting'
 export default function HeaderTradingSettings({
   practiceAccountId,
   isDark,
+  showReplaySettings = false,
 }: {
   practiceAccountId?: string
   isDark: boolean
+  showReplaySettings?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'display' | 'risk' | 'limits'>('display')
+  const [activeTab, setActiveTab] = useState<'display' | 'risk' | 'replay' | 'limits'>('display')
   const rootRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const { status, isActiveAccount } = usePracticeLockout(practiceAccountId)
@@ -48,8 +51,11 @@ export default function HeaderTradingSettings({
     }
   }, [open])
 
-  const showLimits = Boolean(practiceAccountId && isActiveAccount && status)
-  const locked = showLimits && Boolean(status?.locked)
+  // Keep the account-scoped tab visible while lockout status is loading. Hiding
+  // it behind the async status response made the dialog appear to have only
+  // Display and Risk & sizing for valid practice accounts.
+  const showLimits = Boolean(practiceAccountId)
+  const locked = Boolean(showLimits && isActiveAccount && status?.locked)
 
   const btnClass = isDark
     ? 'border-slate-600/80 text-slate-400 hover:border-violet-500/40 hover:bg-violet-950/30 hover:text-violet-200'
@@ -99,7 +105,7 @@ export default function HeaderTradingSettings({
                 className={`flex h-[min(42rem,calc(100vh-2rem))] w-[min(32rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border ${menuClass}`}
               >
                 <div
-                  className={`grid shrink-0 ${showLimits ? 'grid-cols-3' : 'grid-cols-2'} border-b p-1.5 ${
+                  className={`grid shrink-0 ${showLimits && showReplaySettings ? 'grid-cols-4' : showLimits || showReplaySettings ? 'grid-cols-3' : 'grid-cols-2'} border-b p-1.5 ${
                     isDark ? 'border-slate-700 bg-slate-950/50' : 'border-slate-200 bg-slate-50'
                   }`}
                   role="tablist"
@@ -108,6 +114,7 @@ export default function HeaderTradingSettings({
                   {([
                     ['display', 'Display'],
                     ['risk', 'Risk & sizing'],
+                    ...(showReplaySettings ? ([['replay', 'Replay']] as const) : []),
                     ...(showLimits ? ([['limits', 'Limits & lockout']] as const) : []),
                   ] as const).map(([id, label]) => (
                     <button
@@ -131,6 +138,9 @@ export default function HeaderTradingSettings({
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   {activeTab === 'display' ? <PositionPnlDisplaySetting isDark={isDark} /> : null}
                   {activeTab === 'risk' ? <RiskPositionSizeSetting isDark={isDark} /> : null}
+                  {activeTab === 'replay' && showReplaySettings ? (
+                    <ReplaySettingsPanel isDark={isDark} />
+                  ) : null}
                   {activeTab === 'limits' && showLimits && practiceAccountId ? (
                     <TradingLimitsSettingsPanel
                       practiceAccountId={practiceAccountId}

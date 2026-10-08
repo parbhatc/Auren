@@ -4,17 +4,74 @@
  */
 import fs from 'fs'
 import path from 'path'
+import TradeseaIdentityService from '../../services/tradesea/TradeseaIdentityService.js'
 import {
-  DEFAULT_CSV_RESOLUTION,
+  csvFolderForChartResolution,
   ensureMonthFileDir,
   findLatestMonth,
   monthFilePath,
   monthNameFromIndex,
 } from '../../utils/backtesterCsvPaths.js'
+import { normalizeTradeseaMarketDataSymbol } from '../../utils/tradeseaMarketDataSymbol.js'
 
 class TradeseaDataHandler {
-  constructor(websocketInstance) {
+  constructor(websocketInstance, identityService = TradeseaIdentityService) {
     this.ws = websocketInstance
+    this.identityService = identityService
+  }
+
+  async getHistory(connection, symbol, resolution, countback, from, to) {
+    const marketDataSymbol = normalizeTradeseaMarketDataSymbol(
+      symbol,
+      connection.delayed === true
+    )
+    const params = new URLSearchParams({
+      'connection-user-id': connection.userId,
+      'connection-group-id': connection.connectionGroupId,
+      symbol: marketDataSymbol,
+      resolution,
+      from: String(from),
+      to: String(to),
+      countback: String(countback),
+      currencyCode: 'USD',
+    })
+    const response = await this.identityService.proxyUdfRequest(
+      connection.tokens,
+      connection.accountId,
+      `/history?${params.toString()}`
+    )
+    let body = response.body
+    if (typeof body === 'string') {
+      try {
+        body = body ? JSON.parse(body) : {}
+      } catch {
+        throw new Error('Tradesea returned invalid history data')
+      }
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      const detail = body?.errmsg || body?.message || body?.error
+      throw new Error(
+        detail
+          ? `Tradesea history request failed: ${detail} (${response.statusCode})`
+          : `Tradesea history request failed (${response.statusCode})`
+      )
+    }
+    if (body?.s === 'no_data') return { bars: [] }
+    if (body?.s !== 'ok' || !Array.isArray(body.t)) {
+      throw new Error(body?.errmsg || body?.message || 'Tradesea history request failed')
+    }
+
+    const bars = body.t.map((time, index) => ({
+      t: Number(time) * 1000,
+      o: Number(body.o?.[index]),
+      h: Number(body.h?.[index]),
+      l: Number(body.l?.[index]),
+      c: Number(body.c?.[index]),
+      v: Number(body.v?.[index] ?? 0),
+    })).filter((bar) => Number.isFinite(bar.t) && bar.t > 0)
+
+    // The legacy CSV loop pages backward using the final bar in each chunk.
+    return { bars: bars.sort((a, b) => b.t - a.t) }
   }
 
   /**
@@ -27,11 +84,10 @@ class TradeseaDataHandler {
   /**
    * Download Tradesea data and save to CSV files
    */
-  async download(apiSymbol, normalizedSymbol, token, action = 'download') {
+  async download(apiSymbol, normalizedSymbol, connection, action = 'download', chartResolution = '1') {
     try {
-      const TradeseaService = (await import('../../services/TradeseaService.js')).default
-
-      const resolution = '1'
+      const resolution = String(chartResolution || '1')
+      const csvResolution = csvFolderForChartResolution(resolution)
       let toTime = Math.floor(Date.now() / 1000)
       const countback = 25000
 
@@ -44,15 +100,13 @@ class TradeseaDataHandler {
       let isIncomplete = true
       while (isIncomplete) {
         try {
-          const historyResponse = await TradeseaService.getHistory(
-            token,
+          const historyResponse = await this.getHistory(
+            connection,
             apiSymbol,
             resolution,
             countback,
             0,
-            toTime.toString(),
-            'extended',
-            false
+            toTime.toString()
           )
 
           const bars = historyResponse?.bars || []
@@ -93,12 +147,11 @@ class TradeseaDataHandler {
           this.ws.sendProgress(null, action, normalizedSymbol, 'tradesea', 0,
             `Fetched ${allBars.length} bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
-          toTime = Math.floor(lastBar.t / 1000)
+          toTime = Math.floor(lastBar.t / 1000) - 1
           await new Promise(resolve => setTimeout(resolve, 100))
         } catch (error) {
           console.error(`[TradeseaDataHandler] Error fetching chunk:`, error.message)
-          isIncomplete = false
-          break
+          throw error
         }
       }
 
@@ -139,8 +192,8 @@ class TradeseaDataHandler {
       for (const key of Object.keys(barsByMonth).sort()) {
         const { year, month, monthName, bars } = barsByMonth[key]
         
-        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
-        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
+        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year, csvResolution)
+        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
         const csvLines = bars.map(bar => {
           const timestampSeconds = Math.floor(bar.time / 1000)
           return `${timestampSeconds},${bar.open},${bar.high},${bar.low},${bar.close},${bar.volume}`
@@ -151,7 +204,7 @@ class TradeseaDataHandler {
           normalizedSymbol,
           year,
           month,
-          DEFAULT_CSV_RESOLUTION,
+          csvResolution,
         )
         filesWritten++
 
@@ -182,11 +235,10 @@ class TradeseaDataHandler {
   /**
    * Update Tradesea data (merges with existing)
    */
-  async update(apiSymbol, normalizedSymbol, token) {
+  async update(apiSymbol, normalizedSymbol, connection, chartResolution = '1') {
     try {
-      const TradeseaService = (await import('../../services/TradeseaService.js')).default
-
-      const resolution = '1'
+      const resolution = String(chartResolution || '1')
+      const csvResolution = csvFolderForChartResolution(resolution)
       const symbolDir = path.join(this.ws.csvDir, normalizedSymbol)
       
       this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Finding latest data...')
@@ -194,7 +246,11 @@ class TradeseaDataHandler {
       const now = new Date()
       const nowTimestamp = Math.floor(now.getTime() / 1000)
       
-      const { latestYear, latestMonth, latestMonthIndex } = findLatestMonth(this.ws.csvDir, normalizedSymbol)
+      const { latestYear, latestMonth, latestMonthIndex } = findLatestMonth(
+        this.ws.csvDir,
+        normalizedSymbol,
+        csvResolution
+      )
 
       // Determine update range
       let fromTime = 0
@@ -220,15 +276,13 @@ class TradeseaDataHandler {
       let isIncomplete = true
       while (isIncomplete) {
         try {
-          const historyResponse = await TradeseaService.getHistory(
-            token,
+          const historyResponse = await this.getHistory(
+            connection,
             apiSymbol,
             resolution,
             countback,
             0,
-            toTime.toString(),
-            'extended',
-            false
+            toTime.toString()
           )
 
           const bars = historyResponse?.bars || []
@@ -295,12 +349,11 @@ class TradeseaDataHandler {
           this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0,
             `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
-          toTime = Math.floor(lastBar.t / 1000)
+          toTime = Math.floor(lastBar.t / 1000) - 1
           await new Promise(resolve => setTimeout(resolve, 100))
         } catch (error) {
           console.error(`[TradeseaDataHandler] Error fetching update chunk:`, error.message)
-          isIncomplete = false
-          break
+          throw error
         }
       }
 
@@ -350,8 +403,8 @@ class TradeseaDataHandler {
       for (const key of Object.keys(barsByMonth).sort()) {
         const { year, month, monthName, bars } = barsByMonth[key]
         
-        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year)
-        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName)
+        ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year, csvResolution)
+        const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
 
         // Read existing file if it exists
         const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : ''
@@ -389,7 +442,7 @@ class TradeseaDataHandler {
           normalizedSymbol,
           year,
           month,
-          DEFAULT_CSV_RESOLUTION,
+          csvResolution,
         )
         
         // Only count files that actually had new candles

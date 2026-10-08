@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { JournalEntryRecord, JournalRecap, JournalScreenshot } from '../api/journal.api'
 import { normalizeJournalRecap, validateJournalEntry } from '../../shared/journalRecap.js'
 import { conditionsForJournalEntry, type Playbook } from './journalConditions'
-import { JOURNAL_TEMPLATES } from './journalTemplates'
 import JournalConditionFields from './JournalConditionFields'
 import JournalRecapFields from './JournalRecapFields'
 import { handleApiError } from '../utils/errorHandler'
 import { useJournalDraft } from './useJournalDraft'
 import JournalExecutionUpdate from './JournalExecutionUpdate'
+import ConfirmDialog from '../components/common/ConfirmDialog'
 
 type Props = {
   initialEntry: JournalEntryRecord
@@ -34,18 +34,16 @@ export default function JournalEntryEditor({
   const [saving, setSaving] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
+  const [confirmAction, setConfirmAction] = useState<'close' | 'replace-recovery' | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
   const busy = saving || processing
-  const options = [
-    ...playbooks,
-    ...JOURNAL_TEMPLATES.filter(
-      (template) => !playbooks.some((book) => book.name === template.name)
-    ),
-  ]
-  const fallback = options.find(
+  const selectedPlaybook = playbooks.find(
     (book) => book.id === draft.strategyId || book.name === draft.playbook
   )
-  const allConditions = conditionsForJournalEntry(draft, fallback?.conditions)
+  const legacyPlaybook = initialEntry.id && draft.playbook && !selectedPlaybook
+    ? draft.playbook
+    : ''
+  const allConditions = conditionsForJournalEntry(draft, selectedPlaybook?.conditions)
   const inputClass = `h-11 min-w-0 rounded-lg border px-3 text-base outline-none focus:border-blue-500 sm:h-9 sm:text-sm ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA]' : 'border-[#D4D4D8] bg-white text-[#09090B]'}`
   const update = (patch: Partial<JournalEntryRecord>) =>
     setDraft((entry) => ({ ...entry, ...patch }))
@@ -68,13 +66,10 @@ export default function JournalEntryEditor({
     try {
       await recovery.flush()
     } catch {
-      if (
-        !recovery.recovery &&
-        !window.confirm(
-          'This draft could not be saved on your device. Close and lose unsaved changes?'
-        )
-      )
+      if (!recovery.recovery) {
+        setConfirmAction('close')
         return
+      }
     }
     onClose()
   }
@@ -100,6 +95,7 @@ export default function JournalEntryEditor({
     }
   }
   return (
+    <>
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 sm:items-center sm:p-5">
       <div
         ref={dialog}
@@ -140,7 +136,7 @@ export default function JournalEntryEditor({
               {initialEntry.id ? 'Edit recap' : 'New setup recap'}
             </h2>
             <p className="mt-1 text-xs text-[#71717A]">
-              Context → confirmations → chart evidence → lesson
+              Playbook → building blocks → chart evidence → lesson
             </p>
             <p role="status" className="mt-1 text-xs text-blue-500">
               {recovery.status}
@@ -160,8 +156,7 @@ export default function JournalEntryEditor({
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm('Replace this device draft with the current saved entry?'))
-                      recovery.resume()
+                    setConfirmAction('replace-recovery')
                   }}
                   className="rounded border border-zinc-500 px-3 py-2"
                 >
@@ -204,43 +199,45 @@ export default function JournalEntryEditor({
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-xs text-[#71717A] sm:col-span-2">
-                Playbook / setup template
+                Playbook
                 <select
                   aria-label="Journal playbook"
-                  value={fallback?.id ?? ''}
+                  value={selectedPlaybook?.id ?? (legacyPlaybook ? '__legacy__' : '')}
+                  disabled={playbooks.length === 0}
                   onChange={(event) => {
-                    const selected = options.find((book) => book.id === event.target.value)
+                    const selected = playbooks.find((book) => book.id === event.target.value)
                     if (selected)
                       update({
                         playbook: selected.name,
-                        strategyId: playbooks.some((book) => book.id === selected.id)
-                          ? selected.id
-                          : null,
+                        strategyId: selected.id,
                         recap: { ...draft.recap, setupConditions: selected.conditions },
                       })
                   }}
                   className={`${inputClass} mt-1.5 w-full`}
                 >
-                  {!fallback && <option value="">{draft.playbook || 'Select a playbook'}</option>}
-                  {playbooks.length > 0 && (
-                    <optgroup label="Your playbooks">
-                      {playbooks.map((book) => (
-                        <option key={book.id} value={book.id}>
-                          {book.name}
-                        </option>
-                      ))}
-                    </optgroup>
+                  {!selectedPlaybook && !legacyPlaybook && (
+                    <option value="">
+                      {playbooks.length ? 'Select a playbook' : 'No playbooks available'}
+                    </option>
                   )}
-                  <optgroup label="Recap templates">
-                    {options
-                      .filter((book) => !playbooks.some((saved) => saved.id === book.id))
-                      .map((book) => (
-                        <option key={book.id} value={book.id}>
-                          {book.name}
-                        </option>
-                      ))}
-                  </optgroup>
+                  {legacyPlaybook && (
+                    <option value="__legacy__">Previously saved: {legacyPlaybook}</option>
+                  )}
+                  {playbooks.map((book) => (
+                    <option key={book.id} value={book.id}>
+                      {book.name}
+                    </option>
+                  ))}
                 </select>
+                {playbooks.length === 0 && !legacyPlaybook && (
+                  <span className="mt-2 block text-xs text-[#71717A]">
+                    You have no playbooks.{' '}
+                    <a href="/analytics" className="font-semibold text-blue-500">
+                      Create a playbook
+                    </a>{' '}
+                    before saving this recap.
+                  </span>
+                )}
               </label>
               <label className="text-xs text-[#71717A]">
                 Entry date and time
@@ -345,7 +342,7 @@ export default function JournalEntryEditor({
                 <h3
                   className={`mb-3 text-sm font-semibold ${isDark ? 'text-white' : 'text-zinc-900'}`}
                 >
-                  Setup confirmations
+                  Playbook building blocks
                 </h3>
                 <JournalConditionFields
                   conditions={allConditions}
@@ -386,7 +383,7 @@ export default function JournalEntryEditor({
             </button>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || (!selectedPlaybook && !legacyPlaybook)}
               className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               {processing ? 'Preparing images…' : saving ? 'Saving…' : 'Save recap'}
@@ -395,5 +392,34 @@ export default function JournalEntryEditor({
         </form>
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={confirmAction === 'close'}
+      title="Close without a recoverable draft?"
+      message="This draft could not be saved on your device. Closing now will discard the unsaved changes."
+      confirmText="Close and discard"
+      cancelText="Keep editing"
+      variant="warning"
+      isDark={isDark}
+      onConfirm={() => {
+        setConfirmAction(null)
+        onClose()
+      }}
+      onCancel={() => setConfirmAction(null)}
+    />
+    <ConfirmDialog
+      isOpen={confirmAction === 'replace-recovery'}
+      title="Replace the device draft?"
+      message="The recoverable draft on this device will be replaced with the current saved entry."
+      confirmText="Use saved entry"
+      cancelText="Keep device draft"
+      variant="warning"
+      isDark={isDark}
+      onConfirm={() => {
+        setConfirmAction(null)
+        recovery.resume()
+      }}
+      onCancel={() => setConfirmAction(null)}
+    />
+    </>
   )
 }

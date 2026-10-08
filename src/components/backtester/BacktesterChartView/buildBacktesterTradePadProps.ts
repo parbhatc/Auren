@@ -3,6 +3,7 @@ import type { BacktesterTradeHandler } from '../../../backtester/services/Backte
 import type { TradePanelProps } from '../../../types/tradePanel'
 import { searchBacktesterTradeSymbols } from './backtesterSymbolSearch'
 import { practiceMicroRoot } from '../../../services/practice/practiceContractFamily'
+import { resolvePracticeInstrumentTicks } from '../../../services/practice/practiceInstrumentTicks'
 
 function resolveBacktesterSymbolRoot(symbol: string): string {
   const s = String(symbol || '').trim().toUpperCase()
@@ -73,7 +74,10 @@ export function buildBacktesterTradePadProps({
         order?.executionSymbol || getChartSymbol()
       )
     },
-    onClose: () => tradeHandler?.logButtonPress('Close Position', { symbol: getChartSymbol() }),
+    onClose: (quantity, symbol) => tradeHandler?.logButtonPress('Close Position', {
+      quantity,
+      symbol: symbol || getChartSymbol(),
+    }),
     onReverse: () => tradeHandler?.logButtonPress('Reverse Position', { symbol: getChartSymbol() }),
     onFlatten: () => tradeHandler?.logButtonPress('Flatten All Position'),
     searchSymbols: searchBacktesterTradeSymbols,
@@ -94,6 +98,26 @@ export function buildBacktesterTradePadProps({
       tradeHandler && typeof tradeHandler.pickChartPriceOnce === 'function'
         ? (onPrice) => tradeHandler.pickChartPriceOnce(onPrice)
         : undefined,
+    getActiveChartResolution:
+      tradeHandler && typeof tradeHandler.getActiveChartResolution === 'function'
+        ? () => tradeHandler.getActiveChartResolution()
+        : undefined,
+    getAutoOrderSizingContext: (context) => {
+      const chartRoot = resolveBacktesterSymbolRoot(context.symbol || activeSymbolRoot())
+      const executionSymbol = practiceMicroRoot(chartRoot) || chartRoot
+      const entry = tradeHandler?.getMarkPrice(context.symbol || chartRoot)
+        ?? datafeed.getLastBarForSymbol(chartRoot)?.close
+        ?? null
+      if (entry == null || !Number.isFinite(entry)) return null
+      const ticks = resolvePracticeInstrumentTicks(executionSymbol)
+      return {
+        entry,
+        executionSymbol,
+        tickSize: ticks.tickSize,
+        tickValue: ticks.tickValue,
+        maxQuantity: 100,
+      }
+    },
     showAutoPositionPreview:
       tradeHandler && typeof tradeHandler.showAutoPositionPreview === 'function'
         ? (options) => tradeHandler.showAutoPositionPreview(options)
@@ -102,5 +126,7 @@ export function buildBacktesterTradePadProps({
     subscribeMarketBook: (onUpdate) => datafeed.subscribeMarketBook(onUpdate),
     getChartPositionUpl: () => tradeHandler?.getPositionUplFor(getChartSymbol() || chartSymbol) ?? null,
     getDomPositionContext: () => tradeHandler?.getDomPositionFor(getChartSymbol() || chartSymbol) ?? null,
+    getPositionFamilySummary: () =>
+      tradeHandler?.getPositionFamilySummaryFor(getChartSymbol() || chartSymbol) ?? null,
   }
 }

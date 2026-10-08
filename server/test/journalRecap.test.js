@@ -6,10 +6,12 @@ import { conditionsForJournalEntry, parseLiquiditySweeps, serializeLiquiditySwee
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH1sAAAAASUVORK5CYII='
 
 test('recap keeps screenshots, typed checklist snapshots, and review fields', () => {
-  const recap = normalizeJournalRecap({ title: ' Setup 1 ', execution: 'missed', grade: 'A', lesson: 'Wait for confirmation', mistakeTags: ['FOMO', 'FOMO', 'unknown'], setupConditions: [{ id: 'sweep', label: 'Liquidity sweep', type: 'liquidity_sweep' }], screenshots: [{ id: 'before', caption: 'Before entry', dataUrl: png }] })
+  const recap = normalizeJournalRecap({ title: ' Setup 1 ', execution: 'missed', grade: 'A', lesson: 'Wait for confirmation', pros: [' Clean sweep ', 'Clean sweep'], cons: ['Conflicting bias'], mistakeTags: ['FOMO', 'FOMO', 'unknown'], setupConditions: [{ id: 'sweep', label: 'Liquidity sweep', type: 'liquidity_sweep' }], screenshots: [{ id: 'before', caption: 'Before entry', dataUrl: png }] })
   assert.equal(recap.title, 'Setup 1')
   assert.equal(recap.execution, 'missed')
   assert.equal(recap.grade, 'A')
+  assert.deepEqual(recap.pros, ['Clean sweep'])
+  assert.deepEqual(recap.cons, ['Conflicting bias'])
   assert.deepEqual(recap.mistakeTags, ['FOMO'])
   assert.equal(recap.setupConditions[0].type, 'liquidity_sweep')
   assert.equal(recap.screenshotCount, 1)

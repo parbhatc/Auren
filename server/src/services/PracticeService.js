@@ -605,7 +605,7 @@ class PracticeService {
   }
 
   /** Manual close from client (market flatten / close line). */
-  async closePosition(userId, accountId, positionId, { exitPrice, exitTime, fees, forcedExit } = {}) {
+  async closePosition(userId, accountId, positionId, { amount, exitPrice, exitTime, fees, forcedExit } = {}) {
     const account = await this.getAccount(userId, accountId)
     if (!account || account.status !== 'active') {
       const err = new Error('Practice account is not active')
@@ -614,40 +614,78 @@ class PracticeService {
     }
 
     await Database.initialize()
-    // Atomically claim the row. Manual close and backend bracket close can race;
-    // DELETE ... RETURNING guarantees only one path records the fill.
-    const row = await Database.get(
-      'DELETE FROM practice_positions WHERE id = ? AND account_id = ? RETURNING *',
+    const existing = await Database.get(
+      'SELECT * FROM practice_positions WHERE id = ? AND account_id = ?',
       [positionId, accountId]
     )
-    if (!row) {
+    if (!existing) {
       const account = await this.getAccount(userId, accountId)
       return { trade: null, account, alreadyClosed: true }
     }
 
-    const symbol = normalizeTradeSymbol(row.symbol)
-    const contracts = Math.abs(Number(row.contracts) || 0)
+    const openContracts = Math.abs(Number(existing.contracts) || 0)
+    const requestedAmount = Math.floor(Number(amount))
+    const closeContracts =
+      Number.isFinite(requestedAmount) && requestedAmount > 0
+        ? Math.min(requestedAmount, openContracts)
+        : openContracts
+    const isPartial = closeContracts > 0 && closeContracts < openContracts
+    let row = existing
+
+    if (isPartial) {
+      const remainingContracts =
+        Number(existing.contracts) < 0
+          ? -(openContracts - closeContracts)
+          : openContracts - closeContracts
+      row = await Database.get(
+        `UPDATE practice_positions
+         SET contracts = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND account_id = ?
+         RETURNING *`,
+        [remainingContracts, positionId, accountId]
+      )
+    } else {
+      // Atomically claim the row. Manual close and backend bracket close can race;
+      // DELETE ... RETURNING guarantees only one path records the fill.
+      row = await Database.get(
+        'DELETE FROM practice_positions WHERE id = ? AND account_id = ? RETURNING *',
+        [positionId, accountId]
+      )
+      if (!row) {
+        const account = await this.getAccount(userId, accountId)
+        return { trade: null, account, alreadyClosed: true }
+      }
+    }
+
+    const symbol = normalizeTradeSymbol(existing.symbol)
+    const contracts = closeContracts
     let trade = null
     if (exitPrice != null && Number.isFinite(Number(exitPrice)) && contracts) {
       const normalizedExitPrice = snapPracticePriceToTick(symbol, Number(exitPrice))
-      const pnl = calcPracticePnL(Number(row.entry), normalizedExitPrice, Number(row.contracts), symbol)
+      const signedContracts = Number(existing.contracts) < 0 ? -contracts : contracts
+      const pnl = calcPracticePnL(Number(existing.entry), normalizedExitPrice, signedContracts, symbol)
       trade = await this.recordTrade(userId, accountId, {
         symbol,
-        direction: row.type,
-        entryPrice: row.entry,
+        direction: existing.type,
+        entryPrice: existing.entry,
         exitPrice: normalizedExitPrice,
         contracts,
         pnl,
         fees,
-        entryTime: row.entry_time,
+        entryTime: existing.entry_time,
         exitTime: exitTime ?? Math.floor(Date.now() / 1000),
-        stopLoss: row.stop_loss,
-        takeProfit: row.take_profit,
+        stopLoss: existing.stop_loss,
+        takeProfit: existing.take_profit,
         forcedExit: Boolean(forcedExit),
       })
     }
 
     const updatedAccount = await this.getAccount(userId, accountId)
+    if (isPartial) {
+      const position = rowToPosition(row)
+      broadcastModifyPosition(userId, accountId, updatedAccount, position)
+      return { trade, account: updatedAccount, position }
+    }
     broadcastClosePosition(userId, accountId, {
       account: updatedAccount,
       positionId,

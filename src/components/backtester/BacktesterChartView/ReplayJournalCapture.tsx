@@ -24,7 +24,6 @@ import {
 } from '../../../features/journal/replayJournalPreference'
 
 import { playbookFromRecord, type PlaybookCondition } from '../../../journal/journalConditions'
-import { JOURNAL_TEMPLATES } from '../../../journal/journalTemplates'
 
 export type ReplayJournalSnapshot = {
   kind: 'cursor' | 'open_position' | 'closed_trade'
@@ -1773,20 +1772,12 @@ export default function ReplayJournalCapture({
     if (stored?.riskPlan) setRiskPlan(stored.riskPlan)
     try {
       const savedStrategies = await journalAPI.listStrategies()
-      const next = [
-        ...savedStrategies,
-        ...JOURNAL_TEMPLATES.map((book) => ({
-          id: book.id,
-          name: book.name,
-          entry_conditions: book.conditions,
-        })),
-      ]
-      setStrategies(next)
+      setStrategies(savedStrategies)
       const storedStrategyId = typeof stored?.strategyId === 'string' ? stored.strategyId : ''
       setStrategyId(
-        storedStrategyId && next.some((item) => item.id === storedStrategyId)
+        storedStrategyId && savedStrategies.some((item) => item.id === storedStrategyId)
           ? storedStrategyId
-          : next[0]?.id || ''
+          : savedStrategies[0]?.id || ''
       )
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load playbooks')
@@ -1808,9 +1799,7 @@ export default function ReplayJournalCapture({
     try {
       const entry = await journalAPI.createEntry({
         id: '',
-        strategyId: JOURNAL_TEMPLATES.some((book) => book.id === selectedStrategy.id)
-          ? null
-          : selectedStrategy.id,
+        strategyId: selectedStrategy.id,
         playbook: selectedStrategy.name,
         dateTime: snapshot.entryDateTime || snapshot.cursorDateTime,
         exitDateTime: snapshot.exitDateTime,
@@ -1926,8 +1915,8 @@ export default function ReplayJournalCapture({
                   Add evidence as the replay develops
                 </h2>
                 <p className="mt-1 text-xs text-[#71717A]">
-                  Save progress, advance the chart, and reopen this session draft. Fields always
-                  come from the selected playbook.
+                  Save progress, advance the chart, and reopen this session draft. Building blocks
+                  always come from the selected playbook.
                 </p>
               </div>
               <button
@@ -2109,11 +2098,11 @@ export default function ReplayJournalCapture({
                         <h3
                           className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}
                         >
-                          What happened?
+                          Playbook building blocks
                         </h3>
                         <p className="mt-1 text-xs text-[#71717A]">
-                          Tap a choice as each confluence appears. Replay supplies the time and
-                          candle prices.
+                          Complete each building block as its evidence appears. Replay supplies the
+                          time and candle prices.
                         </p>
                       </div>
                       {strategies.length > 0 && (
@@ -2155,8 +2144,8 @@ export default function ReplayJournalCapture({
                       <div className="mt-3 space-y-3">
                         {conditions.length === 0 ? (
                           <p className="rounded-lg border border-[#3F3F46] p-3 text-xs text-[#71717A]">
-                            This playbook has no conditions yet. You can still finish a replay
-                            journal using its automatic execution.
+                            This playbook has no building blocks yet. Add blocks such as Sweep,
+                            PDA delivery, IFVG, or SMT in the playbook builder.
                           </p>
                         ) : (
                           conditions.map((condition) => (

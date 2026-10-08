@@ -40,6 +40,8 @@ export function practiceMicroEquivalent(symbol: string, contracts: number): numb
 export type PracticeFamilyPosition = {
   symbol: string
   contracts: number
+  /** Symbol/key the trade handler must receive when it differs from the display contract. */
+  closeSymbol?: string
 }
 
 export type PracticePositionFamilySummary = {
@@ -70,6 +72,7 @@ export function summarizePracticePositionFamily(
     positions: related.map((position) => ({
       symbol: practiceContractRoot(position.symbol),
       contracts: position.contracts,
+      closeSymbol: position.closeSymbol,
     })),
     microEquivalent,
     miniEquivalent: microSymbol ? microEquivalent / 10 : microEquivalent,

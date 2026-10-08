@@ -78,3 +78,44 @@ test('journal API persists recaps, keeps lists lightweight, and scopes CRUD to t
     assert.equal(denied.body.review, undefined)
   }
 })
+
+test('playbooks persist an editable description and defined rules', async (t) => {
+  const previousDb = Database.db
+  const db = new sqlite3.Database(':memory:')
+  Database.db = db
+  t.after(async () => {
+    Database.db = previousDb
+    await new Promise((resolve, reject) => db.close((error) => error ? reject(error) : resolve()))
+  })
+  await Database.createTables()
+
+  const created = response()
+  await controller.createStrategy({
+    user: { id: 'owner' },
+    body: {
+      name: 'Sweep + FVG Tap + IFVG',
+      description: 'Sweep supplies the reason; IFVG supplies the trigger.',
+      entry_conditions: [{ id: 'sweep', label: 'Sweep', type: 'liquidity_sweep' }],
+      invalidation_rules: ['FVG Tap cannot stand alone.'],
+    },
+  }, created)
+  assert.equal(created.body.strategy.description, 'Sweep supplies the reason; IFVG supplies the trigger.')
+  assert.deepEqual(JSON.parse(created.body.strategy.invalidation_rules), ['FVG Tap cannot stand alone.'])
+
+  const updated = response()
+  await controller.updateStrategy({
+    user: { id: 'owner' },
+    params: { id: created.body.strategy.id },
+    body: {
+      name: 'Sweep + FVG Tap + IFVG',
+      description: 'Updated definition.',
+      entry_conditions: [{ id: 'sweep', label: 'Sweep', type: 'liquidity_sweep' }],
+      invalidation_rules: ['Require a qualifying sweep.', 'Require clean displacement.'],
+    },
+  }, updated)
+  assert.equal(updated.body.strategy.description, 'Updated definition.')
+  assert.deepEqual(JSON.parse(updated.body.strategy.invalidation_rules), [
+    'Require a qualifying sweep.',
+    'Require clean displacement.',
+  ])
+})

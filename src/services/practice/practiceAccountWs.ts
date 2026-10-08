@@ -52,6 +52,7 @@ export type PracticeAccountWsClient = {
   modifyPosition: (position: Omit<PracticePosition, 'accountId'>) => void
   closePosition: (payload: {
     positionId: string
+    amount?: number
     exitPrice?: number
     exitTime?: number
     fees?: number

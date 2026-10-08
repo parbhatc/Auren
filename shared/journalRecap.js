@@ -12,6 +12,10 @@ export const JOURNAL_MISTAKE_TAGS = [
 
 const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
 const object = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {})
+const textList = (value, maxItems = 8, maxLength = 500) =>
+  Array.isArray(value)
+    ? [...new Set(value.map((item) => text(item, maxLength)).filter(Boolean))].slice(0, maxItems)
+    : []
 
 /** Only embedded raster images are allowed: no SVG, external tracking URLs, or HTML. */
 export function isJournalImage(dataUrl) {
@@ -75,6 +79,8 @@ export function normalizeJournalRecap(value) {
       : 'taken',
     grade: ['A', 'B', 'C'].includes(recap.grade) ? recap.grade : '',
     lesson: text(recap.lesson, 8000),
+    pros: textList(recap.pros),
+    cons: textList(recap.cons),
     mistakeTags: Array.isArray(recap.mistakeTags)
       ? [...new Set(recap.mistakeTags.filter((tag) => JOURNAL_MISTAKE_TAGS.includes(tag)))]
       : [],

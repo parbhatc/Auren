@@ -2,6 +2,7 @@ import { WebSocketClientBase } from '../../services/websocket/WebSocketClientBas
 import type { WebSocketClientCallbacks } from '../../types/websocket'
 import { getWebSocketUrl } from '../../api/api'
 import { BacktesterDataClientCallbacks, BacktesterDataClientOptions } from '../../types/backtesterDataManagement'
+import { getPracticeMarketDataSettings } from '../../constants/practice'
 
 // Re-export for backward compatibility
 export type { BacktesterDataClientCallbacks, BacktesterDataClientOptions }
@@ -12,6 +13,10 @@ export type { BacktesterDataClientCallbacks, BacktesterDataClientOptions }
  * Extends WebSocketClientBase for common WebSocket functionality
  */
 export class BacktesterDataClient extends WebSocketClientBase {
+  private tradeseaAccountId(source: 'tradesea' | 'tradingview'): string | undefined {
+    if (source !== 'tradesea') return undefined
+    return getPracticeMarketDataSettings().accountId?.trim() || undefined
+  }
   constructor(
     callbacks: BacktesterDataClientCallbacks = {},
     _options: BacktesterDataClientOptions = {}
@@ -185,6 +190,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
       source: serverSource,
       resolution,
       chunkSize,
+      accountId: this.tradeseaAccountId(source),
     })
   }
 
@@ -202,6 +208,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
       source: serverSource,
       resolution,
       chunkSize,
+      accountId: this.tradeseaAccountId(source),
     })
   }
 
@@ -214,6 +221,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
       source: serverSource,
       resolution,
       chunkSize,
+      accountId: this.tradeseaAccountId(source),
     })
   }
 
@@ -226,7 +234,8 @@ export class BacktesterDataClient extends WebSocketClientBase {
     this.send({
       type: 'reset',
       symbol: symbol,
-      source: source
+      source: source,
+      accountId: this.tradeseaAccountId(source),
     })
   }
 }

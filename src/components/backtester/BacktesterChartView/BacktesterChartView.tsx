@@ -35,6 +35,11 @@ import {
   getActiveShortcut,
   getShortcutsWithCustomizations,
 } from '../../../utils/keyboardShortcutsStorage'
+import {
+  getRestoreLastReplayCandle,
+  loadSavedReplayCursor,
+  saveReplayCursor,
+} from '../../../utils/replayPreferences'
 
 const BACKTESTER_MAX_QTY = 100
 
@@ -53,6 +58,17 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   private unrealizedPnLFlushScheduled = false
   private websocketSessionId: string | null = null
   private lastReplayTrade: Record<string, unknown> | null = null
+
+  private saveCurrentReplayCursor = () => {
+    if (!getRestoreLastReplayCandle()) return
+    const cursorSec = this.datafeed.getPlaybackAnchorSecPublic()
+    if (cursorSec == null) return
+    saveReplayCursor(
+      this.props.session?.id,
+      cursorSec,
+      (this.getChartResolution() || '1') as import('../../../types/chart').ResolutionString
+    )
+  }
 
   state = {
     isPlaying: false,
@@ -95,6 +111,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
   componentDidMount() {
     document.addEventListener('keydown', this.handleKeyboardShortcut)
+    window.addEventListener('auren:replay-restore-preference', this.saveCurrentReplayCursor)
     ;(window as any).__backtesterDatafeed = this.datafeed
     ;(window as any).__backtesterChartView = this
 
@@ -117,6 +134,13 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
     // Initialize trade handler with session and null client (will be updated when WebSocket connects)
     const { session } = this.props
+    const savedCursor = loadSavedReplayCursor(session?.id)
+    if (savedCursor) {
+      this.datafeed.setPlaybackAnchorSec(savedCursor.cursorSec, savedCursor.resolution)
+    }
+    this.datafeed.onPlaybackAnchorChange = (cursorSec, resolution) => {
+      saveReplayCursor(this.props.session?.id, cursorSec, resolution)
+    }
     this.setState({ orderPaneCollapsed: this.readOrderPaneCollapsed(session?.id) })
     this.tradeHandler = new BacktesterTradeHandler(session, null)
     this.tradeHandler.setDatafeed(this.datafeed)
@@ -215,7 +239,9 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
 
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleKeyboardShortcut)
+    window.removeEventListener('auren:replay-restore-preference', this.saveCurrentReplayCursor)
     this.datafeed.onSymbolsLoaded = null
+    this.datafeed.onPlaybackAnchorChange = null
 
     delete (window as any).__backtesterDatafeed
     delete (window as any).__backtesterChartView
@@ -246,6 +272,10 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     this.websocketSessionId = session.id
     if (previousSessionId && previousSessionId !== session.id) {
       this.datafeed.resetSessionState()
+      const savedCursor = loadSavedReplayCursor(session.id)
+      if (savedCursor) {
+        this.datafeed.setPlaybackAnchorSec(savedCursor.cursorSec, savedCursor.resolution)
+      }
     }
     this.setState({ wsState: 'connecting', wsConnected: false })
 
@@ -271,6 +301,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             }
           }
           this.setState({ wsConnected: true, wsState: 'connected' })
+          this.tradeHandler?.syncServerReplayCursor()
         },
         onDisconnected: () => {
           if (this.wsClient !== client) return
@@ -568,6 +599,11 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
         this.handleNextCandle()
         break
 
+      case 'arrowleft': // Arrow Left - Previous Candle
+        event.preventDefault()
+        this.handlePreviousCandle()
+        break
+
       case 'r': // R - Toggle Replay
         if (!event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault()
@@ -670,6 +706,10 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
         description: 'Playback: Play/Pause',
       },
       {
+        key: 'ArrowLeft',
+        description: 'Playback: Previous Candle',
+      },
+      {
         key: 'ArrowRight',
         description: 'Playback: Next Candle',
       },
@@ -744,8 +784,15 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     this.tradeHandler?.handleNextCandle()
   }
 
+  handlePreviousCandle = () => {
+    this.tradeHandler?.handlePreviousCandle()
+  }
+
   handleReplayHostAction = (action: string, payload: Record<string, unknown>) => {
     switch (action) {
+      case 'stepBackward':
+        this.handlePreviousCandle()
+        break
       case 'stepForward':
         this.handleNextCandle()
         break
@@ -1173,6 +1220,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             }
             this.tradeHandler?.onReady(widget)
             this.syncBwcReplayStepInterval(widget)
+            this.tradeHandler?.syncServerReplayCursor()
           }}
           onChartReady={async () => {
             try {
@@ -1248,6 +1296,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             }}
             showAccountSelector={false}
             showTradingSettings
+            showReplaySettings
             showStatsBar
             hubPath={`${ROUTES.HOME}?mode=replay`}
             headerLeading={

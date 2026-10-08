@@ -21,6 +21,7 @@ export type BwcReplayApi = {
   toggleSelectBar: () => void
   play: () => void
   pause: () => void
+  stepBackward: () => void
   stepForward: () => void
   jumpToEnd: () => void
   setSpeed: (speed: number) => void

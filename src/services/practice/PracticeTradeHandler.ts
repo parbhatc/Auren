@@ -45,6 +45,8 @@ import {
   type PracticePositionFamilySummary,
 } from './practiceContractFamily'
 import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
+import { getBwcActiveResolution, pickBwcChartPriceOnce } from '../../chart/bwcPanePricePicker'
+import type { ChartPricePickContext } from '../../types/tradePanel'
 
 /** Keep quote-driven P&L/risk UI responsive without running it on every MDS packet. */
 const UPL_REFRESH_MIN_INTERVAL_MS = 120
@@ -282,39 +284,20 @@ export class PracticeTradeHandler {
     this.tradeCache = null
   }
 
-  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+  getActiveChartResolution(): string {
+    return getBwcActiveResolution(this.widget as never)
+  }
+
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
     this.cancelChartPricePick?.()
-    const widget = this.widget as {
-      lcChart?: {
-        subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
-        unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+    const cancel = pickBwcChartPriceOnce(
+      this.widget as never,
+      (rawPrice, context) => snapPracticePriceToTick(context.symbol || this.getChartSymbol(), rawPrice),
+      (price, context) => {
+        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        onPrice(price, context)
       }
-      series?: { coordinateToPrice?: (coordinate: number) => number | null }
-    } | null
-    const chart = widget?.lcChart
-    const series = widget?.series
-    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
-      return null
-    }
-
-    let active = true
-    const cancel = () => {
-      if (!active) return
-      active = false
-      chart.unsubscribeClick?.(handler)
-      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-    }
-    const handler = (event: { point?: { y?: number } }) => {
-      const y = event.point?.y
-      if (!active || y == null || !Number.isFinite(y)) return
-      const rawPrice = series.coordinateToPrice?.(y)
-      if (rawPrice == null || !Number.isFinite(rawPrice)) return
-      const price = snapPracticePriceToTick(this.getChartSymbol(), rawPrice)
-      cancel()
-      onPrice(price)
-    }
-
-    chart.subscribeClick(handler)
+    )
     this.cancelChartPricePick = cancel
     return cancel
   }
@@ -324,13 +307,15 @@ export class PracticeTradeHandler {
     entry: number
     stopLoss: number
     tickSize: number
-    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+    appearanceAt: (price: number, context: ChartPricePickContext) => { label: string; quantityLabel: string }
+    tickSizeAt?: (context: ChartPricePickContext) => number
   }): (() => void) | null {
     if (this.hasActiveChartPosition()) return null
     return createBwcAutoRiskPreview(this.widget as Parameters<typeof createBwcAutoRiskPreview>[0], {
       stopLoss: options.stopLoss,
       tickSize: options.tickSize,
       appearanceAt: options.appearanceAt,
+      tickSizeAt: options.tickSizeAt,
     })
   }
 
@@ -1025,6 +1010,7 @@ export class PracticeTradeHandler {
       takeProfit?: number | null
       stopLossMode?: 'hard' | 'soft'
       softStopTrigger?: 'bar_close'
+      softStopResolution?: string
     }
   ): Promise<void> {
     const lockMsg = this.getTradingLockMessage()
@@ -1054,7 +1040,12 @@ export class PracticeTradeHandler {
       }
     }
 
-    const mark = this.getMarkPrice(tradeSymbol)
+    const suppliedEntry = Number(data?.entryPrice)
+    const mark = this.getMarkPrice(tradeSymbol) ?? (
+      isEntry && Number.isFinite(suppliedEntry) && suppliedEntry > 0
+        ? snapPracticePriceToTick(tradeSymbol, suppliedEntry)
+        : null
+    )
     if (mark == null) {
       aurenToast.error('Waiting for market data…')
       return
@@ -1094,7 +1085,7 @@ export class PracticeTradeHandler {
           aurenToast.error(sizeErr)
           return
         }
-        const fillPrice = this.getMarketExecutionPrice(tradeSymbol, 'buy')
+        const fillPrice = this.getMarketExecutionPrice(tradeSymbol, 'buy') ?? mark
         if (fillPrice == null) {
           aurenToast.error('Waiting for ask…')
           return
@@ -1110,7 +1101,8 @@ export class PracticeTradeHandler {
           null,
           null,
           data?.stopLossMode ?? 'hard',
-          data?.softStopTrigger ?? 'bar_close'
+          data?.softStopTrigger ?? 'bar_close',
+          data?.softStopResolution || this.getActiveChartResolution()
         )
         if (currentContracts + qty !== 0) {
           const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
@@ -1138,7 +1130,7 @@ export class PracticeTradeHandler {
           aurenToast.error(sizeErr)
           return
         }
-        const fillPrice = this.getMarketExecutionPrice(tradeSymbol, 'sell')
+        const fillPrice = this.getMarketExecutionPrice(tradeSymbol, 'sell') ?? mark
         if (fillPrice == null) {
           aurenToast.error('Waiting for bid…')
           return
@@ -1154,7 +1146,8 @@ export class PracticeTradeHandler {
           null,
           null,
           data?.stopLossMode ?? 'hard',
-          data?.softStopTrigger ?? 'bar_close'
+          data?.softStopTrigger ?? 'bar_close',
+          data?.softStopResolution || this.getActiveChartResolution()
         )
         if (currentContracts - qty !== 0) {
           const product = practiceOrderProductSymbol(tradeSymbol, datafeed)
@@ -1184,7 +1177,12 @@ export class PracticeTradeHandler {
           aurenToast.error(contracts > 0 ? 'Waiting for bid…' : 'Waiting for ask…')
           return
         }
-        cache.onClosePosition(tradeSymbol, Math.abs(contracts), exitPrice)
+        const requested = Math.floor(Number(data?.quantity))
+        const closeQuantity =
+          Number.isFinite(requested) && requested > 0
+            ? Math.min(requested, Math.abs(contracts))
+            : Math.abs(contracts)
+        cache.onClosePosition(tradeSymbol, closeQuantity, exitPrice)
         break
       }
       case 'Reverse Position': {

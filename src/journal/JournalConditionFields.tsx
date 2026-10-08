@@ -88,7 +88,7 @@ export default function JournalConditionFields({
             >
               <legend className="px-1 text-xs text-[#71717A]">{condition.label}</legend>
               <p className="mb-3 text-[10px] text-[#71717A]">
-                Example: 9:10 AM swept 10:00 AM high at $20,322.75
+                Add every sweep inside this block: 1m, 15m, 1h, Asia, London, or another source.
               </p>
               <div className="space-y-3">
                 {sweepRows.map((row, index) => (
@@ -158,20 +158,37 @@ export default function JournalConditionFields({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <label className="col-span-2 text-[10px] text-[#71717A] sm:col-span-5">
-                      Source level
+                      Sweep source
                       <input
                         aria-label={`${condition.label} ${index + 1} source level`}
+                        list={`sweep-source-${condition.id}`}
                         value={row.sourceLabel || ''}
                         onChange={(event) =>
                           updateSweep(index, { sourceLabel: event.target.value })
                         }
-                        placeholder="Asia high, London low, 1h swing…"
+                        placeholder="1m high, 15m low, 1h high, London high…"
                         className={`${inputClass} mt-1 w-full`}
                       />
                     </label>
                   </div>
                 ))}
               </div>
+              <datalist id={`sweep-source-${condition.id}`}>
+                {[
+                  '1m high',
+                  '1m low',
+                  '15m high',
+                  '15m low',
+                  '1h high',
+                  '1h low',
+                  'Asia high',
+                  'Asia low',
+                  'London high',
+                  'London low',
+                ].map((source) => (
+                  <option key={source} value={source} />
+                ))}
+              </datalist>
               <button
                 type="button"
                 onClick={() =>
@@ -238,7 +255,7 @@ export default function JournalConditionFields({
                           className={`${inputClass} mt-1 w-full`}
                         >
                           <option value="">Select timeframe</option>
-                          {['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1D'].map((item) => (
+                          {['30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1D'].map((item) => (
                             <option key={item}>{item}</option>
                           ))}
                         </select>

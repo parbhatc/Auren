@@ -20,21 +20,29 @@ export const JOURNAL_TEMPLATES: Playbook[] = [
   {
     id: 'template-session-ifvg',
     name: 'London / Asia sweep + IFVG',
+    description: '',
+    rules: [],
     conditions: [sweep, ifvg, targets, targetDetail],
   },
   {
     id: 'template-htf-ifvg',
     name: 'Sweep + HTF FVG + IFVG',
+    description: '',
+    rules: [],
     conditions: [sweep, pda, ifvg, targets, targetDetail],
   },
   {
     id: 'template-smt-ifvg',
     name: 'Liquidity sweep + HTF FVG + SMT + IFVG',
+    description: '',
+    rules: [],
     conditions: [sweep, pda, smt, ifvg, targets, targetDetail],
   },
   {
     id: 'template-retest',
     name: 'Sweep + HTF FVG + IFVG + SMT + FVG retest',
+    description: '',
+    rules: [],
     conditions: [
       sweep,
       pda,

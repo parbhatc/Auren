@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { journalAPI, type JournalReview, type JournalReviewResponse } from '../../api/journal.api'
 import { WorkspaceShell, PageHeading } from '../../components/layout/WorkspacePrimitives'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { journalLocalDateTime } from '../../../shared/journalRecap.js'
 import { handleApiError } from '../../utils/errorHandler'
 import { journalMoney } from '../../journal/JournalAnalyticsPanel'
+import { useTheme } from '../../hooks/useTheme'
+import { journalOutcomeLabel } from '../../journal/journalConditions'
+
+type PendingReviewChange =
+  | { type: 'journal' }
+  | { type: 'kind'; value: 'daily' | 'weekly' }
+  | { type: 'date'; value: string }
+  | { type: 'reload' }
 
 function periodStart(date: string, weekly: boolean) {
   if (!weekly || !date) return date
@@ -13,6 +22,8 @@ function periodStart(date: string, weekly: boolean) {
   return journalLocalDateTime(value).slice(0, 10)
 }
 export default function JournalReviewsPage() {
+  const navigate = useNavigate()
+  const { isDark } = useTheme()
   const [kind, setKind] = useState<'daily' | 'weekly'>('daily'),
     [date, setDate] = useState(journalLocalDateTime().slice(0, 10))
   const [data, setData] = useState<JournalReviewResponse | null>(null),
@@ -22,6 +33,7 @@ export default function JournalReviewsPage() {
     [notice, setNotice] = useState(''),
     [reload, setReload] = useState(0)
   const [previousFocus, setPreviousFocus] = useState('')
+  const [pendingChange, setPendingChange] = useState<PendingReviewChange | null>(null)
   const start = periodStart(date, kind === 'weekly')
   const dirty = draft && data && JSON.stringify(draft) !== JSON.stringify(data.review)
   useEffect(() => {
@@ -63,7 +75,16 @@ export default function JournalReviewsPage() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
-  const canLeave = () => !dirty || window.confirm('Discard unsaved review changes?')
+  const applyChange = (change: PendingReviewChange) => {
+    if (change.type === 'journal') navigate('/journal')
+    else if (change.type === 'kind') setKind(change.value)
+    else if (change.type === 'date') setDate(change.value)
+    else setReload((value) => value + 1)
+  }
+  const requestChange = (change: PendingReviewChange) => {
+    if (dirty) setPendingChange(change)
+    else applyChange(change)
+  }
   const input = 'w-full rounded-lg border border-zinc-500/30 bg-transparent p-3 text-sm'
   const update = (patch: Partial<JournalReview>) =>
     setDraft((value) => (value ? { ...value, ...patch } : value))
@@ -78,7 +99,9 @@ export default function JournalReviewsPage() {
         <Link
           to="/journal"
           onClick={(e) => {
-            if (!canLeave()) e.preventDefault()
+            if (!dirty) return
+            e.preventDefault()
+            setPendingChange({ type: 'journal' })
           }}
           className="text-sm text-blue-500"
         >
@@ -91,7 +114,7 @@ export default function JournalReviewsPage() {
             className={input + ' !w-auto'}
             value={kind}
             onChange={(e) => {
-              if (canLeave()) setKind(e.target.value as typeof kind)
+              requestChange({ type: 'kind', value: e.target.value as typeof kind })
             }}
           >
             <option value="daily">Daily</option>
@@ -104,13 +127,13 @@ export default function JournalReviewsPage() {
             type="date"
             value={date}
             onChange={(e) => {
-              if (canLeave()) setDate(e.target.value)
+              requestChange({ type: 'date', value: e.target.value })
             }}
           />
           <button
             disabled={busy}
             onClick={() => {
-              if (canLeave()) setReload((n) => n + 1)
+              requestChange({ type: 'reload' })
             }}
             className="text-blue-500"
           >
@@ -244,7 +267,8 @@ export default function JournalReviewsPage() {
                           {entry.recap?.title || `${entry.symbol} · ${entry.playbook}`}
                         </Link>
                         <p>
-                          {entry.dateTime} · {entry.recap?.execution || 'taken'} · {entry.outcome} ·{' '}
+                          {entry.dateTime} · {entry.recap?.execution || 'taken'} ·{' '}
+                          {journalOutcomeLabel(entry)} ·{' '}
                           {entry.recap?.lesson}
                         </p>
                       </span>
@@ -263,6 +287,21 @@ export default function JournalReviewsPage() {
           </form>
         )}
       </main>
+      <ConfirmDialog
+        isOpen={Boolean(pendingChange)}
+        title="Discard unsaved review changes?"
+        message="Your changes to this review have not been saved. Continuing will discard them."
+        confirmText="Discard changes"
+        cancelText="Keep editing"
+        variant="warning"
+        isDark={isDark}
+        onConfirm={() => {
+          const change = pendingChange
+          setPendingChange(null)
+          if (change) applyChange(change)
+        }}
+        onCancel={() => setPendingChange(null)}
+      />
     </WorkspaceShell>
   )
 }

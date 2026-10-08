@@ -374,15 +374,11 @@ class BacktesterWebSocket extends WebSocketBase {
     if (cursorMs == null || !Number.isFinite(cursorMs)) return true
     const state = this.getClientState(clientInfo, false)
     if (!state?.barCache) return true
-    if (!state.cursor) {
-      state.cursor = new Date(cursorMs)
-      state.barCache.last = state.cursor
-      return true
-    }
-    if (cursorMs > state.cursor.getTime()) {
-      state.cursor = new Date(cursorMs)
-      state.barCache.last = state.cursor
-    }
+    // Host replay can move both directions. Keeping the server cursor aligned
+    // on rewinds ensures the next forward step resumes from the visible candle
+    // instead of the furthest point previously reached.
+    state.cursor = new Date(cursorMs)
+    state.barCache.last = state.cursor
     return true
   }
 

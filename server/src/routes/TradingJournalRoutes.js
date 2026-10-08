@@ -120,6 +120,25 @@ class TradingJournalRoutes {
       TradingJournalController.deleteStrategy.bind(TradingJournalController)
     )
 
+    // ========== REUSABLE BUILDING BLOCKS ==========
+    this.router.get(
+      '/building-blocks',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.getBuildingBlocks.bind(TradingJournalController)
+    )
+
+    this.router.post(
+      '/building-blocks',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.createBuildingBlock.bind(TradingJournalController)
+    )
+
+    this.router.delete(
+      '/building-blocks/:id',
+      AuthMiddleware.authenticate(),
+      TradingJournalController.deleteBuildingBlock.bind(TradingJournalController)
+    )
+
     // ========== RULES ==========
     this.router.get(
       '/rules',

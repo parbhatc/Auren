@@ -41,6 +41,24 @@ export type BracketOptions = {
   /** Hard submits a broker/server bracket; soft is monitored only by the open browser tab. */
   stopLossMode?: 'hard' | 'soft'
   softStopTrigger?: 'bar_close'
+  /** Chart resolution selected for a browser-managed close (for example 30S, 1, or 5). */
+  softStopResolution?: string
+}
+
+export type ChartPricePickContext = {
+  paneIndex: number
+  symbol: string
+  resolution: string
+}
+
+export type AutoOrderSizingContext = {
+  /** Live entry/mark for the pane under the pointer. */
+  entry: number
+  /** Micro contract used for sizing and execution (for example MES on ES). */
+  executionSymbol: string
+  tickSize: number
+  tickValue: number
+  maxQuantity: number
 }
 
 /** @deprecated use BracketOptions */
@@ -87,7 +105,7 @@ export type TradePanelProps = {
   onJoinBid?: () => void
   onJoinAsk?: () => void
   onSubmitOrder?: (side: OrderSide, brackets: BracketOptions, order?: OrderSubmitOptions) => void
-  onClose: () => void
+  onClose: (quantity?: number, symbol?: string) => void
   onReverse: () => void
   onFlatten: () => void
   markPrice?: number | null
@@ -101,14 +119,19 @@ export type TradePanelProps = {
   /** Route Auto sizing without changing the chart or manually selected contract. */
   riskExecutionProductRoot?: string
   /** Arm a one-shot click on the active chart and return its snapped price. */
-  pickChartPriceOnce?: (onPrice: (price: number) => void) => (() => void) | null
+  pickChartPriceOnce?: (onPrice: (price: number, context: ChartPricePickContext) => void) => (() => void) | null
+  /** Current active pane resolution, used to describe soft-close behavior before selection. */
+  getActiveChartResolution?: () => string
+  /** Resolve sizing from the pane under the Auto cursor, not the initially selected pane. */
+  getAutoOrderSizingContext?: (context: ChartPricePickContext) => AutoOrderSizingContext | null
   /** Draw one cursor-following stop line while Auto waits for chart selection. */
   showAutoPositionPreview?: (options: {
     side: OrderSide
     entry: number
     stopLoss: number
     tickSize: number
-    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+    appearanceAt: (price: number, context: ChartPricePickContext) => { label: string; quantityLabel: string }
+    tickSizeAt?: (context: ChartPricePickContext) => number
   }) => (() => void) | null
   /** Open mini/micro positions related to the chart product. */
   getPositionFamilySummary?: () => PracticePositionFamilySummary | null

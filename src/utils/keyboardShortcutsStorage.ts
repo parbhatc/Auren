@@ -19,6 +19,13 @@ export const DEFAULT_SHORTCUTS: ShortcutCategory[] = [
         enabled: true,
       },
       {
+        id: 'previous-candle',
+        category: 'playback',
+        description: 'Previous Candle',
+        defaultKey: 'ArrowLeft',
+        enabled: true,
+      },
+      {
         id: 'next-candle',
         category: 'playback',
         description: 'Next Candle',

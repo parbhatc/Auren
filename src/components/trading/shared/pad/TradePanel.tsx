@@ -13,6 +13,10 @@ import {
 import { DomTab } from './tabs/DomTab'
 import { OrderTab } from './tabs/OrderTab'
 import type { TradePanelProps } from './types'
+import {
+  CHART_AUTO_TRADE_REQUESTED,
+  type ChartAutoTradeRequest,
+} from '../../../common/aurenTradeContextMenu'
 import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
 import { isBwcChartPanning, whenBwcPanEnds } from '../../../../utils/bwcPan'
 
@@ -151,6 +155,7 @@ export default function TradePanel(props: TradePanelProps) {
   const [tab, setTab] = useState<TradePanelTab>(() =>
     readInitialTab(accountId, mobileSheet, hideTicketTab),
   )
+  const [autoArmRequest, setAutoArmRequest] = useState<ChartAutoTradeRequest | null>(null)
   const rootSymbol = chartSymbol.includes(':') ? chartSymbol.split(':')[1]! : chartSymbol
   const [ltpTick, setLtpTick] = useState(0)
   const [bookTick, setBookTick] = useState(0)
@@ -200,6 +205,18 @@ export default function TradePanel(props: TradePanelProps) {
   useEffect(() => {
     if (hideTicketTab && tab === 'ticket') setTab('dom')
   }, [hideTicketTab, tab])
+
+  useEffect(() => {
+    const handleAutoTradeRequest = (event: Event) => {
+      const request = (event as CustomEvent<ChartAutoTradeRequest>).detail
+      if (!request || (request.accountId && request.accountId !== accountId)) return
+      if (hideTicketTab) return
+      setAutoArmRequest(request)
+      setTab('ticket')
+    }
+    window.addEventListener(CHART_AUTO_TRADE_REQUESTED, handleAutoTradeRequest)
+    return () => window.removeEventListener(CHART_AUTO_TRADE_REQUESTED, handleAutoTradeRequest)
+  }, [accountId, hideTicketTab])
 
   useEffect(() => {
     if (tab !== 'quick') persistTab(tab)
@@ -340,6 +357,7 @@ export default function TradePanel(props: TradePanelProps) {
         {tab === 'ticket' && (
           <OrderTab
             props={props}
+            autoArmRequest={autoArmRequest}
             maxQty={maxQty}
             book={book}
             marketPrice={marketPrice}

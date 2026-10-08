@@ -44,7 +44,7 @@ class ConfirmDialog extends Component<ConfirmDialogProps> {
             : 'bg-violet-100 text-violet-600'
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 sm:p-6">
         <button
           type="button"
           className="absolute inset-0 bg-black/60 backdrop-blur-md"

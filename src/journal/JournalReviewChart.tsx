@@ -291,7 +291,15 @@ export default function JournalReviewChart({
     )
   }
 
-  const sweepRows = parseLiquiditySweeps(entry.conditionResponses?.['Liquidity sweep'])
+  const sweepResponse =
+    entry.conditionResponses?.['Liquidity sweep'] ?? entry.conditionResponses?.Sweep
+  const sweepRows = parseLiquiditySweeps(sweepResponse).filter(
+    (row) => row.sweepTime || row.referenceTime || row.price || row.sourceLabel
+  )
+  const midTapResponse = String(entry.conditionResponses?.['MID Tap'] || '')
+  const midTapParts = midTapResponse.split('|').map((part) => part.trim())
+  const midTapTime = midTapParts[0] || ''
+  const midTapPrice = Number(String(midTapParts[2] || '').replace(/,/g, ''))
   const sweepConfluenceLabels = String(entry.conditionResponses?.['Sweep confluence'] || '')
     .split(';')
     .map((label) => label.replace(/\s*@\s*[\d,.]+\s*$/, '').trim())
@@ -306,18 +314,27 @@ export default function JournalReviewChart({
     entry.conditionResponses?.['HTF PDA delivery'],
     entry.conditionResponses?.['HTF PDA candles']
   ).filter((row) => row.time || row.timeframe || row.pda || row.candles.length)
-  const ifvgParts = String(entry.conditionResponses?.IFVG || '').split(/\s*@\s*/, 2)
-  const ifvgTime = ifvgParts[1] || ''
+  const ifvgResponse = String(entry.conditionResponses?.IFVG || '')
+  const ifvgParts = ifvgResponse.split(/\s*@\s*/)
+  const ifvgUsesPdaFormat = /\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)\b/i.test(
+    ifvgParts[0] || ''
+  )
+  const ifvgTime = (ifvgUsesPdaFormat ? ifvgParts[0] : ifvgParts[1]) || ''
+  const ifvgTimeframe = (ifvgUsesPdaFormat ? ifvgParts[1] : ifvgParts[0]) || ''
   const entryIndex = indexForDateTime(entry.dateTime)
   const exitIndex = entry.exitDateTime ? indexForDateTime(entry.exitDateTime) : -1
   const pdaIndexes = pdaRows.map((row) => indexForClock(row.time))
   const ifvgIndex = indexForClock(ifvgTime)
+  const midTapIndex = indexForClock(midTapTime)
   const sweepValidation =
     sweepRows.length > 0 &&
     sweepRows.every((row) => {
       const index = indexForClock(row.sweepTime)
       const price = row.price.trim() ? Number(row.price) : Number.NaN
-      if (index < 0 || !row.referenceTime || !Number.isFinite(price)) return false
+      if (index < 0 || !Number.isFinite(price)) return false
+      // A named higher-timeframe level can be valid evidence even when its
+      // source candle is outside the intraday chart window.
+      if (!row.referenceTime && !row.sourceLabel) return false
       return row.level === 'high' ? bars[index].high >= price : bars[index].low <= price
     })
   const pdaValidation =
@@ -325,7 +342,14 @@ export default function JournalReviewChart({
     pdaRows.every((row, index) =>
       Boolean(row.time && row.timeframe && row.pda && pdaIndexes[index] >= 0)
     )
-  const ifvgValidation = Boolean(ifvgParts[0] && ifvgTime && ifvgIndex >= 0)
+  const ifvgValidation = Boolean(ifvgTimeframe && ifvgTime && ifvgIndex >= 0)
+  const midTapValidation = Boolean(
+    midTapResponse &&
+      midTapIndex >= 0 &&
+      Number.isFinite(midTapPrice) &&
+      bars[midTapIndex].low <= midTapPrice &&
+      bars[midTapIndex].high >= midTapPrice
+  )
 
   const imbalanceZone = (eventIndex: number, label: string, color: string) => {
     if (eventIndex < 0) return null
@@ -423,8 +447,15 @@ export default function JournalReviewChart({
     return null
   }
 
-  const ifvgLabel = `IFVG · ${ifvgParts[0] || 'timeframe not set'}`
-  const ifvgCandleClocks = clocksFrom(entry.conditionResponses?.['IFVG zone candles'])
+  const ifvgLabel = `IFVG · ${ifvgTimeframe || 'timeframe not set'}`
+  const ifvgCandleSource = String(
+    entry.conditionResponses?.['IFVG zone candles'] ||
+      ifvgParts.slice(ifvgUsesPdaFormat ? 3 : 2).join(' @ ')
+  )
+  const ifvgCandleGroups = ifvgCandleSource
+    .split(/\r?\n|\s*;\s*/)
+    .map((line) => clocksFrom(line).slice(0, 3))
+    .filter((clocks) => clocks.length >= 3)
   const ifvgInversionClock = clocksFrom(entry.conditionResponses?.['IFVG inversed'])[0] || ifvgTime
   const pdaZones = pdaRows
     .map((row, index) => {
@@ -444,19 +475,31 @@ export default function JournalReviewChart({
       )
     })
     .filter((zone): zone is NonNullable<typeof zone> => Boolean(zone))
-  const measuredIfvgZone = measuredZoneFromClocks(
-    ifvgCandleClocks,
-    resolutionFromLabel(ifvgParts[0] || '1m'),
-    ifvgInversionClock,
-    ifvgLabel,
-    '#10B981'
-  )
+  const measuredIfvgZones = ifvgCandleGroups
+    .map((clocks, index) =>
+      measuredZoneFromClocks(
+        clocks,
+        resolutionFromLabel(ifvgTimeframe || '1m'),
+        ifvgInversionClock,
+        ifvgCandleGroups.length > 1 ? `IFVG ${index + 1} · ${ifvgTimeframe}` : ifvgLabel,
+        '#10B981'
+      )
+    )
+    .filter((zone): zone is NonNullable<typeof zone> => Boolean(zone))
   const setupZones = [
     ...pdaZones,
-    measuredIfvgZone || imbalanceZone(ifvgIndex, ifvgLabel, '#10B981'),
+    ...(measuredIfvgZones.length
+      ? measuredIfvgZones
+      : [imbalanceZone(ifvgIndex, ifvgLabel, '#10B981')]),
   ].filter((zone): zone is NonNullable<typeof zone> => Boolean(zone))
 
   const entryPrice = entry.entryPrice.trim() ? Number(entry.entryPrice) : Number.NaN
+  const stopPrice = Number(
+    entry.riskPlan?.stopLoss?.price || entry.sourceContext?.stopLossPrice || Number.NaN
+  )
+  const targetPrice = Number(
+    entry.riskPlan?.takeProfit?.price || entry.sourceContext?.takeProfitPrice || Number.NaN
+  )
   const exitPrice = entry.closePrice.trim() ? Number(entry.closePrice) : Number.NaN
   const exitColor =
     entry.outcome === 'loss' ? '#EF4444' : entry.outcome === 'win' ? '#10B981' : '#A1A1AA'
@@ -520,6 +563,40 @@ export default function JournalReviewChart({
       )
     })
 
+    if (midTapValidation) {
+      const start = bars[Math.max(0, midTapIndex - 12)]
+      const end = bars[Math.min(bars.length - 1, Math.max(midTapIndex + 6, ifvgIndex + 6))]
+      if (start && end) {
+        widget.drawShape?.(
+          'trend-line',
+          [
+            { time: Math.floor(chartTime(start.time) / 1000), price: midTapPrice },
+            { time: Math.floor(chartTime(end.time) / 1000), price: midTapPrice },
+          ],
+          {
+            locked: true,
+            props: {
+              color: '#8B5CF6',
+              colorOpacity: 90,
+              lineWidth: 1,
+              lineStyle: 2,
+              extendLeft: false,
+              extendRight: false,
+              showMiddlePoint: false,
+              showPriceLabels: false,
+              alwaysShowStats: false,
+              label: `MID ${priceText(midTapPrice)}`,
+              textColor: '#8B5CF6',
+              textColorOpacity: 100,
+              textAlignH: 'center',
+              textAlignV: 'top',
+              fontSize: 10,
+            },
+          }
+        )
+      }
+    }
+
     sweepRows.forEach((row, index) => {
       const sweepBarIndex = indexForClock(row.sweepTime)
       const referenceBarIndex = indexForClock(row.referenceTime)
@@ -563,6 +640,50 @@ export default function JournalReviewChart({
     })
 
     const entryBar = bars[entryIndex]
+    if (
+      entryBar &&
+      Number.isFinite(entryPrice) &&
+      Number.isFinite(stopPrice) &&
+      Number.isFinite(targetPrice) &&
+      resolutionMs <= 15 * 60_000
+    ) {
+      const startTime = chartTime(entryBar.time)
+      const endTime = startTime + resolutionMs * 10
+      widget.drawShape?.(
+        entry.side === 'short' ? 'short-position' : 'long-position',
+        [
+          { time: Math.floor(startTime / 1000), price: entry.side === 'short' ? stopPrice : targetPrice },
+          { time: Math.floor(endTime / 1000), price: entry.side === 'short' ? targetPrice : stopPrice },
+        ],
+        {
+          locked: true,
+          props: {
+            positionEntryPrice: entryPrice,
+            positionRiskUnit: 'currency',
+            positionRisk: Number(entry.recap?.riskDollars || 1),
+            positionLotSize: 1,
+            positionQtyPrecision: '0',
+            alwaysShowStats: true,
+            compactStatsMode: false,
+            statsFields: {
+              tpPriceOffset: true,
+              tpPercentOffset: true,
+              tpTickOffset: true,
+              tpAmount: false,
+              tpPL: false,
+              openClosedPL: false,
+              qty: false,
+              riskRewardRatio: true,
+              slPriceOffset: true,
+              slPercentOffset: true,
+              slTickOffset: true,
+              slAmount: false,
+              slPL: false,
+            },
+          },
+        }
+      )
+    }
     if (entryBar && Number.isFinite(entryPrice) && resolutionMs <= 15 * 60_000) {
       widget.drawShape?.(
         entry.side === 'short' ? 'arrow-mark-down' : 'arrow-mark-up',
@@ -593,7 +714,9 @@ export default function JournalReviewChart({
     }
 
     const eventIndexes = [
+      midTapIndex,
       ...sweepRows.map((row) => indexForClock(row.sweepTime)),
+      ...sweepRows.map((row) => indexForClock(row.referenceTime)),
       ...pdaIndexes,
       ifvgIndex,
       entryIndex,
@@ -603,8 +726,11 @@ export default function JournalReviewChart({
     const lastEvent = Math.max(...eventIndexes)
     const firstEventTime = bars[firstEvent]?.time ?? entryBar?.time
     const lastEventTime = bars[lastEvent]?.time ?? exitBar?.time ?? firstEventTime
-    const rangeFromTarget = Number(firstEventTime) - resolutionMs * 6
-    const rangeToTarget = Number(lastEventTime) + resolutionMs * 6
+    const projectedPositionEnd = entryBar
+      ? chartTime(entryBar.time) + resolutionMs * 10
+      : Number(lastEventTime)
+    const rangeFromTarget = Number(firstEventTime) - resolutionMs * 12
+    const rangeToTarget = Math.max(Number(lastEventTime), projectedPositionEnd) + resolutionMs * 6
     const fromBar = chartBars.reduce(
       (best, bar) =>
         Math.abs(bar.time - rangeFromTarget) < Math.abs(best.time - rangeFromTarget) ? bar : best,
@@ -622,15 +748,16 @@ export default function JournalReviewChart({
     const timeScale = activePane?.chart?.timeScale?.()
     if (fromBar && toBar && timeScale?.setVisibleRange) {
       const range = { from: Math.floor(fromBar.time / 1000), to: Math.floor(toBar.time / 1000) }
-      timeScale.setVisibleRange(range)
-      window.setTimeout(() => {
+      const applyReviewRange = () => {
         timeScale.setVisibleRange?.(range)
         activePane?.series?.priceScale?.().applyOptions?.({
           autoScale: true,
           scaleMargins: { top: 0.18, bottom: 0.08 },
         })
         hideLivePrice()
-      }, 250)
+      }
+      applyReviewRange()
+      ;[250, 750, 1500].forEach((delay) => window.setTimeout(applyReviewRange, delay))
     }
   }
 
@@ -744,8 +871,10 @@ export default function JournalReviewChart({
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            ['Liquidity sweep', sweepValidation],
-            ['HTF PDA', pdaValidation],
+            ...(midTapResponse
+              ? ([['MID Tap', midTapValidation]] as Array<[string, boolean]>)
+              : ([['Liquidity sweep', sweepValidation]] as Array<[string, boolean]>)),
+            ...(pdaRows.length ? ([['HTF PDA', pdaValidation]] as Array<[string, boolean]>) : []),
             ['IFVG', ifvgValidation],
           ].map(([label, valid]) => (
             <span
@@ -776,6 +905,13 @@ export default function JournalReviewChart({
       <div
         className={`flex flex-wrap gap-2 border-t px-3 py-3 text-[10px] ${isDark ? 'border-[#27272A] bg-[#121215]' : 'border-[#E4E4E7] bg-white'}`}
       >
+        {midTapResponse && (
+          <span
+            className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-violet-500/25 text-violet-400' : 'border-violet-500/30 text-violet-700'}`}
+          >
+            MID · {midTapTime} · {priceText(midTapPrice)}
+          </span>
+        )}
         {sweepRows.map((row, index) => (
           <span
             key={`${row.sweepTime}-${index}`}
@@ -795,27 +931,45 @@ export default function JournalReviewChart({
         <span
           className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-emerald-500/25 text-emerald-400' : 'border-emerald-500/30 text-emerald-700'}`}
         >
-          IFVG · {ifvgTime} · {ifvgParts[0]}
+          IFVG · {ifvgTime} · {ifvgTimeframe}
         </span>
-        <span
-          className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-blue-500/25 text-blue-400' : 'border-blue-500/30 text-blue-700'}`}
-        >
-          Entry ·{' '}
-          {new Date(entry.dateTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
-          · {priceText(entryPrice)}
-        </span>
-        <span
-          className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-emerald-500/25 text-emerald-400' : 'border-emerald-500/30 text-emerald-700'}`}
-        >
-          Exit ·{' '}
-          {entry.exitDateTime
-            ? new Date(entry.exitDateTime).toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
-              })
-            : '—'}{' '}
-          · {priceText(exitPrice)}
-        </span>
+        {Number.isFinite(entryPrice) && (
+          <span
+            className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-blue-500/25 text-blue-400' : 'border-blue-500/30 text-blue-700'}`}
+          >
+            Entry ·{' '}
+            {new Date(entry.dateTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{' '}
+            · {priceText(entryPrice)}
+          </span>
+        )}
+        {Number.isFinite(stopPrice) && (
+          <span
+            className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-red-500/25 text-red-400' : 'border-red-500/30 text-red-700'}`}
+          >
+            Stop · {priceText(stopPrice)}
+          </span>
+        )}
+        {Number.isFinite(targetPrice) && (
+          <span
+            className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-emerald-500/25 text-emerald-400' : 'border-emerald-500/30 text-emerald-700'}`}
+          >
+            Target · {priceText(targetPrice)}
+          </span>
+        )}
+        {(entry.exitDateTime || Number.isFinite(exitPrice)) && (
+          <span
+            className={`rounded-md border px-2 py-1.5 ${isDark ? 'border-emerald-500/25 text-emerald-400' : 'border-emerald-500/30 text-emerald-700'}`}
+          >
+            Exit ·{' '}
+            {entry.exitDateTime
+              ? new Date(entry.exitDateTime).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })
+              : '—'}{' '}
+            · {Number.isFinite(exitPrice) ? priceText(exitPrice) : '—'}
+          </span>
+        )}
       </div>
     </div>
   )

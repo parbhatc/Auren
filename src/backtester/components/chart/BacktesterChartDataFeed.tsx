@@ -13,6 +13,8 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
   private symbolsCache: Record<string, { tickSize: number; tickValue: number; supportedChartResolutions?: string[] }> | null = null
   /** Notifies the host view once symbol config (tick size/value) is available. */
   onSymbolsLoaded: (() => void) | null = null
+  /** Persists the authoritative host-controlled replay cursor when enabled. */
+  onPlaybackAnchorChange: ((cursorSec: number, resolution: ResolutionString) => void) | null = null
   private symbolConfigByRoot = new Map<string, { tickSize: number; tickValue: number }>()
   private resolvedSymbolCache: Map<string, LibrarySymbolInfo> = new Map()
   private wsClient: BacktesterChartClient | null = null
@@ -90,6 +92,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       if (barSec <= anchorResSec) {
         this.playbackAnchorResolution = resolution
       }
+      this.onPlaybackAnchorChange?.(this.playbackAnchorSec, this.playbackAnchorResolution)
     }
   }
 
@@ -600,6 +603,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     // ratcheted this down permanently (one 30s step latched '30S' forever,
     // so later 1m steps kept a mid-bucket anchor and stepped mid-minute walls).
     this.playbackAnchorResolution = resolution
+    this.onPlaybackAnchorChange?.(this.playbackAnchorSec, this.playbackAnchorResolution)
   }
 
   getPlaybackAnchorSecPublic(): number | null {

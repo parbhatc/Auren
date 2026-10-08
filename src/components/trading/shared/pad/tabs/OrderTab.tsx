@@ -9,10 +9,10 @@ import {
   distanceFromPrice,
   convertDistanceValue,
   formatDistanceEquivalents,
-  bracketDollarAmount,
   positionSizeForRisk,
 } from '../bracketUtils'
 import { PadCheckbox } from '../PadControls'
+import type { ChartAutoTradeRequest } from '../../../../common/aurenTradeContextMenu'
 import {
   getTradeRiskSettings,
   saveTradeRiskSettings,
@@ -24,6 +24,7 @@ import type {
   OrderSide,
   BracketDistanceUnit,
   BracketOptions,
+  ChartPricePickContext,
 } from '../types'
 import { DEFAULT_SL_TICKS, DEFAULT_TP_TICKS } from '../types'
 import { isTradePanelTradingEnabled } from '../../../../../utils/tradePanelTrading'
@@ -33,6 +34,7 @@ import {
   practiceContractRoot,
   practiceMicroRoot,
 } from '../../../../../services/practice/practiceContractFamily'
+import { formatChartResolution, normalizeChartResolution } from '../../../../../utils/chartResolution'
 
 const BRACKET_PREFS_PREFIX = 'trade_panel_brackets_'
 type AutoDirectionMode = OrderSide | 'auto'
@@ -64,6 +66,7 @@ function saveBracketPrefs(symbol: string | undefined, prefs: BracketPrefs): void
 }
 export function OrderTab({
   props,
+  autoArmRequest,
   maxQty,
   book,
   marketPrice,
@@ -72,6 +75,7 @@ export function OrderTab({
   symbolLabel,
 }: {
   props: TradePanelProps
+  autoArmRequest?: ChartAutoTradeRequest | null
   maxQty: number
   book: TradeseaMarketBook | null
   marketPrice: number | null
@@ -101,8 +105,18 @@ export function OrderTab({
     side: OrderSide
     price: number
     basis: TradeRiskSettings['sizingBasis']
+    resolution: string
+    entry: number
+    executionSymbol: string
+    tickSize: number
+    tickValue: number
+    maxQuantity: number
   } | null>(null)
+  const [selectedChartResolution, setSelectedChartResolution] = useState(() =>
+    normalizeChartResolution(props.getActiveChartResolution?.())
+  )
   const [autoMessage, setAutoMessage] = useState<string | null>(null)
+  const [closeQuantities, setCloseQuantities] = useState<Record<string, string>>({})
   const [slDistanceUnit, setSlDistanceUnit] = useState<BracketDistanceUnit>('ticks')
   const [tpDistanceUnit, setTpDistanceUnit] = useState<BracketDistanceUnit>('ticks')
   const slBracketSourceRef = useRef<'price' | 'ticks' | null>(null)
@@ -171,6 +185,19 @@ export function OrderTab({
     : { tickSize, tickValue }
   const riskDollarEnabled = riskTicks.tickValue > 0
   const riskMaxQty = props.getMaxQuantityForSymbol?.(riskExecutionRoot) ?? maxQty
+  const resolveAutoSizingContext = useCallback((context?: ChartPricePickContext) => {
+    const resolved = context ? props.getAutoOrderSizingContext?.(context) : null
+    if (resolved) return resolved
+    const entry = liveEntryRef.current
+    if (entry == null || !Number.isFinite(entry)) return null
+    return {
+      entry,
+      executionSymbol: riskExecutionRoot,
+      tickSize: riskTicks.tickSize,
+      tickValue: riskTicks.tickValue,
+      maxQuantity: riskMaxQty,
+    }
+  }, [props.getAutoOrderSizingContext, riskExecutionRoot, riskMaxQty, riskTicks.tickSize, riskTicks.tickValue])
   const executionRoutingPending = Boolean(
     automaticMicroRoot &&
     !props.riskExecutionProductRoot &&
@@ -178,9 +205,10 @@ export function OrderTab({
   )
   const positionFamilySummary = props.getPositionFamilySummary?.() ?? null
   const orderEntryReference = refPrice
-  const spread =
-    bid != null && ask != null && ask >= bid ? Math.round((ask - bid) * 100) / 100 : null
-  const qtyNum = parseInt(String(props.quantity).replace(/\D/g, ''), 10) || 0
+  const setCloseQuantity = useCallback((key: string, value: number, maximum: number) => {
+    const next = Math.max(1, Math.min(maximum, Math.floor(value) || 1))
+    setCloseQuantities((current) => ({ ...current, [key]: String(next) }))
+  }, [])
 
   useEffect(() => {
     if (!executionRoutingPending || !props.onChartSymbolChange) return
@@ -392,6 +420,17 @@ export function OrderTab({
   }
 
   const riskSizing = useMemo(() => {
+    if (autoSubmitRequest) {
+      return positionSizeForRisk(
+        riskSettings.riskPerTrade,
+        autoSubmitRequest.entry,
+        autoSubmitRequest.price,
+        autoSubmitRequest.tickSize,
+        autoSubmitRequest.tickValue,
+        autoSubmitRequest.maxQuantity,
+        riskSettings.riskBuffer
+      )
+    }
     const entry = parseOrderEntry()
     const sizingFromTarget = riskSettings.sizingBasis === 'take_profit'
     if (!sizingFromTarget && !chartStopSelected) return null
@@ -425,7 +464,7 @@ export function OrderTab({
     )
   // parseOrderEntry and resolveBracketPrice intentionally read the current ticket state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [riskSettings.riskPerTrade, riskSettings.riskBuffer, riskSettings.sizingBasis, refPrice, stopLossOn, slPrice, slTicks, slDistanceUnit, takeProfitOn, tpPrice, tpTicks, tpDistanceUnit, selectedSide, riskTicks.tickSize, riskTicks.tickValue, riskMaxQty, riskDollarEnabled, chartStopSelected])
+  }, [autoSubmitRequest, riskSettings.riskPerTrade, riskSettings.riskBuffer, riskSettings.sizingBasis, refPrice, stopLossOn, slPrice, slTicks, slDistanceUnit, takeProfitOn, tpPrice, tpTicks, tpDistanceUnit, selectedSide, riskTicks.tickSize, riskTicks.tickValue, riskMaxQty, riskDollarEnabled, chartStopSelected])
 
   const setStopLossMode = (stopLossMode: TradeRiskSettings['stopLossMode']) => {
     const next = { ...riskSettings, stopLossMode }
@@ -467,6 +506,7 @@ export function OrderTab({
     }
     else setTakeProfitOn(true)
     setAutoSubmitRequest(null)
+    setSelectedChartResolution(normalizeChartResolution(props.getActiveChartResolution?.()))
     const entry = marketPrice ?? (initialSide === 'buy' ? ask : bid) ?? book?.last ?? null
     if (entry == null || !Number.isFinite(entry)) {
       setAutoMessage('Waiting for a live market price.')
@@ -487,9 +527,14 @@ export function OrderTab({
         : `${mode === 'buy' ? 'Buy' : 'Sell'} armed — tap the chart for the take profit.`
     )
     let selectionCommitted = false
-    const selectChartPrice = (pickedPrice: number) => {
+    const selectChartPrice: Parameters<NonNullable<TradePanelProps['pickChartPriceOnce']>>[0] = (pickedPrice, context) => {
       if (selectionCommitted) return
-      const liveEntry = liveEntryRef.current ?? entry
+      const sizingContext = resolveAutoSizingContext(context)
+      if (!sizingContext) {
+        setAutoMessage('Waiting for a live market price on this chart.')
+        return
+      }
+      const liveEntry = sizingContext.entry
       const side: OrderSide = mode === 'auto'
         ? pickedPrice < liveEntry ? 'buy' : 'sell'
         : mode
@@ -517,7 +562,7 @@ export function OrderTab({
       cancelPositionPreviewRef.current = null
       setArmedSide(null)
       setSelectedSide(side)
-      const ticks = Math.abs(Math.round((liveEntry - pickedPrice) / tickSize))
+      const ticks = Math.abs(Math.round((liveEntry - pickedPrice) / sizingContext.tickSize))
       if (basis === 'stop_loss') {
         slBracketSourceRef.current = 'price'
         setSlDistanceUnit('ticks')
@@ -530,7 +575,15 @@ export function OrderTab({
         setTpPrice(fmtPrice(pickedPrice))
         setTpTicks(String(ticks))
       }
-      setAutoSubmitRequest({ side, price: pickedPrice, basis })
+      const resolution = normalizeChartResolution(context?.resolution || props.getActiveChartResolution?.())
+      setSelectedChartResolution(resolution)
+      setAutoSubmitRequest({
+        side,
+        price: pickedPrice,
+        basis,
+        resolution,
+        ...sizingContext,
+      })
       setAutoMessage('Calculating contract size…')
     }
     const cancel = props.pickChartPriceOnce(selectChartPrice)
@@ -551,8 +604,10 @@ export function OrderTab({
         entry,
         stopLoss: previewStop,
         tickSize,
-        appearanceAt: (price) => {
-          const liveEntry = liveEntryRef.current ?? entry
+        appearanceAt: (price, context) => {
+          const sizingContext = resolveAutoSizingContext(context)
+          if (!sizingContext) return { label: 'Waiting for price', quantityLabel: '' }
+          const liveEntry = sizingContext.entry
           const previewSide: OrderSide = mode === 'auto'
             ? price < liveEntry ? 'buy' : 'sell'
             : mode
@@ -571,9 +626,9 @@ export function OrderTab({
             riskSettings.riskPerTrade,
             liveEntry,
             price,
-            riskTicks.tickSize,
-            riskTicks.tickValue,
-            riskMaxQty,
+            sizingContext.tickSize,
+            sizingContext.tickValue,
+            sizingContext.maxQuantity,
             riskSettings.riskBuffer
           )
           const dollars = (sizing.quantity > 0
@@ -582,9 +637,10 @@ export function OrderTab({
           ).toLocaleString(undefined, { maximumFractionDigits: 2 })
           return {
             label: `${mode === 'auto' ? (previewSide === 'buy' ? 'Long' : 'Short') + ' · ' : ''}${sizing.quantity > 0 ? 'Risk' : '1 contract'} $${dollars}`,
-            quantityLabel: sizing.quantity > 0 ? `${sizing.quantity} ${riskExecutionRoot}` : 'Over risk',
+            quantityLabel: sizing.quantity > 0 ? `${sizing.quantity} ${sizingContext.executionSymbol}` : 'Over risk',
           }
         },
+        tickSizeAt: (context) => resolveAutoSizingContext(context)?.tickSize ?? tickSize,
       })
     }
 
@@ -592,7 +648,13 @@ export function OrderTab({
       setArmedSide(null)
       setAutoMessage('Chart stop selection is unavailable.')
     }
-  }, [armedSide, ask, bid, book?.last, cancelChartStopPick, marketPrice, props.pickChartPriceOnce, props.showAutoPositionPreview, riskExecutionRoot, riskMaxQty, riskSettings.riskBuffer, riskSettings.riskPerTrade, riskSettings.sizingBasis, riskTicks.tickSize, riskTicks.tickValue, tickSize, tickValue])
+  }, [armedSide, ask, bid, book?.last, cancelChartStopPick, marketPrice, props.getActiveChartResolution, props.pickChartPriceOnce, props.showAutoPositionPreview, resolveAutoSizingContext, riskSettings.riskBuffer, riskSettings.riskPerTrade, riskSettings.sizingBasis, tickSize, tickValue])
+
+  useEffect(() => {
+    if (!autoArmRequest) return
+    armChartStopPick(autoArmRequest.side)
+    // requestId intentionally makes repeated selections of the same side actionable.
+  }, [autoArmRequest?.requestId])
 
   useEffect(() => () => {
     cancelPricePickRef.current?.()
@@ -612,16 +674,16 @@ export function OrderTab({
 
   useEffect(() => {
     if (
-      executionRoutingPending ||
+      (executionRoutingPending && !autoSubmitRequest) ||
       !riskSizing ||
       riskSizing.quantity < 1
     ) return
     if (Number.parseInt(String(props.quantity), 10) === riskSizing.quantity) return
     props.onQuantityInputChange(String(riskSizing.quantity))
-  }, [executionRoutingPending, props.quantity, props.onQuantityInputChange, riskSizing])
+  }, [autoSubmitRequest, executionRoutingPending, props.quantity, props.onQuantityInputChange, riskSizing])
 
   useEffect(() => {
-    if (!autoSubmitRequest || executionRoutingPending) return
+    if (!autoSubmitRequest) return
     if (!riskSizing || riskSizing.quantity < 1) {
       setAutoMessage('The selected level cannot be sized within this amount.')
       setAutoSubmitRequest(null)
@@ -631,7 +693,7 @@ export function OrderTab({
 
     setAutoSubmitRequest(null)
     setAutoMessage(
-      `Submitting ${riskSizing.quantity} ${riskExecutionRoot} contract${riskSizing.quantity === 1 ? '' : 's'}…`
+      `Submitting ${riskSizing.quantity} ${autoSubmitRequest.executionSymbol} contract${riskSizing.quantity === 1 ? '' : 's'}…`
     )
     const brackets: BracketOptions = {
       stopLoss:
@@ -646,11 +708,13 @@ export function OrderTab({
           : resolveBracketPrice(takeProfitOn, tpPrice, tpTicks, 'tp', tpDistanceUnit),
       stopLossMode: riskSettings.stopLossMode,
       softStopTrigger: riskSettings.softStopTrigger,
+      softStopResolution: autoSubmitRequest.resolution,
     }
     if (props.onSubmitOrder) {
       props.onSubmitOrder(autoSubmitRequest.side, brackets, {
         orderType: 'market',
-        executionSymbol: riskExecutionRoot,
+        entryPrice: autoSubmitRequest.entry,
+        executionSymbol: autoSubmitRequest.executionSymbol,
       })
     } else if (autoSubmitRequest.side === 'buy') {
       props.onBuy()
@@ -658,11 +722,11 @@ export function OrderTab({
       props.onSell()
     }
     setAutoMessage(
-      `Order sent: ${riskSizing.quantity} ${riskExecutionRoot}. Drag the chart bracket to adjust it.`
+      `Order sent: ${riskSizing.quantity} ${autoSubmitRequest.executionSymbol}. Drag the chart bracket to adjust it.`
     )
   // resolveBracketPrice intentionally reads the current take-profit state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSubmitRequest, chartStopSelected, executionRoutingPending, props.quantity, props.onSubmitOrder, riskExecutionRoot, riskSettings.softStopTrigger, riskSettings.stopLossMode, riskSizing])
+  }, [autoSubmitRequest, chartStopSelected, props.quantity, props.onSubmitOrder, riskSettings.softStopTrigger, riskSettings.stopLossMode, riskSizing])
 
   const slEquivalents = useMemo(
     () => (stopLossOn ? formatDistanceEquivalents(slTicks, slDistanceUnit, tickSize, tickValue) : null),
@@ -673,30 +737,6 @@ export function OrderTab({
     [takeProfitOn, tpTicks, tpDistanceUnit, tickSize, tickValue]
   )
 
-  /** Total $ risk / reward at the armed brackets, and the resulting R:R ratio. */
-  const riskSummary = useMemo(() => {
-    const entry = parseOrderEntry()
-    if (entry == null || qtyNum <= 0 || !riskDollarEnabled) return null
-    const sl = stopLossOn && chartStopSelected ? parseBracketPriceInput(slPrice) : null
-    const tp = takeProfitOn ? parseBracketPriceInput(tpPrice) : null
-    const risk = sl != null
-      ? bracketDollarAmount(entry, sl, qtyNum, riskTicks.tickSize, riskTicks.tickValue)
-      : null
-    const reward = tp != null
-      ? bracketDollarAmount(entry, tp, qtyNum, riskTicks.tickSize, riskTicks.tickValue)
-      : null
-    if (risk == null && reward == null) return null
-    const parts: string[] = []
-    if (risk != null) parts.push(`Risk $${risk.toLocaleString()}`)
-    if (reward != null) parts.push(`Reward $${reward.toLocaleString()}`)
-    if (risk != null && reward != null && risk > 0) {
-      parts.push(`1:${(Math.round((reward / risk) * 10) / 10).toLocaleString()}`)
-    }
-    return parts.join(' · ')
-    // parseOrderEntry intentionally reads the current ticket entry fields.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refPrice, qtyNum, riskDollarEnabled, stopLossOn, chartStopSelected, slPrice, takeProfitOn, tpPrice, riskTicks.tickSize, riskTicks.tickValue])
-
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <fieldset
@@ -705,23 +745,6 @@ export function OrderTab({
       >
       <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto py-1 pb-32 sm:gap-3">
         <div className={`rounded-xl border ${surface}`}>
-          <div className={`flex items-center justify-between border-b px-3 py-2.5 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
-            <div className="min-w-0">
-              <p className={`truncate text-[10px] font-semibold uppercase tracking-[0.12em] ${mutedText}`}>
-                {symbolLabel || 'Instrument'}
-              </p>
-              <p className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${strongText}`}>
-                {marketPrice != null ? fmtPrice(marketPrice) : '—'}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className={`text-[9px] uppercase tracking-wide ${mutedText}`}>Spread</p>
-              <p className={`mt-0.5 font-mono text-xs tabular-nums ${strongText}`}>
-                {spread != null ? fmtPrice(spread) : '—'}
-              </p>
-            </div>
-          </div>
-
           <div className="grid grid-cols-3 gap-1 p-1.5">
             <button
               type="button"
@@ -819,7 +842,7 @@ export function OrderTab({
         {positionFamilySummary ? (
           <div className={`rounded-xl border px-3 py-2.5 ${isDark ? 'border-violet-500/25 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
             <div className="flex items-center justify-between gap-2">
-              <span className={`text-[10px] font-semibold uppercase tracking-wide ${mutedText}`}>Related positions</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-wide ${mutedText}`}>Open positions</span>
               <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[9px] font-semibold text-violet-400">
                 {positionFamilySummary.microSymbol
                   ? `${positionFamilySummary.miniSymbol}/${positionFamilySummary.microSymbol}`
@@ -829,6 +852,77 @@ export function OrderTab({
             <p className={`mt-1 font-mono text-[11px] font-semibold tabular-nums ${strongText}`}>
               {formatPracticePositionFamily(positionFamilySummary)}
             </p>
+            <div className="mt-2 flex flex-col gap-2">
+              {positionFamilySummary.positions.map((position) => {
+                const maximum = Math.abs(position.contracts)
+                const key = `${position.symbol}:${position.closeSymbol || position.symbol}`
+                const selected = Math.max(
+                  1,
+                  Math.min(maximum, Number.parseInt(closeQuantities[key] || '1', 10) || 1)
+                )
+                return (
+                  <div
+                    key={key}
+                    className={`rounded-lg border p-2 ${isDark ? 'border-[#3F3F46] bg-black/15' : 'border-violet-200 bg-white/80'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[11px] font-semibold ${strongText}`}>
+                        {maximum} {position.symbol}
+                      </span>
+                      <span className={`text-[9px] font-semibold uppercase ${position.contracts > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {position.contracts > 0 ? 'Long' : 'Short'}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-[92px_1fr] gap-2">
+                      <div className={`flex h-8 items-center overflow-hidden rounded-lg border ${isDark ? 'border-[#3F3F46] bg-[#18181B]' : 'border-[#D4D4D8] bg-white'}`}>
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${position.symbol} close quantity`}
+                          onClick={() => setCloseQuantity(key, selected - 1, maximum)}
+                          className={`h-full w-7 text-sm ${mutedText} hover:text-violet-400`}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`${position.symbol} quantity to close`}
+                          value={closeQuantities[key] ?? '1'}
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, '')
+                            setCloseQuantities((current) => ({ ...current, [key]: digits }))
+                          }}
+                          onBlur={() => setCloseQuantity(key, selected, maximum)}
+                          className={`h-full min-w-0 flex-1 bg-transparent text-center font-mono text-xs outline-none ${strongText}`}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Increase ${position.symbol} close quantity`}
+                          onClick={() => setCloseQuantity(key, selected + 1, maximum)}
+                          className={`h-full w-7 text-sm ${mutedText} hover:text-violet-400`}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => props.onClose(selected, position.closeSymbol || position.symbol)}
+                        className="h-8 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2 text-[10px] font-semibold text-amber-300 transition hover:bg-amber-500/20"
+                      >
+                        Close {selected}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => props.onClose(maximum, position.closeSymbol || position.symbol)}
+                      className="mt-2 h-8 w-full rounded-lg bg-red-600 text-[10px] font-semibold text-white transition hover:bg-red-500"
+                    >
+                      Close position
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         ) : null}
 
@@ -891,7 +985,7 @@ export function OrderTab({
                 {props.mode !== 'backtest' ? (
                   <p className={`mt-1.5 text-[9px] leading-4 ${riskSettings.stopLossMode === 'soft' ? 'text-amber-400' : mutedText}`}>
                     {riskSettings.stopLossMode === 'soft'
-                      ? 'Browser-managed: closes the full position only after a 1-minute bar closes beyond the line. Keep this page open and connected.'
+                      ? `Browser-managed: closes the full position after a ${formatChartResolution(selectedChartResolution)} bar closes beyond the line. The timeframe comes from the chart pane used for entry; keep this page open and connected.`
                       : 'Closes as soon as price touches the line. On Tradesea, it is sent as broker-side protection.'}
                   </p>
                 ) : null}
@@ -907,50 +1001,6 @@ export function OrderTab({
                 The risk and contract size follow your cursor. Click the chart to enter or press Esc to cancel.
               </p>
             </div>
-          </div>
-
-          <div className={`rounded-xl border p-3 ${surface}`}>
-            <div className="flex items-center justify-between gap-2">
-              <span className={`text-xs font-semibold ${strongText}`}>Contracts</span>
-              <span className={`text-[9px] ${mutedText}`}>
-                Auto ${riskExecutionRoot} · $${riskSettings.riskPerTrade} {riskSettings.sizingBasis === 'stop_loss' ? 'risk' : 'target'} · Max {riskMaxQty}
-              </span>
-            </div>
-
-            <div className={`mt-2 rounded-lg border px-3 py-2.5 ${isDark ? 'border-blue-500/25 bg-blue-500/5' : 'border-blue-200 bg-blue-50'}`}>
-                {!riskDollarEnabled ? (
-                  <p className={`text-[10px] ${mutedText}`}>This contract does not report a tick value, so size cannot be calculated.</p>
-                ) : executionRoutingPending ? (
-                  <p className="text-[10px] font-medium text-blue-400">Switching execution contract to {riskExecutionRoot}…</p>
-                ) : !riskSizing ? (
-                  <p className="text-[10px] font-medium text-amber-500">
-                    Choose a valid {riskSettings.sizingBasis === 'stop_loss' ? 'stop' : 'take profit'} on the correct side of the entry.
-                  </p>
-                ) : riskSizing.quantity < 1 ? (
-                  <p className="text-[10px] font-medium text-amber-500">
-                    One contract risks ${riskSizing.perContractRisk.toLocaleString()}, above your ${riskSettings.riskPerTrade.toLocaleString()} limit.
-                  </p>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className={`font-mono text-lg font-semibold tabular-nums ${strongText}`}>
-                        {riskSizing.quantity} {riskExecutionRoot} contract{riskSizing.quantity === 1 ? '' : 's'}
-                      </p>
-                      <p className={`font-mono text-[9px] tabular-nums ${mutedText}`}>
-                        ${riskSizing.perContractRisk.toLocaleString()} each · ${riskSizing.plannedRisk.toLocaleString()} planned {riskSettings.sizingBasis === 'stop_loss' ? 'risk' : 'target'}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[9px] font-semibold text-blue-400">
-                      Applied
-                    </span>
-                  </div>
-                )}
-            </div>
-            {riskSummary ? (
-              <p className={`mt-2 font-mono text-[10px] tabular-nums ${mutedText}`}>
-                {riskSummary}
-              </p>
-            ) : null}
           </div>
 
         </section>

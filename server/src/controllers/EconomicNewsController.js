@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename)
 
 // News data directory: data/news/{year}/{month}.json
 const NEWS_DIR = path.join(__dirname, '../../data/news')
+const FOREX_FACTORY_WEEKLY_JSON_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json'
 
 /**
  * Economic News Controller
@@ -52,6 +53,94 @@ class EconomicNewsController {
     const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
     const monthName = monthNames[month - 1]
     return path.join(NEWS_DIR, year.toString(), `${monthName}.json`)
+  }
+
+  /**
+   * Normalize ForexFactory's official weekly JSON export into Auren's cache
+   * format. The export timestamps include an Eastern offset, but formatting in
+   * America/New_York also keeps this correct across DST boundaries.
+   */
+  formatForexFactoryJsonEvents(events, year, month) {
+    if (!Array.isArray(events)) return []
+
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+
+    return events.flatMap((event, index) => {
+      const timestamp = new Date(event?.date)
+      if (Number.isNaN(timestamp.getTime())) return []
+
+      const parts = dateFormatter.formatToParts(timestamp)
+      const eventYear = Number(parts.find((part) => part.type === 'year')?.value)
+      const eventMonth = Number(parts.find((part) => part.type === 'month')?.value)
+      const eventDay = parts.find((part) => part.type === 'day')?.value
+      if (eventYear !== year || eventMonth !== month || !eventDay) return []
+
+      const date = `${eventYear}-${String(eventMonth).padStart(2, '0')}-${eventDay}`
+      const title = String(event.title || event.event || '').trim()
+      if (!title) return []
+
+      const currency = String(event.country || event.currency || 'N/A').trim().toUpperCase()
+      const timeLabel = timeFormatter.format(timestamp).replace(/\s+/g, '').toLowerCase()
+      const impactRaw = String(event.impact || 'low').trim().toLowerCase()
+      const impact = ['high', 'medium', 'low', 'holiday'].includes(impactRaw) ? impactRaw : 'low'
+      const idSeed = `${date}-${timeLabel}-${currency}-${title}-${index}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+
+      return [{
+        id: `ff-${idSeed}`,
+        date,
+        time: timeLabel,
+        timeLabel,
+        currency,
+        event: title,
+        impact,
+        forecast: event.forecast || null,
+        previous: event.previous || null,
+        actual: event.actual || null,
+      }]
+    })
+  }
+
+  /**
+   * Fetch ForexFactory's official JSON export. This endpoint is more reliable
+   * than scraping the protected calendar page and supplies the current week,
+   * which is the data the live chart needs.
+   */
+  async fetchForexFactoryWeeklyJson(year, month) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    try {
+      const response = await fetch(FOREX_FACTORY_WEEKLY_JSON_URL, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Auren Economic Calendar/1.0',
+        },
+      })
+      if (!response.ok) {
+        throw new Error(`ForexFactory JSON export returned HTTP ${response.status}`)
+      }
+      const payload = await response.json()
+      if (!Array.isArray(payload)) {
+        throw new Error('ForexFactory JSON export returned an invalid payload')
+      }
+      return this.formatForexFactoryJsonEvents(payload, year, month)
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   /**
@@ -231,6 +320,19 @@ class EconomicNewsController {
   async scrapeForexFactory(year, month) {
     let browser = null
     try {
+      // Prefer the official export. ForexFactory now commonly protects the
+      // HTML calendar with Cloudflare, which leaves the old page-state scraper
+      // with an empty payload and previously caused Auren to cache no events.
+      try {
+        const weeklyEvents = await this.fetchForexFactoryWeeklyJson(year, month)
+        if (weeklyEvents.length > 0) {
+          console.log(`[News] Loaded ${weeklyEvents.length} events from ForexFactory's official weekly JSON export`)
+          return weeklyEvents
+        }
+      } catch (jsonError) {
+        console.warn('[News] Official ForexFactory JSON export failed; falling back to page scrape:', jsonError.message)
+      }
+
       // Format month for URL (e.g., jan1.2025)
       const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
       const monthName = monthNames[month - 1]

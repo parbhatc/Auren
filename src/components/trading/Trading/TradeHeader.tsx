@@ -35,6 +35,7 @@ export function TradeHeader({
   showStatsBar = true,
   showAccountSelector = true,
   showTradingSettings = true,
+  showReplaySettings = false,
   showLogoAlways = false,
   hideDesktopLogo = false,
   hideNavToggle = false,
@@ -72,6 +73,8 @@ export function TradeHeader({
   showAccountSelector?: boolean
   /** Trading limits & lockout settings button */
   showTradingSettings?: boolean
+  /** Adds replay-specific preferences to the shared settings dialog. */
+  showReplaySettings?: boolean
   /** Show Auren logo on mobile as well as desktop */
   showLogoAlways?: boolean
   /** The shared product sidebar already carries the desktop brand. */
@@ -219,7 +222,11 @@ export function TradeHeader({
         <div className="flex items-center gap-0.5 shrink-0 self-center">
           {!practiceAccountStatus && showTradingSettings ? (
             <div className="hidden lg:block">
-              <HeaderTradingSettings practiceAccountId={accountId} isDark={isDark} />
+              <HeaderTradingSettings
+                practiceAccountId={accountId}
+                isDark={isDark}
+                showReplaySettings={showReplaySettings}
+              />
             </div>
           ) : null}
           {(mdsClient || onReconnectMds) && (

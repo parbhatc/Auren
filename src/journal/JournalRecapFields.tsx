@@ -153,6 +153,28 @@ export default function JournalRecapFields({
           className={`${inputClass} mt-1.5 !h-auto w-full resize-y py-2`}
         />
       </label>
+      <label className={labelClass}>
+        Pros
+        <textarea
+          aria-label="Journal pros"
+          value={(recap.pros ?? []).join('\n')}
+          onChange={(event) => onChange({ pros: event.target.value.split('\n').slice(0, 8) })}
+          rows={4}
+          placeholder={'One strength per line\nClean liquidity sweep\nStrong displacement'}
+          className={`${inputClass} mt-1.5 !h-auto w-full resize-y py-2`}
+        />
+      </label>
+      <label className={labelClass}>
+        Cons
+        <textarea
+          aria-label="Journal cons"
+          value={(recap.cons ?? []).join('\n')}
+          onChange={(event) => onChange({ cons: event.target.value.split('\n').slice(0, 8) })}
+          rows={4}
+          placeholder={'One weakness per line\nConflicting higher-timeframe bias'}
+          className={`${inputClass} mt-1.5 !h-auto w-full resize-y py-2`}
+        />
+      </label>
       <fieldset className="sm:col-span-2" disabled={processing}>
         <legend className={`${labelClass} mb-2`}>Chart screenshots</legend>
         {captureChart && (

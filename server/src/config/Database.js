@@ -85,6 +85,7 @@ class Database {
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
         timeframes TEXT,
         entry_conditions TEXT,
         invalidation_rules TEXT,
@@ -151,6 +152,20 @@ class Database {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE SET NULL
+      )
+    `)
+
+    await run(`
+      CREATE TABLE IF NOT EXISTS building_blocks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, name)
       )
     `)
 
@@ -440,6 +455,7 @@ class Database {
     }
 
     for (const migration of [
+      `ALTER TABLE strategies ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
       `ALTER TABLE journal_entries ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
       `ALTER TABLE journal_entries ADD COLUMN source_session_id TEXT`,
       `ALTER TABLE journal_entries ADD COLUMN source_trade_id TEXT`,

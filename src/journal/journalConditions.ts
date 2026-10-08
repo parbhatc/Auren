@@ -3,6 +3,8 @@ import type { JournalEntryRecord, JournalRiskLeg, JournalStrategyRecord } from '
 export type Playbook = {
   id: string
   name: string
+  description: string
+  rules: string[]
   conditions: PlaybookCondition[]
 }
 
@@ -20,6 +22,38 @@ export type PlaybookCondition = {
     | 'text'
     | 'number'
 }
+
+export const BUILDING_BLOCK_DEFINITIONS: Array<{
+  type: PlaybookCondition['type']
+  label: string
+  description: string
+}> = [
+  {
+    type: 'liquidity_sweep',
+    label: 'Sweep',
+    description: 'Capture one or more timeframe or session liquidity sweeps.',
+  },
+  {
+    type: 'pda_delivery',
+    label: 'PDA delivery',
+    description: 'Record the timeframe, PDA type, tap time, and source candles.',
+  },
+  {
+    type: 'timeframe_time',
+    label: 'Timeframe + time',
+    description: 'Record a timeframe-specific event such as an IFVG.',
+  },
+  {
+    type: 'smt',
+    label: 'SMT',
+    description: 'Record the comparison market, timeframe, and confirmation.',
+  },
+  { type: 'boolean', label: 'Checklist', description: 'A yes or no rule.' },
+  { type: 'time', label: 'Timeline event', description: 'Record when an event occurred.' },
+  { type: 'timeframe', label: 'Timeframe', description: 'Select the relevant timeframe.' },
+  { type: 'text', label: 'Notes', description: 'Capture a short written detail.' },
+  { type: 'number', label: 'Number', description: 'Capture a numeric measurement.' },
+]
 
 export type LiquiditySweepRow = {
   sweepTime: string
@@ -64,12 +98,7 @@ export function normalizePlaybookCondition(value: unknown, index: number): Playb
 }
 
 export const conditionTypeLabel = (type: PlaybookCondition['type']) => {
-  if (type === 'boolean') return 'Yes / No'
-  if (type === 'timeframe_time') return 'Timeframe + Time'
-  if (type === 'liquidity_sweep') return 'Sweep + Reference + Price'
-  if (type === 'pda_delivery') return 'Time + Timeframe + PDA'
-  if (type === 'smt') return 'SMT + Pair + Timeframe'
-  return type
+  return BUILDING_BLOCK_DEFINITIONS.find((block) => block.type === type)?.label ?? type
 }
 
 export const parseLiquiditySweeps = (value: unknown): LiquiditySweepRow[] => {
@@ -126,7 +155,8 @@ export const serializePdaDeliveries = (rows: PdaDeliveryRow[]) =>
 export const formatConditionResponse = (label: string, value: string | boolean) => {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (!value) return '—'
-  if (label.toLowerCase().includes('liquidity sweep')) {
+  const normalizedLabel = label.trim().toLowerCase()
+  if (normalizedLabel === 'sweep' || normalizedLabel.includes('liquidity sweep')) {
     return parseLiquiditySweeps(value)
       .map((row) => {
         const numericPrice = Number(row.price)
@@ -140,6 +170,11 @@ export const formatConditionResponse = (label: string, value: string | boolean) 
           : [row.referenceTime, level].filter(Boolean).join(' ')
         return `${row.sweepTime || 'Unknown time'} swept ${reference || level}${price ? ` at ${price}` : ''}`
       })
+      .join('\n')
+  }
+  if (normalizedLabel === 'fvg tap') {
+    return parsePdaDeliveries(value)
+      .map((row) => [row.time, row.timeframe, row.pda].filter(Boolean).join(' — '))
       .join('\n')
   }
   if (label === 'HTF PDA delivery') {
@@ -161,6 +196,23 @@ export const formatRiskLeg = (leg?: JournalRiskLeg) => {
   return [mode, detail, leg.basis, leg.timeframe].filter(Boolean).join(' · ')
 }
 
+export const journalOutcomeLabel = (entry: JournalEntryRecord) => {
+  if (entry.outcome === 'planned' && entry.recap?.execution === 'observation') return 'Not taken'
+  if (entry.outcome === 'planned' && entry.recap?.execution === 'taken') return 'Open'
+  return entry.outcome === 'breakeven' ? 'Breakeven' : entry.outcome
+}
+
+export const journalSetupStages = (entry: JournalEntryRecord) => {
+  const isMidTapSetup =
+    /mid\s*tap/i.test(entry.playbook) || Boolean(entry.conditionResponses?.['MID Tap'])
+  const isFvgTapSetup =
+    /fvg\s*tap/i.test(entry.playbook) || Boolean(entry.conditionResponses?.['FVG Tap'])
+  const hasSmt = /smt/i.test(entry.playbook) || Boolean(entry.conditionResponses?.SMT)
+  if (isMidTapSetup) return ['MID Tap', 'IFVG']
+  if (isFvgTapSetup) return hasSmt ? ['Sweep', 'SMT', 'FVG Tap', 'IFVG'] : ['Sweep', 'FVG Tap', 'IFVG']
+  return hasSmt ? ['Sweep', 'SMT', 'IFVG'] : ['Sweep', 'IFVG']
+}
+
 export const toTimeInputValue = (value: string) => {
   const match = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
   if (!match) return value.match(/^\d{2}:\d{2}$/) ? value : ''
@@ -178,14 +230,22 @@ export const fromTimeInputValue = (value: string) => {
 
 export function playbookFromRecord(strategy: JournalStrategyRecord): Playbook {
   let conditions: unknown = strategy.entry_conditions
+  let rules: unknown = strategy.invalidation_rules
   try {
     if (typeof conditions === 'string') conditions = JSON.parse(conditions)
   } catch {
     conditions = []
   }
+  try {
+    if (typeof rules === 'string') rules = JSON.parse(rules)
+  } catch {
+    rules = []
+  }
   return {
     id: String(strategy.id),
     name: String(strategy.name),
+    description: String(strategy.description || ''),
+    rules: Array.isArray(rules) ? rules.map(String).filter(Boolean) : [],
     conditions: Array.isArray(conditions) ? conditions.map(normalizePlaybookCondition) : [],
   }
 }

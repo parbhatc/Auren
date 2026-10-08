@@ -17,8 +17,14 @@ import { normalizeTradeseaTradeInstrument } from './tradeseaInstrument'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { toTradeseaDelayedTicker } from './tradeseaStreamSymbol'
 import { isMarketClosedApiError, MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
-import { findPositionsForInstrument, instrumentsMatch } from './tradeseaPositions'
+import { findPositionsForInstrument, instrumentsMatch, parseTradeseaPosition } from './tradeseaPositions'
 import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
+import { getBwcActiveResolution, pickBwcChartPriceOnce } from '../../chart/bwcPanePricePicker'
+import type { ChartPricePickContext } from '../../types/tradePanel'
+import {
+  summarizePracticePositionFamily,
+  type PracticePositionFamilySummary,
+} from '../practice/practiceContractFamily'
 
 export class TradeseaTradeHandler {
   private widget: any = null
@@ -188,41 +194,25 @@ export class TradeseaTradeHandler {
     return this.resolveInstrument(chartSymbol)
   }
 
-  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+  getActiveChartResolution(): string {
+    return getBwcActiveResolution(this.widget)
+  }
+
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
     this.cancelChartPricePick?.()
-    const chart = this.widget?.lcChart as {
-      subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
-      unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
-    } | undefined
-    const series = this.widget?.series as {
-      coordinateToPrice?: (coordinate: number) => number | null
-    } | undefined
-    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
-      return null
-    }
-
-    let active = true
-    const cancel = () => {
-      if (!active) return
-      active = false
-      chart.unsubscribeClick?.(handler)
-      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-    }
-    const handler = (event: { point?: { y?: number } }) => {
-      const y = event.point?.y
-      if (!active || y == null || !Number.isFinite(y)) return
-      const rawPrice = series.coordinateToPrice?.(y)
-      if (rawPrice == null || !Number.isFinite(rawPrice)) return
-      const symbol = this.getChartSymbol()
-      const tickSize = this.propFirm.chartServices?.datafeed?.getTickSize?.(symbol) ?? 0.25
-      const price = tickSize > 0
-        ? Math.round(rawPrice / tickSize) * tickSize
-        : rawPrice
-      cancel()
-      onPrice(Number(price.toFixed(8)))
-    }
-
-    chart.subscribeClick(handler)
+    const cancel = pickBwcChartPriceOnce(
+      this.widget,
+      (rawPrice, context) => {
+        const symbol = context.symbol || this.getChartSymbol()
+        const tickSize = this.propFirm.chartServices?.datafeed?.getTickSize?.(symbol) ?? 0.25
+        const price = tickSize > 0 ? Math.round(rawPrice / tickSize) * tickSize : rawPrice
+        return Number(price.toFixed(8))
+      },
+      (price, context) => {
+        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        onPrice(price, context)
+      }
+    )
     this.cancelChartPricePick = cancel
     return cancel
   }
@@ -232,13 +222,15 @@ export class TradeseaTradeHandler {
     entry: number
     stopLoss: number
     tickSize: number
-    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+    appearanceAt: (price: number, context: ChartPricePickContext) => { label: string; quantityLabel: string }
+    tickSizeAt?: (context: ChartPricePickContext) => number
   }): (() => void) | null {
     if (this.tradeCache?.getChartPositionSnapshot()) return null
     return createBwcAutoRiskPreview(this.widget, {
       stopLoss: options.stopLoss,
       tickSize: options.tickSize,
       appearanceAt: options.appearanceAt,
+      tickSizeAt: options.tickSizeAt,
     })
   }
 
@@ -482,6 +474,21 @@ export class TradeseaTradeHandler {
     return matches[0]
   }
 
+  getPositionFamilySummaryFor(symbolKey: string): PracticePositionFamilySummary | null {
+    const positions = this.propFirm.positions.flatMap((row) => {
+      const position = parseTradeseaPosition(row)
+      const quantity = Number(position?.qty)
+      if (!position?.instrument || !Number.isFinite(quantity) || quantity <= 0) return []
+      const contracts = String(position.side || '').toLowerCase() === 'sell' ? -quantity : quantity
+      return [{
+        symbol: position.instrument,
+        closeSymbol: position.instrument,
+        contracts,
+      }]
+    })
+    return summarizePracticePositionFamily(symbolKey, positions)
+  }
+
   async logButtonPress(buttonName: string, data?: {
     quantity?: number
     symbol?: string
@@ -489,6 +496,7 @@ export class TradeseaTradeHandler {
     takeProfit?: number | null
     stopLossMode?: 'hard' | 'soft'
     softStopTrigger?: 'bar_close'
+    softStopResolution?: string
   }): Promise<void> {
     const accountId = this.propFirm.selectedAccountId
     if (!accountId) {
@@ -529,7 +537,11 @@ export class TradeseaTradeHandler {
 
           if (result.success && result.s === 'ok') {
             if (data?.stopLossMode === 'soft' && data.stopLoss != null) {
-              await this.tradeCache?.armSoftStop(chartSymbol, data.stopLoss)
+              await this.tradeCache?.armSoftStop(
+                chartSymbol,
+                data.stopLoss,
+                data.softStopResolution || this.getActiveChartResolution()
+              )
             }
             aurenToast.success(`${buttonName} order placed (${qty} @ ${instrument})`)
             this.scheduleRefresh(chartSymbol)

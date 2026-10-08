@@ -5,6 +5,7 @@ import { bracketOrdersForPosition } from './tradeseaBracketOrders'
 import { findPositionsForInstrument, parseTradeseaPosition } from './tradeseaPositions'
 import { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { debugTradeseaSl } from './tradeseaDebug'
+import { chartResolutionToMs, formatChartResolution, normalizeChartResolution } from '../../utils/chartResolution'
 
 let lastSyncPositionSlKey = ''
 let lastAppliedSlVisualKey = ''
@@ -24,14 +25,15 @@ type TradeseaCachedPosition = {
   bracketPendingUntil?: number
   stopLossMode?: 'hard' | 'soft'
   softStopTrigger?: 'bar_close'
+  softStopResolution?: string
   line?: unknown
   [key: string]: unknown
 }
 
 export class TradeseaTradeCache extends ChartTradeCache {
   private stopLossCancelInFlight = false
-  private softStops = new Map<string, { price: number; createdAt: number }>()
-  private softStopMinuteMarks = new Map<string, { minute: number; close: number; time: number }>()
+  private softStops = new Map<string, { price: number; createdAt: number; resolution: string }>()
+  private softStopBarMarks = new Map<string, { bucket: number; close: number; time: number }>()
   private softStopCloseInFlight = new Set<string>()
 
   constructor(handler: TradeseaTradeHandler, widget: any) {
@@ -52,7 +54,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
   }
 
   /** Register a browser-only stop. Nothing is sent to Tradesea as a stop order. */
-  async armSoftStop(symbol: string, price: number): Promise<void> {
+  async armSoftStop(symbol: string, price: number, resolution = '1'): Promise<void> {
     const instrument = this.handler.resolveInstrumentPublic(symbol)
     if (!instrument || !Number.isFinite(price)) return
     const existing = this.getPosition(symbol) as TradeseaCachedPosition | undefined
@@ -74,11 +76,13 @@ export class TradeseaTradeCache extends ChartTradeCache {
       }
     }
 
-    this.softStops.set(instrument, { price, createdAt: Date.now() })
+    const normalizedResolution = normalizeChartResolution(resolution)
+    this.softStops.set(instrument, { price, createdAt: Date.now(), resolution: normalizedResolution })
     if (!existing?.contracts) return
     existing.stopLoss = price
     existing.stopLossMode = 'soft'
     existing.softStopTrigger = 'bar_close'
+    existing.softStopResolution = normalizedResolution
     existing.stopLossOrderId = null
     this.ensurePositionLines(symbol, existing.entry, existing.contracts, price, existing.takeProfit)
   }
@@ -86,24 +90,27 @@ export class TradeseaTradeCache extends ChartTradeCache {
   clearSoftStop(symbol: string): void {
     const instrument = this.handler.resolveInstrumentPublic(symbol)
     this.softStops.delete(instrument)
-    this.softStopMinuteMarks.delete(instrument)
+    this.softStopBarMarks.delete(instrument)
   }
 
   clearAllSoftStops(): void {
     this.softStops.clear()
-    this.softStopMinuteMarks.clear()
+    this.softStopBarMarks.clear()
     this.softStopCloseInFlight.clear()
   }
 
-  /** Build a one-minute close from the live mark stream and evaluate soft stops. */
+  /** Build the selected chart-timeframe close from the live mark stream. */
   onMarketPrice(symbol: string, price: number, time = Date.now()): void {
     if (!Number.isFinite(price)) return
     const instrument = this.handler.resolveInstrumentPublic(symbol)
     if (!instrument) return
-    const minute = Math.floor(time / 60_000)
-    const previous = this.softStopMinuteMarks.get(instrument)
-    this.softStopMinuteMarks.set(instrument, { minute, close: price, time })
-    if (!previous || previous.minute >= minute) return
+    const configured = this.softStops.get(instrument)
+    if (!configured) return
+    const durationMs = chartResolutionToMs(configured.resolution)
+    const bucket = Math.floor(time / durationMs)
+    const previous = this.softStopBarMarks.get(instrument)
+    this.softStopBarMarks.set(instrument, { bucket, close: price, time })
+    if (!previous || previous.bucket >= bucket) return
     void this.evaluateSoftStopClose(instrument, previous.close, previous.time)
   }
 
@@ -121,7 +128,10 @@ export class TradeseaTradeCache extends ChartTradeCache {
     if (!triggered || !positionId || this.softStopCloseInFlight.has(positionId)) return
 
     this.softStopCloseInFlight.add(positionId)
-    aurenToast.warning('Soft stop triggered', `1-minute close ${close} crossed ${stop}. Closing the full position.`)
+    aurenToast.warning(
+      'Soft stop triggered',
+      `${formatChartResolution(configured.resolution)} close ${close} crossed ${stop}. Closing the full position.`
+    )
     try {
       await this.handleClosePosition(position, close, time, 'onCancel')
     } finally {
@@ -215,7 +225,10 @@ export class TradeseaTradeCache extends ChartTradeCache {
         aurenToast.success('Soft stop removed')
         return
       }
-      this.softStops.set(instrument, { price, createdAt: Date.now() })
+      const resolution = normalizeChartResolution(
+        cached.softStopResolution || this.softStops.get(instrument)?.resolution
+      )
+      this.softStops.set(instrument, { price, createdAt: Date.now(), resolution })
       cached.stopLoss = price
       cached.stopLossOrderId = null
       aurenToast.success(`Soft stop moved to ${price}`)
@@ -506,6 +519,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
       existing.stopLoss = stopLoss
       existing.stopLossMode = softStop ? 'soft' : 'hard'
       existing.softStopTrigger = softStop ? 'bar_close' : undefined
+      existing.softStopResolution = softStop?.resolution
       existing.takeProfit = takeProfit
 
       this.ensurePositionLines(cacheKey, entry, contracts, stopLoss, takeProfit)
@@ -528,6 +542,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
       created.positionId = pos.id
       created.stopLossMode = softStop ? 'soft' : 'hard'
       created.softStopTrigger = softStop ? 'bar_close' : undefined
+      created.softStopResolution = softStop?.resolution
     }
     this.ensurePositionLines(cacheKey, entry, contracts, stopLoss, takeProfit)
   }

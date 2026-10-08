@@ -515,13 +515,13 @@ class TradingJournalController {
   async createStrategy(req, res) {
     try {
       const userId = req.user.id
-      const { name, timeframes, entry_conditions, invalidation_rules, max_risk } = req.body
+      const { name, description, timeframes, entry_conditions, invalidation_rules, max_risk } = req.body
 
       const strategyId = crypto.randomUUID()
       await Database.run(`
-        INSERT INTO strategies (id, user_id, name, timeframes, entry_conditions, invalidation_rules, max_risk)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [strategyId, userId, name, JSON.stringify(timeframes || []), JSON.stringify(entry_conditions || []), JSON.stringify(invalidation_rules || []), max_risk || null])
+        INSERT INTO strategies (id, user_id, name, description, timeframes, entry_conditions, invalidation_rules, max_risk)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [strategyId, userId, name, String(description || '').trim(), JSON.stringify(timeframes || []), JSON.stringify(entry_conditions || []), JSON.stringify(invalidation_rules || []), max_risk || null])
 
       const strategy = await Database.get('SELECT * FROM strategies WHERE id = ?', [strategyId])
       res.json({ success: true, strategy })
@@ -563,13 +563,13 @@ class TradingJournalController {
     try {
       const userId = req.user.id
       const { id } = req.params
-      const { name, timeframes, entry_conditions, invalidation_rules, max_risk } = req.body
+      const { name, description, timeframes, entry_conditions, invalidation_rules, max_risk } = req.body
       
       await Database.run(`
         UPDATE strategies 
-        SET name = ?, timeframes = ?, entry_conditions = ?, invalidation_rules = ?, max_risk = ?, updated_at = ?
+        SET name = ?, description = ?, timeframes = ?, entry_conditions = ?, invalidation_rules = ?, max_risk = ?, updated_at = ?
         WHERE id = ? AND user_id = ?
-      `, [name, JSON.stringify(timeframes || []), JSON.stringify(entry_conditions || []), JSON.stringify(invalidation_rules || []), max_risk || null, new Date().toISOString(), id, userId])
+      `, [name, String(description || '').trim(), JSON.stringify(timeframes || []), JSON.stringify(entry_conditions || []), JSON.stringify(invalidation_rules || []), max_risk || null, new Date().toISOString(), id, userId])
       
       const strategy = await Database.get('SELECT * FROM strategies WHERE id = ? AND user_id = ?', [id, userId])
       if (!strategy) return res.status(404).json({ success: false, error: 'Playbook not found' })
@@ -589,6 +589,74 @@ class TradingJournalController {
       res.json({ success: true })
     } catch (error) {
       console.error('Error deleting strategy:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  // ========== REUSABLE BUILDING BLOCKS ==========
+
+  async getBuildingBlocks(req, res) {
+    try {
+      const blocks = await Database.query(
+        'SELECT * FROM building_blocks WHERE user_id = ? ORDER BY created_at ASC',
+        [req.user.id]
+      )
+      res.json({ success: true, blocks })
+    } catch (error) {
+      console.error('Error fetching building blocks:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async createBuildingBlock(req, res) {
+    try {
+      const name = String(req.body?.name || '').trim()
+      const type = String(req.body?.type || '').trim()
+      const description = String(req.body?.description || '').trim()
+      const supportedTypes = new Set([
+        'liquidity_sweep', 'pda_delivery', 'timeframe_time', 'smt',
+        'boolean', 'time', 'timeframe', 'text', 'number',
+      ])
+      if (!name || !supportedTypes.has(type)) {
+        return res.status(400).json({ success: false, error: 'A name and valid block type are required' })
+      }
+      const duplicate = await Database.get(
+        'SELECT id FROM building_blocks WHERE user_id = ? AND lower(name) = lower(?)',
+        [req.user.id, name]
+      )
+      if (duplicate) {
+        return res.status(409).json({ success: false, error: 'A building block with this name already exists' })
+      }
+      const id = crypto.randomUUID()
+      await Database.run(
+        'INSERT INTO building_blocks (id, user_id, name, type, description) VALUES (?, ?, ?, ?, ?)',
+        [id, req.user.id, name, type, description]
+      )
+      const block = await Database.get(
+        'SELECT * FROM building_blocks WHERE id = ? AND user_id = ?',
+        [id, req.user.id]
+      )
+      res.status(201).json({ success: true, block })
+    } catch (error) {
+      console.error('Error creating building block:', error)
+      res.status(500).json({ success: false, error: error.message })
+    }
+  }
+
+  async deleteBuildingBlock(req, res) {
+    try {
+      const block = await Database.get(
+        'SELECT id FROM building_blocks WHERE id = ? AND user_id = ?',
+        [req.params.id, req.user.id]
+      )
+      if (!block) return res.status(404).json({ success: false, error: 'Building block not found' })
+      await Database.run('DELETE FROM building_blocks WHERE id = ? AND user_id = ?', [
+        req.params.id,
+        req.user.id,
+      ])
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error deleting building block:', error)
       res.status(500).json({ success: false, error: error.message })
     }
   }

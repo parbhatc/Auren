@@ -11,6 +11,7 @@ import { PadTradeSymbolPicker } from '../../../components/trading/shared/pad/Tra
 import type { BacktesterChartDataFeed } from './BacktesterChartDataFeed'
 import { CHART_ORDER_LINE_THEME } from '../../../constants/chartOrderLineTheme'
 import type { ResolutionString } from '../../../types/chart'
+import { requestChartAutoTrade } from '../../../components/common/aurenTradeContextMenu'
 
 /** Wait until the chart mount has non-zero layout (avoids LWC "Value is null" on 0×0 containers). */
 function waitForMountLayout(mount: HTMLElement, timeoutMs = 4000): Promise<void> {
@@ -490,7 +491,10 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
       this.scheduleToolbarSlotMount(widget, generation)
       setupChartKeyboardShortcuts(widget)
       clearChartContextActions()
-      registerTradeContextActions({})
+      registerTradeContextActions({
+        onAutoBuy: () => requestChartAutoTrade('buy', this.props.session?.id),
+        onAutoSell: () => requestChartAutoTrade('sell', this.props.session?.id),
+      })
 
       this.props.onWidgetReady?.(widget)
       this.props.onReady?.(widget)

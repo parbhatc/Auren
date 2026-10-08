@@ -233,6 +233,20 @@ test('next candle skips the NQ maintenance gap from 4:59 PM to 6:00 PM', () => {
   })
 })
 
+test('sync replay cursor accepts backward movement before the next forward step', () => {
+  const replay = new BacktesterWebSocket({ csvLoader: {} })
+  replay.toEpochMs = (value) => Number(value) * 1000
+  const client = { id: 'socket-rewind', userId: 'user' }
+  const state = replay.getClientState(client)
+  state.cursor = new Date(1_800_000_120_000)
+  state.barCache = { last: state.cursor }
+
+  replay.onSyncReplayCursor(createSocket(), { cursorSec: 1_800_000_000 }, client)
+
+  assert.equal(state.cursor.getTime(), 1_800_000_000_000)
+  assert.equal(state.barCache.last.getTime(), 1_800_000_000_000)
+})
+
 test('exchange-prefixed active pane advances every 30s subscription without skipping a half-minute', () => {
   const cursorSec = 1_790_602_260 // 9:31:00 AM local in the replay fixture
   const barsBySymbol = {

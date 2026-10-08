@@ -9,6 +9,8 @@ export type {
   PadTab,
   TradePanelSettings,
   PracticeTradePanelSettings,
+  ChartPricePickContext,
+  AutoOrderSizingContext,
 } from '../../../../types/tradePanel'
 
 export type { OrderType, OrderSide, BracketDistanceUnit } from '../../../../types/order'

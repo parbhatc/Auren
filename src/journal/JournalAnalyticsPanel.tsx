@@ -35,7 +35,7 @@ export default function JournalAnalyticsPanel() {
     ['bySession', 'Session'],
     ['byGrade', 'Process grade'],
     ['byTimeframe', 'Timeframe'],
-    ['byCondition', 'Confirmation'],
+    ['byCondition', 'Building block'],
     ['byMistake', 'Mistake'],
     ['bySource', 'Source'],
   ]

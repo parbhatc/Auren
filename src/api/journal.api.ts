@@ -21,7 +21,16 @@ export type JournalReviewResponse = {
 export type JournalStrategyRecord = {
   id: string
   name: string
+  description?: string
   entry_conditions: string | unknown[]
+  invalidation_rules?: string | string[]
+}
+
+export type JournalBuildingBlockRecord = {
+  id: string
+  name: string
+  type: string
+  description: string
 }
 
 export type JournalEntryRecord = {
@@ -72,6 +81,8 @@ export type JournalRecap = {
   execution?: 'taken' | 'missed' | 'observation'
   grade?: '' | 'A' | 'B' | 'C'
   lesson?: string
+  pros?: string[]
+  cons?: string[]
   mistakeTags?: string[]
   screenshots?: JournalScreenshot[]
   screenshotCount?: number
@@ -106,11 +117,12 @@ export type JournalSourceContext = {
   takeProfitPrice?: string
 }
 
-const payload = (name: string, conditions: unknown[]) => ({
+const payload = (name: string, conditions: unknown[], description = '', rules: string[] = []) => ({
   name,
+  description,
   timeframes: [],
   entry_conditions: conditions,
-  invalidation_rules: [],
+  invalidation_rules: rules,
   max_risk: null,
 })
 
@@ -167,22 +179,43 @@ export const journalAPI = {
     const response = await api.get('/trading-journal/strategies', { signal })
     return response.data?.strategies ?? []
   },
-  async createStrategy(name: string, conditions: unknown[]): Promise<JournalStrategyRecord> {
-    const response = await api.post('/trading-journal/strategies', payload(name, conditions))
+  async createStrategy(name: string, conditions: unknown[], description = '', rules: string[] = []): Promise<JournalStrategyRecord> {
+    const response = await api.post('/trading-journal/strategies', payload(name, conditions, description, rules))
     return response.data.strategy
   },
   async updateStrategy(
     id: string,
     name: string,
-    conditions: unknown[]
+    conditions: unknown[],
+    description = '',
+    rules: string[] = []
   ): Promise<JournalStrategyRecord> {
     const response = await api.put(
       `/trading-journal/strategies/${encodeURIComponent(id)}`,
-      payload(name, conditions)
+      payload(name, conditions, description, rules)
     )
     return response.data.strategy
   },
   async deleteStrategy(id: string): Promise<void> {
     await api.delete(`/trading-journal/strategies/${encodeURIComponent(id)}`)
+  },
+  async listBuildingBlocks(signal?: AbortSignal): Promise<JournalBuildingBlockRecord[]> {
+    const response = await api.get('/trading-journal/building-blocks', { signal })
+    return response.data?.blocks ?? []
+  },
+  async createBuildingBlock(
+    name: string,
+    type: string,
+    description: string
+  ): Promise<JournalBuildingBlockRecord> {
+    const response = await api.post('/trading-journal/building-blocks', {
+      name,
+      type,
+      description,
+    })
+    return response.data.block
+  },
+  async deleteBuildingBlock(id: string): Promise<void> {
+    await api.delete(`/trading-journal/building-blocks/${encodeURIComponent(id)}`)
   },
 }

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { BookOpenCheck } from 'lucide-react'
 import { journalAPI, type JournalEntryRecord } from '../api/journal.api'
 import { playbookFromRecord, type Playbook } from './journalConditions'
-import { JOURNAL_TEMPLATES } from './journalTemplates'
 import { isSameCapturedTrade } from './journalCapture'
 import { handleApiError } from '../utils/errorHandler'
 import { captureJournalChart } from './journalImages'
@@ -38,14 +37,14 @@ export default function InSessionJournalCapture({
       ])
       const books = strategies.map(playbookFromRecord)
       const existing = records.find((entry) => isSameCapturedTrade(entry, snapshot))
-      const template = books[0] ?? JOURNAL_TEMPLATES[0]
+      const selectedPlaybook = books[0]
       const entry = existing
         ? await journalAPI.getEntry(existing.id, controller.signal)
         : {
             ...snapshot,
-            playbook: template.name,
-            strategyId: books[0]?.id ?? null,
-            recap: { ...snapshot.recap, setupConditions: template.conditions },
+            playbook: selectedPlaybook?.name ?? '',
+            strategyId: selectedPlaybook?.id ?? null,
+            recap: { ...snapshot.recap, setupConditions: selectedPlaybook?.conditions ?? [] },
           }
       if (!controller.signal.aborted) {
         setPlaybooks(books)

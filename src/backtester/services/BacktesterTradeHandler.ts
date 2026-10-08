@@ -8,9 +8,14 @@ import type { DomPositionContext } from '../../services/tradesea/tradeseaPnL'
 import { calcTradeseaTickPnL } from '../../services/tradesea/tradeseaPnL'
 import { tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaResolutions'
 import type { ResolutionString } from '../../types/chart'
-import type { BracketOptions } from '../../types/tradePanel'
+import type { BracketOptions, ChartPricePickContext } from '../../types/tradePanel'
 import type { OrderSide } from '../../types/order'
 import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
+import { getBwcActiveResolution, pickBwcChartPriceOnce } from '../../chart/bwcPanePricePicker'
+import {
+  summarizePracticePositionFamily,
+  type PracticePositionFamilySummary,
+} from '../../services/practice/practiceContractFamily'
 
 /**
  * Backtester Trade Handler
@@ -176,41 +181,40 @@ export class BacktesterTradeHandler {
     return calcTradeseaTickPnL(ctx.entry, mark, ctx.signedContracts, ctx.tickSize, ctx.tickValue)
   }
 
-  pickChartPriceOnce(onPrice: (price: number) => void): (() => void) | null {
+  getPositionFamilySummaryFor(symbolKey: string): PracticePositionFamilySummary | null {
+    const cache = this.tradeCache?.getCache()
+    if (!cache) return null
+    const positions = [...cache.entries()].flatMap(([cacheKey, position]) => {
+      const contracts = Number(position?.contracts)
+      if (!Number.isFinite(contracts) || contracts === 0) return []
+      return [{
+        symbol: String(position.executionSymbol || cacheKey),
+        closeSymbol: cacheKey,
+        contracts,
+      }]
+    })
+    return summarizePracticePositionFamily(symbolKey, positions)
+  }
+
+  getActiveChartResolution(): string {
+    return getBwcActiveResolution(this.widget as never)
+  }
+
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
     this.cancelChartPricePick?.()
-    const widget = this.widget as {
-      lcChart?: {
-        subscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
-        unsubscribeClick?: (handler: (event: { point?: { y?: number } }) => void) => void
+    const cancel = pickBwcChartPriceOnce(
+      this.widget as never,
+      (rawPrice, context) => {
+        const symbol = this.resolveChartSymbol(context.symbol)
+        const tickSize = this.datafeed?.getTickSize(symbol) ?? 0.25
+        const price = tickSize > 0 ? Math.round(rawPrice / tickSize) * tickSize : rawPrice
+        return Number(price.toFixed(8))
+      },
+      (price, context) => {
+        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        onPrice(price, context)
       }
-      series?: { coordinateToPrice?: (coordinate: number) => number | null }
-    } | null
-    const chart = widget?.lcChart
-    const series = widget?.series
-    if (!chart?.subscribeClick || !chart.unsubscribeClick || !series?.coordinateToPrice) {
-      return null
-    }
-
-    let active = true
-    const cancel = () => {
-      if (!active) return
-      active = false
-      chart.unsubscribeClick?.(handler)
-      if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-    }
-    const handler = (event: { point?: { y?: number } }) => {
-      const y = event.point?.y
-      if (!active || y == null || !Number.isFinite(y)) return
-      const rawPrice = series.coordinateToPrice?.(y)
-      if (rawPrice == null || !Number.isFinite(rawPrice)) return
-      const symbol = this.resolveChartSymbol()
-      const tickSize = this.datafeed?.getTickSize(symbol) ?? 0.25
-      const price = tickSize > 0 ? Math.round(rawPrice / tickSize) * tickSize : rawPrice
-      cancel()
-      onPrice(Number(price.toFixed(8)))
-    }
-
-    chart.subscribeClick(handler)
+    )
     this.cancelChartPricePick = cancel
     return cancel
   }
@@ -220,7 +224,8 @@ export class BacktesterTradeHandler {
     entry: number
     stopLoss: number
     tickSize: number
-    appearanceAt: (price: number) => { label: string; quantityLabel: string }
+    appearanceAt: (price: number, context: ChartPricePickContext) => { label: string; quantityLabel: string }
+    tickSizeAt?: (context: ChartPricePickContext) => number
   }): (() => void) | null {
     if (this.getDomPositionFor(this.resolveChartSymbol())) return null
     return createBwcAutoRiskPreview(
@@ -229,6 +234,7 @@ export class BacktesterTradeHandler {
         stopLoss: options.stopLoss,
         tickSize: options.tickSize,
         appearanceAt: options.appearanceAt,
+        tickSizeAt: options.tickSizeAt,
       }
     )
   }
@@ -655,7 +661,13 @@ export class BacktesterTradeHandler {
       }
       case 'Close Position': {
         if (!position) return
-        this.tradeCache.onClosePosition(chartSymbol, Math.abs(position.contracts))
+        const positionQuantity = Math.abs(Number(position.contracts))
+        const requested = Math.floor(Number(data?.quantity))
+        const closeQuantity =
+          Number.isFinite(requested) && requested > 0
+            ? Math.min(requested, positionQuantity)
+            : positionQuantity
+        this.tradeCache.onClosePosition(chartSymbol, closeQuantity)
         break
       }
       case 'Flatten All Position':
@@ -960,6 +972,48 @@ export class BacktesterTradeHandler {
     }
 
     this.logPlaybackAction('next_candle', {
+      stepResolution,
+      stepSec,
+      cursorSec: current,
+      targetSec,
+    })
+  }
+
+  /** Move the host-controlled replay cursor back one selected replay interval. */
+  handlePreviousCandle = (): void => {
+    if (this.nextCandleInFlight) return
+
+    const stepResolution = this.resolvePlaybackStepResolution()
+    const stepSec = this.resolvePlaybackStepSec()
+    const current = this.datafeed?.getPlaybackAnchorSecPublic?.() ?? null
+    if (current == null || !Number.isFinite(current)) {
+      console.warn('[BacktesterTradeHandler] Replay cursor not set for previousCandle')
+      return
+    }
+
+    // Complete a partially advanced interval first, then step by the selected
+    // wall-clock interval. Host sync resolves gaps to the nearest prior candle.
+    let targetSec = Math.ceil(current / stepSec) * stepSec - stepSec
+    if (targetSec >= current) targetSec = current - stepSec
+
+    const firstLoaded = Number(this.getBwcWidget()?.getBars?.()?.[0]?.time)
+    if (Number.isFinite(firstLoaded)) targetSec = Math.max(targetSec, firstLoaded)
+    if (!Number.isFinite(targetSec) || targetSec >= current) return
+
+    this.datafeed?.setPlaybackAnchorSec?.(
+      Math.floor(targetSec),
+      stepResolution as ResolutionString,
+    )
+    this.scheduleSyncAllPanesReplayCursor()
+
+    if (this.client?.isConnected()) {
+      this.client.send({
+        type: 'syncReplayCursor',
+        cursorSec: Math.floor(targetSec),
+      })
+    }
+
+    this.logPlaybackAction('previous_candle', {
       stepResolution,
       stepSec,
       cursorSec: current,

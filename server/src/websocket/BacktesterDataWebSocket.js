@@ -8,6 +8,8 @@ import TradingViewDataHandler from './handlers/TradingViewDataHandler.js'
 import TokenService from '../services/TokenService.js'
 import Database from '../config/Database.js'
 import RoleLoader from '../config/RoleLoader.js'
+import crypto from 'crypto'
+import TradeseaIdentityService from '../services/tradesea/TradeseaIdentityService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -38,6 +40,39 @@ class BacktesterDataWebSocket extends WebSocketBase {
     // Initialize data handlers
     this.tradeseaHandler = new TradeseaDataHandler(this)
     this.tradingViewHandler = new TradingViewDataHandler(this)
+  }
+
+  async getTradeseaConnection(clientInfo, accountIdRaw) {
+    const userId = String(clientInfo?.userId || '').trim()
+    const accountId = String(accountIdRaw || '').trim()
+    if (!userId) throw new Error('Authenticated user is required for Tradesea data')
+    if (!accountId) throw new Error('Select a Tradesea market data account in Practice settings')
+
+    const firm = await Database.get(
+      'SELECT token, session_id FROM prop_firms WHERE user_id = ? AND type = ?',
+      [userId, 'tradesea']
+    )
+    if (!firm?.token) {
+      throw new Error('Tradesea market data is not connected. Reconnect it in Settings.')
+    }
+    const tokens = {
+      accessToken: firm.token,
+      refreshToken: firm.session_id || '',
+    }
+    const account = await TradeseaIdentityService.findAccountById(tokens, accountId)
+    if (!account) throw new Error('The selected Tradesea account is unavailable')
+    const stream = TradeseaIdentityService.getStreamConfig(account)
+    const connectionGroupId = crypto
+      .createHash('sha256')
+      .update(`auren-backtester-csv:${userId}:${stream.userId}`)
+      .digest('hex')
+    return {
+      tokens,
+      accountId,
+      userId: stream.userId,
+      connectionGroupId,
+      delayed: stream.delayed,
+    }
   }
 
   /** CSV inventory and provider sessions are admin-only, including over WebSocket. */
@@ -623,7 +658,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onDownload(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
+    const { symbol, source, accountId, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onDownload called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -639,25 +674,10 @@ class BacktesterDataWebSocket extends WebSocketBase {
       }
 
       if (source === 'tradesea') {
-        // Get token from config
-        let config = {}
-        if (fs.existsSync(this.configPath)) {
-          const configData = fs.readFileSync(this.configPath, 'utf8')
-          config = JSON.parse(configData)
-        }
-        const token = config.tokens?.tradesea || ''
-        
-        if (!token) {
-          this.send(ws, {
-            type: 'download_response',
-            success: false,
-            error: 'Token is required for download. Please save a token in the Token Selection section.'
-          })
-          return
-        }
+        const connection = await this.getTradeseaConnection(clientInfo, accountId)
 
         const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
-        const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
+        const apiSymbol = symbol.replace(/^\/+/, '')
 
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('download', normalizedSymbol, source)
@@ -678,7 +698,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start download process using handler
         this.runDataHandlerSafely(
-          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'download'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'download', resolution),
           { action: 'download', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -733,7 +753,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onUpdate(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
+    const { symbol, source, accountId, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onUpdate called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -750,26 +770,11 @@ class BacktesterDataWebSocket extends WebSocketBase {
       }
 
       if (source === 'tradesea') {
-        // Get token from config
-        let config = {}
-        if (fs.existsSync(this.configPath)) {
-          const configData = fs.readFileSync(this.configPath, 'utf8')
-          config = JSON.parse(configData)
-        }
-        const token = config.tokens?.tradesea || ''
-        
-        if (!token) {
-          this.send(ws, {
-            type: 'update_response',
-            success: false,
-            error: 'Token is required for update. Please save a token in the Token Selection section.'
-          })
-          return
-        }
+        const connection = await this.getTradeseaConnection(clientInfo, accountId)
 
         // Normalize symbol — api ticker may include exchange prefix
         const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
-        const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
+        const apiSymbol = symbol.replace(/^\/+/, '')
 
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('update', normalizedSymbol, source)
@@ -790,7 +795,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Update data using handler
         this.runDataHandlerSafely(
-          this.tradeseaHandler.update(apiSymbol, normalizedSymbol, token),
+          this.tradeseaHandler.update(apiSymbol, normalizedSymbol, connection, resolution),
           { action: 'update', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -844,7 +849,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onOverwrite(ws, data, clientInfo, serverInfo) {
-    const { symbol, source, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
+    const { symbol, source, accountId, storageSymbol: storageSymbolRaw, resolution: resolutionRaw, chunkSize } = data
     const storageSymbol = storageSymbolRaw || symbol
     const resolution = resolutionRaw || '1'
     console.log('[backtester-data WS] onOverwrite called - Symbol:', symbol, 'Storage:', storageSymbol, 'Source:', source, 'Resolution:', resolution)
@@ -860,26 +865,11 @@ class BacktesterDataWebSocket extends WebSocketBase {
       }
 
       if (source === 'tradesea') {
-        // Get token from config
-        let config = {}
-        if (fs.existsSync(this.configPath)) {
-          const configData = fs.readFileSync(this.configPath, 'utf8')
-          config = JSON.parse(configData)
-        }
-        const token = config.tokens?.tradesea || ''
-        
-        if (!token) {
-          this.send(ws, {
-            type: 'overwrite_response',
-            success: false,
-            error: 'Token is required for overwrite. Please save a token in the Token Selection section.'
-          })
-          return
-        }
+        const connection = await this.getTradeseaConnection(clientInfo, accountId)
 
         // Normalize symbol
         const normalizedSymbol = storageSymbol.startsWith('/') ? storageSymbol.substring(1) : storageSymbol
-        const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
+        const apiSymbol = symbol.replace(/^\/+/, '')
 
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('overwrite', normalizedSymbol, source)
@@ -904,7 +894,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Overwrite data (same as download but doesn't delete folder)
         this.runDataHandlerSafely(
-          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'overwrite'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'overwrite', resolution),
           { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -960,7 +950,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
    * @param {Object} serverInfo - Server information
    */
   async onReset(ws, data, clientInfo, serverInfo) {
-    const { symbol, source } = data
+    const { symbol, source, accountId } = data
     console.log('[backtester-data WS] onReset called - Symbol:', symbol, 'Source:', source)
     
     try {
@@ -974,26 +964,11 @@ class BacktesterDataWebSocket extends WebSocketBase {
       }
 
       if (source === 'tradesea') {
-        // Get token from config
-        let config = {}
-        if (fs.existsSync(this.configPath)) {
-          const configData = fs.readFileSync(this.configPath, 'utf8')
-          config = JSON.parse(configData)
-        }
-        const token = config.tokens?.tradesea || ''
-        
-        if (!token) {
-          this.send(ws, {
-            type: 'reset_response',
-            success: false,
-            error: 'Token is required for reset. Please save a token in the Token Selection section.'
-          })
-          return
-        }
+        const connection = await this.getTradeseaConnection(clientInfo, accountId)
 
         // Normalize symbol
         const normalizedSymbol = symbol.startsWith('/') ? symbol.substring(1) : symbol
-        const apiSymbol = symbol.startsWith('/') ? symbol : `/${symbol}`
+        const apiSymbol = symbol.replace(/^\/+/, '')
 
         // Check if operation is already in progress
         const operationKey = this.getOperationKey('reset', normalizedSymbol, source)
@@ -1027,7 +1002,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Then download using handler
         this.runDataHandlerSafely(
-          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, token, 'reset'),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'reset'),
           { action: 'reset', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {

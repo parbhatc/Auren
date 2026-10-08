@@ -59,7 +59,18 @@ export function TradingLimitsSettingsPanel({
     if (account) loadFormFromAccount(account)
   }, [practiceAccountId, loadFormFromAccount])
 
-  if (!isActiveAccount || !status) return null
+  if (!isActiveAccount || !status) {
+    return (
+      <div
+        className={`flex h-full min-h-48 items-center justify-center px-6 text-center text-xs ${
+          isDark ? 'text-slate-400' : 'text-slate-600'
+        }`}
+        role="status"
+      >
+        Loading trading limits…
+      </div>
+    )
+  }
 
   const locked = status.locked
   const dll = status.dailyLossLimit

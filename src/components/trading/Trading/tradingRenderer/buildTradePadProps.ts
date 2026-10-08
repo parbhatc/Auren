@@ -14,6 +14,8 @@ import type { TradePanelProps } from '../../../../types/tradePanel'
 import type { TradeActionExtra } from './tradeActions'
 import { getPracticeAccountById } from '../../../../constants/practice'
 import { getMaxContractsForSymbol } from '../../../../services/practice/practiceLimits'
+import { practiceMicroRoot, practiceContractRoot } from '../../../../services/practice/practiceContractFamily'
+import { resolvePracticeInstrumentTicks } from '../../../../services/practice/practiceInstrumentTicks'
 
 export type BuildTradePadPropsContext = {
   padSessionId: string
@@ -75,6 +77,13 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       ).getActiveMarketBook(chartSymbolLabel)
     }
     return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null
+  }
+
+  const getPracticeMaxQuantity = (symbol: string) => {
+    const account = getPracticeAccountById(padSessionId)
+    return account
+      ? getMaxContractsForSymbol(account.size, symbol, account.rules)
+      : 10
   }
 
   const runJoinLimit = (side: 'buy' | 'sell') => {
@@ -198,21 +207,41 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       tradeHandler && typeof tradeHandler.pickChartPriceOnce === 'function'
         ? (onPrice) => tradeHandler.pickChartPriceOnce(onPrice)
         : undefined,
+    getActiveChartResolution:
+      tradeHandler && typeof tradeHandler.getActiveChartResolution === 'function'
+        ? () => tradeHandler.getActiveChartResolution()
+        : undefined,
+    getAutoOrderSizingContext: !liveMode && tradeHandler instanceof PracticeTradeHandler
+      ? (context) => {
+          const chartRoot = practiceContractRoot(context.symbol || chartSymbolLabel)
+          const executionSymbol = practiceMicroRoot(chartRoot) || chartRoot
+          const paneBar = activeFirm?.chartServices?.datafeed?.getLastBarForChart?.({
+            symbol: () => context.symbol || chartRoot,
+            resolution: () => context.resolution || '1',
+          })
+          const entry = paneBar?.close ?? tradeHandler.getActiveMarkPrice(context.symbol || chartRoot)
+          if (entry == null || !Number.isFinite(entry)) return null
+          const ticks = resolvePracticeInstrumentTicks(executionSymbol)
+          return {
+            entry,
+            executionSymbol,
+            tickSize: ticks.tickSize,
+            tickValue: ticks.tickValue,
+            maxQuantity: getPracticeMaxQuantity(executionSymbol),
+          }
+        }
+      : undefined,
     showAutoPositionPreview:
       tradeHandler && typeof tradeHandler.showAutoPositionPreview === 'function'
         ? (options) => tradeHandler.showAutoPositionPreview(options)
         : undefined,
     getMaxQuantityForSymbol: !liveMode && tradeHandler instanceof PracticeTradeHandler
-      ? (symbol: string) => {
-          const account = getPracticeAccountById(padSessionId)
-          return account
-            ? getMaxContractsForSymbol(account.size, symbol, account.rules)
-            : 10
-        }
+      ? getPracticeMaxQuantity
       : undefined,
-    getPositionFamilySummary: !liveMode && tradeHandler instanceof PracticeTradeHandler
-      ? () => tradeHandler.getPositionFamilySummaryFor(chartProductRoot)
-      : undefined,
+    getPositionFamilySummary:
+      tradeHandler && typeof tradeHandler.getPositionFamilySummaryFor === 'function'
+        ? () => tradeHandler.getPositionFamilySummaryFor(chartProductRoot)
+        : undefined,
     onDetach: () => {
       togglePracticePadDetached(padSessionId)
       onForceUpdate()
@@ -245,11 +274,13 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
         takeProfit: brackets.takeProfit,
         stopLossMode: brackets.stopLossMode,
         softStopTrigger: brackets.softStopTrigger,
+        softStopResolution: brackets.softStopResolution,
+        symbol: order?.executionSymbol || padRoot,
         orderType: order?.orderType,
-        entryPrice: order?.orderType === 'market' ? undefined : order?.entryPrice,
+        entryPrice: order?.entryPrice,
       })
     },
-    onClose: () => runTrade('Close Position'),
+    onClose: (quantity, symbol) => runTrade('Close Position', { quantity, symbol }),
     onReverse: () => runTrade('Reverse Position'),
     onFlatten: () => runTrade('Flatten All Position'),
   }

@@ -87,6 +87,7 @@ class PracticeAccountWebSocket extends WebSocketBase {
           break
         case 'close_position':
           await PracticeService.closePosition(userId, accountId, msg.positionId, {
+            amount: msg.amount,
             exitPrice: msg.exitPrice,
             exitTime: msg.exitTime,
             fees: msg.fees,
