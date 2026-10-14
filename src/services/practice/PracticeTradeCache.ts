@@ -299,7 +299,9 @@ export class PracticeTradeCache extends ChartTradeCache {
 
   ) {
 
-    const cacheKey = String(symbol || '').trim() || this.activeChartSymbol()
+    const rawKey = String(symbol || '').trim() || this.activeChartSymbol()
+    const product = this.productSymbol(rawKey)
+    const cacheKey = product ? this.chartCacheKeyForProduct(product) : rawKey
 
     const existingBeforeOpen = this.cache.get(cacheKey)
 
@@ -558,6 +560,7 @@ export class PracticeTradeCache extends ChartTradeCache {
       const line = existing?.line as { removeAll?: () => void } | undefined
       line?.removeAll?.()
     }
+    this.cache.clear()
     this.positionIds.clear()
     this.lastBracketMark.clear()
     this.pendingBracketCloses.clear()
@@ -1259,9 +1262,10 @@ export class PracticeTradeCache extends ChartTradeCache {
   }
 
   applyServerPositionUpdate(position: PracticePosition): void {
-    const cacheKey = this.chartCacheKeyForProduct(position.symbol)
+    const existingMatch = this.findCacheEntryForProduct(position.symbol, position.id)
+    const cacheKey = existingMatch?.key ?? this.chartCacheKeyForProduct(position.symbol)
     this.positionIds.set(cacheKey, position.id)
-    let existing = this.cache.get(cacheKey)
+    let existing = existingMatch?.position ?? this.cache.get(cacheKey)
     if (!existing) {
       this.hydratingFromServer = true
       try {

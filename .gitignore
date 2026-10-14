@@ -56,6 +56,7 @@ Thumbs.db
 
 # Cursor / local tooling
 .cursor/
+.codex/
 *.cursor/
 
 # VPS deploy tooling (tracked); credentials and installed packages stay local
@@ -82,6 +83,7 @@ server/package-lock.json
 
 # Local dev / scratch tests (not for publish)
 HANDOFF.md
+test-*.mjs
 test_*.mjs
 test_*.js
 test_*.cjs

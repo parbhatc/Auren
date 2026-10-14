@@ -12,6 +12,11 @@ export interface CsvInventoryEntry {
   toLabel: string
 }
 
+export interface CsvUpdateOptions {
+  quiet?: boolean
+  refreshInventory?: boolean
+}
+
 export interface SymbolData {
   tickSize: number
   tickValue: number
@@ -72,7 +77,13 @@ export interface BacktesterDataManagementRendererProps {
   onTabChange: (tab: 'symbol-info' | 'csv-data') => void
   csvInventory: CsvInventoryEntry[]
   loadingCsvInventory: boolean
-  onCsvUpdate: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
+  onCsvUpdate: (
+    symbol: string,
+    source: CsvDataWsSource,
+    resolution?: string,
+    options?: CsvUpdateOptions
+  ) => Promise<void>
+  onCsvInventoryRefresh: () => Promise<void>
   onCsvOverwrite: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onCsvDownload: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onCsvTradingViewTokenChange?: (token: string) => void

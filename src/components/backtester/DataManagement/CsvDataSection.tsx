@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Download, RefreshCw, Replace, Search } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Download, RefreshCw, Replace, Search } from 'lucide-react'
 import { panelCardClass, tabRailActiveClass, tabRailClass } from '../../../styles/aurenTheme'
 import { t } from '../../../utils/translator'
 import Loading from '../../common/Loading'
@@ -8,7 +8,11 @@ import CsvDataActionModal, {
   type CsvDataActionIntent,
   symbolHasCsvFolder,
 } from './CsvDataActionModal'
-import type { CsvInventoryEntry, SymbolData } from '../../../types/backtesterDataManagement'
+import type {
+  CsvInventoryEntry,
+  CsvUpdateOptions,
+  SymbolData,
+} from '../../../types/backtesterDataManagement'
 import {
   type CsvDataSourcePreference,
   type CsvDataWsSource,
@@ -41,6 +45,20 @@ function groupInventoryBySymbol(inventory: CsvInventoryEntry[]) {
     }))
 }
 
+function updateMessageProgress(message = '') {
+  const fileProgress = message.match(/(?:updated|written)\s+(\d+)\s*\/\s*(\d+)/i)
+  if (fileProgress) {
+    const completed = Number(fileProgress[1])
+    const total = Math.max(1, Number(fileProgress[2]))
+    return Math.min(98, 72 + (completed / total) * 26)
+  }
+  if (/complete|up to date/i.test(message)) return 100
+  if (/merg|writ/i.test(message)) return 70
+  if (/fetch|loaded/i.test(message)) return 38
+  if (/finding|starting|prepar/i.test(message)) return 12
+  return 8
+}
+
 export default function CsvDataSection({
   isDark,
   inventory,
@@ -53,6 +71,7 @@ export default function CsvDataSection({
   onDownload,
   onTradingViewTokenChange,
   onTradingViewTokenBlur,
+  onInventoryRefresh,
 }: {
   isDark: boolean
   inventory: CsvInventoryEntry[]
@@ -68,7 +87,13 @@ export default function CsvDataSection({
     timestamp: number
     completed?: boolean
   }>
-  onUpdate: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
+  onUpdate: (
+    symbol: string,
+    source: CsvDataWsSource,
+    resolution?: string,
+    options?: CsvUpdateOptions
+  ) => Promise<void>
+  onInventoryRefresh: () => Promise<void>
   onOverwrite: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onDownload: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onTradingViewTokenChange?: (token: string) => void
@@ -84,7 +109,9 @@ export default function CsvDataSection({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [overwriteConfirm, setOverwriteConfirm] = useState<{ symbol: string; resolution: string } | null>(null)
   const [actionSymbol, setActionSymbol] = useState<string | null>(null)
+  const [actionDatasetKey, setActionDatasetKey] = useState<string | null>(null)
   const [updateAllState, setUpdateAllState] = useState<{ completed: number; total: number; current: string } | null>(null)
+  const [updateAllResult, setUpdateAllResult] = useState<{ total: number; failures: string[] } | null>(null)
   const [actionModal, setActionModal] = useState<{
     symbol: string
     displaySymbol?: string
@@ -93,6 +120,8 @@ export default function CsvDataSection({
     intent: CsvDataActionIntent
   } | null>(null)
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const datasetKey = (symbol: string, resolution: string) => `${symbol}::${resolution}`
 
   const wsSource = wsSourceFromCsvDataSource(dataSource)
   const grouped = useMemo(() => groupInventoryBySymbol(inventory), [inventory])
@@ -232,18 +261,23 @@ export default function CsvDataSection({
   const handleUpdate = async (symbol: string, csvResolution: string) => {
     try {
       assertCanRunAction()
+      setSearchError('')
+      setUpdateAllResult(null)
       setActionSymbol(symbol)
+      setActionDatasetKey(datasetKey(symbol, csvResolution))
       await onUpdate(symbol, wsSource, csvFolderToChartResolution(csvResolution))
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Update failed')
     } finally {
       setActionSymbol(null)
+      setActionDatasetKey(null)
     }
   }
 
   const handleUpdateAll = async () => {
-    if (!updateAllTargets.length || updateAllState) return
+    if (!updateAllTargets.length || updateAllState || actionSymbol) return
     setSearchError('')
+    setUpdateAllResult(null)
     try {
       assertCanRunAction()
     } catch (err) {
@@ -252,20 +286,39 @@ export default function CsvDataSection({
     }
 
     const failures: string[] = []
-    for (let index = 0; index < updateAllTargets.length; index += 1) {
-      const target = updateAllTargets[index]
-      setUpdateAllState({ completed: index, total: updateAllTargets.length, current: `${target.symbol} ${target.resolution}` })
-      setActionSymbol(target.symbol)
-      try {
-        await onUpdate(target.symbol, wsSource, csvFolderToChartResolution(target.resolution))
-      } catch {
-        failures.push(`${target.symbol} ${target.resolution}`)
+    try {
+      for (let index = 0; index < updateAllTargets.length; index += 1) {
+        const target = updateAllTargets[index]
+        setUpdateAllState({ completed: index, total: updateAllTargets.length, current: `${target.symbol} ${target.resolution}` })
+        setActionSymbol(target.symbol)
+        setActionDatasetKey(datasetKey(target.symbol, target.resolution))
+        try {
+          await onUpdate(
+            target.symbol,
+            wsSource,
+            csvFolderToChartResolution(target.resolution),
+            { quiet: true, refreshInventory: false }
+          )
+        } catch {
+          failures.push(`${target.symbol} ${target.resolution}`)
+        }
+        setUpdateAllState({
+          completed: index + 1,
+          total: updateAllTargets.length,
+          current: `${target.symbol} ${target.resolution}`,
+        })
       }
-    }
-    setActionSymbol(null)
-    setUpdateAllState(null)
-    if (failures.length) {
-      setSearchError(`Update all finished with ${failures.length} failed dataset${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`)
+      await onInventoryRefresh()
+      setUpdateAllResult({ total: updateAllTargets.length, failures })
+      if (failures.length) {
+        setSearchError(`Update all finished with ${failures.length} failed dataset${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`)
+      }
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Update all failed')
+    } finally {
+      setActionSymbol(null)
+      setActionDatasetKey(null)
+      setUpdateAllState(null)
     }
   }
 
@@ -291,12 +344,14 @@ export default function CsvDataSection({
           <button
             key={source}
             type="button"
+            disabled={updateAllState !== null || actionSymbol !== null}
             onClick={() => {
               setDataSource(source)
               setSearchResults([])
               setSearchError('')
+              setUpdateAllResult(null)
             }}
-            className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all ${
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
               dataSource === source
                 ? tabRailActiveClass(isDark, source === 'tradesea' ? 'blue' : 'amber')
                 : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
@@ -465,7 +520,8 @@ export default function CsvDataSection({
           {searchResults.map((row) => {
             const hasCsv = symbolHasCsvFolder(row.symbol, inventory)
             const busy =
-              actionSymbol === row.symbol ||
+              actionSymbol !== null ||
+              updateAllState !== null ||
               isRowBusy(row.symbol, 'download') ||
               isRowBusy(row.symbol, 'update') ||
               isRowBusy(row.symbol, 'overwrite')
@@ -604,8 +660,15 @@ export default function CsvDataSection({
               {isOpen && (
                 <ul className={`border-t ${isDark ? 'border-slate-700/50 bg-slate-900/20' : 'border-slate-200 bg-slate-50/50'}`}>
                   {resolutions.map((row) => {
+                    const rowDatasetKey = datasetKey(symbol, row.resolution)
+                    const isCurrentUpdate = actionDatasetKey === rowDatasetKey
+                    const updateProgress = isCurrentUpdate
+                      ? progressState?.[`${wsSource}_${symbol}_update`]
+                      : undefined
+                    const updatePercent = updateMessageProgress(updateProgress?.message)
                     const busy =
-                      actionSymbol === symbol ||
+                      actionSymbol !== null ||
+                      updateAllState !== null ||
                       isRowBusy(symbol, 'download') ||
                       isRowBusy(symbol, 'update') ||
                       isRowBusy(symbol, 'overwrite')
@@ -616,13 +679,31 @@ export default function CsvDataSection({
                           isDark ? 'hover:bg-slate-800/30' : 'hover:bg-white/80'
                         }`}
                       >
-                        <p className={`flex-1 min-w-0 text-xs sm:text-sm font-mono tracking-wide ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                          <span className={isDark ? 'text-blue-300' : 'text-blue-700'}>{row.resolutionLabel}</span>
-                          <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> → </span>
-                          <span>{row.fromLabel}</span>
-                          <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> - </span>
-                          <span>{row.toLabel}</span>
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs sm:text-sm font-mono tracking-wide ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                            <span className={isDark ? 'text-blue-300' : 'text-blue-700'}>{row.resolutionLabel}</span>
+                            <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> → </span>
+                            <span>{row.fromLabel}</span>
+                            <span className={isDark ? 'text-slate-500' : 'text-slate-400'}> - </span>
+                            <span>{row.toLabel}</span>
+                          </p>
+                          {isCurrentUpdate && (
+                            <div className="mt-2 max-w-xl" aria-live="polite">
+                              <div className="mb-1 flex items-center gap-2">
+                                <RefreshCw className={`h-3 w-3 animate-spin ${isDark ? 'text-blue-300' : 'text-blue-600'}`} />
+                                <span className={`truncate text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                  {updateProgress?.message || 'Preparing update…'}
+                                </span>
+                              </div>
+                              <div className={`h-1 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                                <div
+                                  className="h-full rounded-full bg-blue-500 transition-[width] duration-500 ease-out"
+                                  style={{ width: `${updatePercent}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         {showActions && (
                           <div className="flex items-center gap-2 shrink-0">
                             <button
@@ -635,7 +716,7 @@ export default function CsvDataSection({
                                   : 'bg-blue-600 hover:bg-blue-700 text-white'
                               }`}
                             >
-                              <RefreshCw className={`w-3.5 h-3.5 ${isRowBusy(symbol, 'update') ? 'animate-spin' : ''}`} />
+                              <RefreshCw className={`w-3.5 h-3.5 ${isCurrentUpdate || isRowBusy(symbol, 'update') ? 'animate-spin' : ''}`} />
                               {t('backtesterDataManagement.csvData.update', {}, 'Update')}
                             </button>
                             <button
@@ -675,26 +756,46 @@ export default function CsvDataSection({
       {controls}
       {searchResultsPanel}
       {!loading && grouped.length > 0 && (
-        <div className={`${panelCardClass(isDark)} flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5`}>
-          <div>
-            <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>CSV inventory</p>
-            <p className={`mt-0.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              {updateAllState
-                ? `Updating ${updateAllState.current} · ${updateAllState.completed + 1} of ${updateAllState.total}`
-                : `${updateAllTargets.length} eligible dataset${updateAllTargets.length === 1 ? '' : 's'} for ${dataSource === 'tradesea' ? 'Tradesea' : 'TradingView'}`}
-            </p>
+        <div className={`${panelCardClass(isDark)} overflow-hidden`}>
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>CSV inventory</p>
+              <p className={`mt-0.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                {updateAllState
+                  ? `Updating ${updateAllState.current} · ${Math.min(updateAllState.completed + 1, updateAllState.total)} of ${updateAllState.total}`
+                  : updateAllResult
+                    ? updateAllResult.failures.length
+                      ? `${updateAllResult.total - updateAllResult.failures.length} of ${updateAllResult.total} datasets updated`
+                      : `All ${updateAllResult.total} datasets are up to date`
+                    : `${updateAllTargets.length} eligible dataset${updateAllTargets.length === 1 ? '' : 's'} for ${dataSource === 'tradesea' ? 'Tradesea' : 'TradingView'}`}
+              </p>
+              {updateAllResult && updateAllResult.failures.length === 0 && (
+                <p className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Inventory refreshed
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleUpdateAll()}
+              disabled={!updateAllTargets.length || updateAllState !== null || actionSymbol !== null}
+              className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-white' : 'bg-[#18181B] text-white hover:bg-black'
+              }`}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${updateAllState ? 'animate-spin' : ''}`} />
+              {updateAllState ? `Updating ${Math.min(updateAllState.completed + 1, updateAllState.total)}/${updateAllState.total}` : 'Update all'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleUpdateAll()}
-            disabled={!updateAllTargets.length || updateAllState !== null || actionSymbol !== null}
-            className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-white' : 'bg-[#18181B] text-white hover:bg-black'
-            }`}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${updateAllState ? 'animate-spin' : ''}`} />
-            {updateAllState ? `Updating ${updateAllState.completed + 1}/${updateAllState.total}` : 'Update all'}
-          </button>
+          {updateAllState && (
+            <div className={`h-1.5 w-full ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} role="progressbar" aria-valuemin={0} aria-valuemax={updateAllState.total} aria-valuenow={updateAllState.completed}>
+              <div
+                className="h-full rounded-r-full bg-blue-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${Math.max(2, (updateAllState.completed / updateAllState.total) * 100)}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
       {!search.trim() && searchError && (

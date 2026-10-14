@@ -9,7 +9,7 @@ import { toast } from 'react-toastify'
 import BacktesterDataManagementRenderer from './BacktesterDataManagementRenderer'
 import { UserData } from '../../../types/user'
 import { BacktesterDataClient } from '../../../backtester/services/BacktesterDataClient'
-import { SymbolData, CsvInventoryEntry } from '../../../types/backtesterDataManagement'
+import { SymbolData, CsvInventoryEntry, type CsvUpdateOptions } from '../../../types/backtesterDataManagement'
 import type { HubTab } from '../../../types/practiceHub'
 import { t } from '../../../utils/translator'
 import {
@@ -387,20 +387,26 @@ const BacktesterDataManagementWrapper = () => {
     })
   }
 
-  const runCsvUpdate = async (symbol: string, source: CsvDataWsSource, resolution = '1') => {
+  const runCsvUpdate = async (
+    symbol: string,
+    source: CsvDataWsSource,
+    resolution = '1',
+    options: CsvUpdateOptions = {}
+  ) => {
     if (!wsClientRef.current) {
-      toast.error('WebSocket not connected')
-      return
+      const connectionError = new Error('WebSocket not connected')
+      if (!options.quiet) toast.error(connectionError.message)
+      throw connectionError
     }
 
     const storageSymbol = normalizeCsvSymbol(symbol)
     const ticker = resolveCsvTicker(storageSymbol, source)
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       const client = wsClientRef.current as any
       const originalCallback = client.callbacks?.onUpdateResponse
       client.callbacks = client.callbacks || {}
-      client.callbacks.onUpdateResponse = (data: any) => {
+      client.callbacks.onUpdateResponse = async (data: any) => {
         client.callbacks.onUpdateResponse = originalCallback
 
         const progressKey = `${source}_${storageSymbol}_update`
@@ -412,19 +418,22 @@ const BacktesterDataManagementWrapper = () => {
 
         if (data.success) {
           const datasetLabel = `${storageSymbol} ${chartResolutionToCsvFolder(resolution)}`
-          toast.success(
-            data.message
-              ? `${datasetLabel}: ${data.message}`
-              : `${datasetLabel}: Update completed`
-          )
-          setTimeout(async () => {
+          if (!options.quiet) {
+            toast.success(
+              data.message
+                ? `${datasetLabel}: ${data.message}`
+                : `${datasetLabel}: Update completed`
+            )
+          }
+          if (options.refreshInventory !== false) {
             await loadCsvInventory({ showLoading: false })
-          }, 500)
+          }
+          resolve()
         } else {
-          toast.error(data.error || 'Update failed')
+          const updateError = new Error(data.error || 'Update failed')
+          if (!options.quiet) toast.error(updateError.message)
+          reject(updateError)
         }
-
-        resolve()
       }
 
       wsClientRef.current!.sendUpdate(storageSymbol, source, ticker, resolution)
@@ -664,6 +673,7 @@ const BacktesterDataManagementWrapper = () => {
       csvInventory={csvInventory}
       loadingCsvInventory={loadingCsvInventory}
       onCsvUpdate={runCsvUpdate}
+      onCsvInventoryRefresh={() => loadCsvInventory({ showLoading: false })}
       onCsvOverwrite={runCsvOverwrite}
       onCsvDownload={runCsvDownload}
       onCsvTradingViewTokenChange={handleCsvTradingViewTokenChange}

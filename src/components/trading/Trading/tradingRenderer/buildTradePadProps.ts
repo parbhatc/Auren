@@ -202,7 +202,10 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
         : undefined,
     tickSize: activeFirm?.chartServices?.datafeed?.getTickSize?.(padRoot) ?? 0.25,
     tickValue: activeFirm?.chartServices?.datafeed?.getTickValue?.(padRoot) ?? 0,
-    autoRiskContractRouting: !liveMode && tradeHandler instanceof PracticeTradeHandler,
+    // Auto always sizes and executes the micro contract for supported futures
+    // families, including Tradesea accounts on /trade. Quick and DOM continue
+    // to use the manually selected trade contract.
+    autoRiskContractRouting: Boolean(tradeHandler),
     pickChartPriceOnce:
       tradeHandler && typeof tradeHandler.pickChartPriceOnce === 'function'
         ? (onPrice) => tradeHandler.pickChartPriceOnce(onPrice)
@@ -211,7 +214,7 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       tradeHandler && typeof tradeHandler.getActiveChartResolution === 'function'
         ? () => tradeHandler.getActiveChartResolution()
         : undefined,
-    getAutoOrderSizingContext: !liveMode && tradeHandler instanceof PracticeTradeHandler
+    getAutoOrderSizingContext: tradeHandler
       ? (context) => {
           const chartRoot = practiceContractRoot(context.symbol || chartSymbolLabel)
           const executionSymbol = practiceMicroRoot(chartRoot) || chartRoot
@@ -227,7 +230,7 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
             executionSymbol,
             tickSize: ticks.tickSize,
             tickValue: ticks.tickValue,
-            maxQuantity: getPracticeMaxQuantity(executionSymbol),
+            maxQuantity: liveMode ? 100 : getPracticeMaxQuantity(executionSymbol),
           }
         }
       : undefined,
@@ -235,8 +238,8 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       tradeHandler && typeof tradeHandler.showAutoPositionPreview === 'function'
         ? (options) => tradeHandler.showAutoPositionPreview(options)
         : undefined,
-    getMaxQuantityForSymbol: !liveMode && tradeHandler instanceof PracticeTradeHandler
-      ? getPracticeMaxQuantity
+    getMaxQuantityForSymbol: tradeHandler
+      ? (symbol) => liveMode ? 100 : getPracticeMaxQuantity(symbol)
       : undefined,
     getPositionFamilySummary:
       tradeHandler && typeof tradeHandler.getPositionFamilySummaryFor === 'function'

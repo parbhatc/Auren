@@ -176,8 +176,9 @@ export function OrderTab({
   liveEntryRef.current = refPrice
   const chartRoot = practiceContractRoot(props.chartProductRoot || symbolLabel || '')
   const currentTradeRoot = practiceContractRoot(props.tradeProductRoot || symbolLabel || '')
+  const requestedRiskRoot = practiceContractRoot(props.riskExecutionProductRoot || '') || chartRoot
   const automaticMicroRoot = props.autoRiskContractRouting
-    ? practiceContractRoot(props.riskExecutionProductRoot || '') || practiceMicroRoot(chartRoot)
+    ? practiceMicroRoot(requestedRiskRoot) || requestedRiskRoot
     : null
   const riskExecutionRoot = automaticMicroRoot || currentTradeRoot
   const riskTicks = automaticMicroRoot

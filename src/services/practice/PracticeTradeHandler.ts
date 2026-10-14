@@ -364,9 +364,17 @@ export class PracticeTradeHandler {
     const datafeed = this.propFirm.chartServices?.datafeed
     let total = 0
     let anyMark = false
+    const countedPositionIds = new Set<string>()
     for (const [, position] of cache.getCache()) {
       const contracts = Number(position?.contracts)
       if (!contracts) continue
+      const positionId = String(
+        (position as { positionId?: string; id?: string }).positionId ||
+        (position as { positionId?: string; id?: string }).id ||
+        ''
+      )
+      if (positionId && countedPositionIds.has(positionId)) continue
+      if (positionId) countedPositionIds.add(positionId)
       const cacheKey = String(position.symbol || '')
       // Display unrealized P&L at the current last-traded price. Bid/ask is
       // reserved for actual market-order execution and liquidation.
@@ -952,8 +960,16 @@ export class PracticeTradeHandler {
   getPositionFamilySummaryFor(symbolKey: string): PracticePositionFamilySummary | null {
     const cache = this.tradeCache?.getCache()
     if (!cache) return null
+    const includedPositionIds = new Set<string>()
     const positions = [...cache.entries()].flatMap(([symbol, position]) => {
       const contracts = Number(position?.contracts)
+      const positionId = String(
+        (position as { positionId?: string; id?: string }).positionId ||
+        (position as { positionId?: string; id?: string }).id ||
+        ''
+      )
+      if (positionId && includedPositionIds.has(positionId)) return []
+      if (positionId) includedPositionIds.add(positionId)
       return Number.isFinite(contracts) && contracts !== 0 ? [{ symbol, contracts }] : []
     })
     return summarizePracticePositionFamily(symbolKey, positions)
