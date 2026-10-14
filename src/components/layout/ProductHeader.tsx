@@ -35,8 +35,17 @@ import {
 import { ROUTES } from '../../constants/routes'
 import { useDisplayUnit, type DisplayUnit } from '../../contexts/DisplayUnitContext'
 import Logo from '../common/Logo'
-import { tradeseaAPI } from '../../api/tradesea.api'
+import { tradeseaAPI, type TradeseaAccount } from '../../api/tradesea.api'
 import { authAPI } from '../../api/auth.api'
+import { saveTradeTradeseaAccount } from '../../constants/trade'
+import {
+  DASHBOARD_ACCOUNT_CHANGED_EVENT,
+  dashboardAccountValue,
+  getDashboardAccountSelection,
+  parseDashboardAccountValue,
+  saveDashboardAccountSelection,
+  type DashboardAccountSelection,
+} from '../../services/dashboard/dashboardAccountSelection'
 
 type NavItem = {
   id: string
@@ -110,8 +119,10 @@ export default function ProductHeader({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const isDashboard = location.pathname === ROUTES.HOME || location.pathname === ROUTES.DASHBOARD
   const { unit, setUnit } = useDisplayUnit()
   const [accounts, setAccounts] = useState(() => getPracticeAccounts())
+  const [tradeseaAccounts, setTradeseaAccounts] = useState<TradeseaAccount[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
@@ -128,13 +139,65 @@ export default function ProductHeader({
       return getPracticeAccounts()[0]?.id || ''
     }
   })
+  const [dashboardSelection, setDashboardSelection] = useState<DashboardAccountSelection | null>(() =>
+    getDashboardAccountSelection()
+  )
 
   useEffect(() => {
-    const sync = () => setAccounts(getPracticeAccounts())
+    const sync = () => {
+      setAccounts(getPracticeAccounts())
+      try {
+        const savedId = localStorage.getItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID)
+        if (savedId) setActiveId(savedId)
+      } catch {
+        // Storage is optional.
+      }
+    }
     void refreshPracticeFromApi().then(sync).catch(sync)
     window.addEventListener('practiceAccountsChanged', sync)
     return () => window.removeEventListener('practiceAccountsChanged', sync)
   }, [])
+
+  useEffect(() => {
+    if (!isDashboard) return
+    let active = true
+    const loadAccounts = async () => {
+      try {
+        const response = await tradeseaAPI.getAccounts()
+        if (!active) return
+        const liveAccounts = response.connected && Array.isArray(response.accounts)
+          ? response.accounts.filter((account) => !account.isArchived)
+          : []
+        setTradeseaAccounts(liveAccounts)
+        const saved = getDashboardAccountSelection()
+        if (saved?.source === 'tradesea' && liveAccounts.some((account) => account.id === saved.accountId)) {
+          setDashboardSelection(saved)
+        } else if (saved?.source === 'practice' && accounts.some((account) => account.id === saved.accountId)) {
+          setDashboardSelection(saved)
+        } else {
+          const practice = accounts.find((account) => account.id === activeId) ?? accounts[0]
+          const fallback = practice
+            ? { source: 'practice' as const, accountId: practice.id }
+            : liveAccounts[0]
+              ? { source: 'tradesea' as const, accountId: liveAccounts[0].id }
+              : null
+          setDashboardSelection(fallback)
+          if (fallback) saveDashboardAccountSelection(fallback)
+        }
+      } catch {
+        if (active) setTradeseaAccounts([])
+      }
+    }
+    const syncSelection = () => setDashboardSelection(getDashboardAccountSelection())
+    void loadAccounts()
+    window.addEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, syncSelection)
+    window.addEventListener('refreshPropFirms', loadAccounts)
+    return () => {
+      active = false
+      window.removeEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, syncSelection)
+      window.removeEventListener('refreshPropFirms', loadAccounts)
+    }
+  }, [accounts, activeId, isDashboard])
 
   useEffect(() => {
     let active = true
@@ -224,12 +287,35 @@ export default function ProductHeader({
     localStorage.setItem('auren-sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
 
-  const activeAccount = useMemo(
-    () => accounts.find((account) => account.id === activeId) ?? accounts[0],
-    [accounts, activeId]
+  const activeAccount = useMemo(() => {
+    const id = isDashboard && dashboardSelection?.source === 'practice'
+      ? dashboardSelection.accountId
+      : activeId
+    return accounts.find((account) => account.id === id) ?? accounts[0]
+  }, [accounts, activeId, dashboardSelection, isDashboard])
+
+  const activeTradeseaAccount = useMemo(
+    () => isDashboard && dashboardSelection?.source === 'tradesea'
+      ? tradeseaAccounts.find((account) => account.id === dashboardSelection.accountId) ?? null
+      : null,
+    [dashboardSelection, isDashboard, tradeseaAccounts]
   )
 
   const selectAccount = (id: string) => {
+    if (isDashboard) {
+      const selection = parseDashboardAccountValue(id)
+      if (!selection) return
+      setDashboardSelection(selection)
+      saveDashboardAccountSelection(selection)
+      if (selection.source === 'tradesea') {
+        const tradeseaAccount = tradeseaAccounts.find((account) => account.id === selection.accountId)
+        if (tradeseaAccount) {
+          saveTradeTradeseaAccount(tradeseaAccount.id, tradeseaAccount.name || tradeseaAccount.label)
+        }
+        return
+      }
+      id = selection.accountId
+    }
     setActiveId(id)
     try {
       localStorage.setItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID, id)
@@ -413,7 +499,11 @@ export default function ProductHeader({
           <label className="relative min-w-0 flex-1 sm:max-w-[260px]">
             <span className="sr-only">Active account</span>
             <select
-              value={activeAccount?.id ?? ''}
+              value={
+                isDashboard
+                  ? dashboardSelection ? dashboardAccountValue(dashboardSelection) : ''
+                  : activeAccount?.id ?? ''
+              }
               onChange={(event) => selectAccount(event.target.value)}
               className={`h-9 w-full appearance-none truncate rounded-lg border py-0 pl-3 pr-8 text-xs font-medium outline-none focus:border-blue-500 sm:text-sm ${
                 isDark
@@ -421,17 +511,49 @@ export default function ProductHeader({
                   : 'border-[#E4E4E7] bg-white text-[#09090B]'
               }`}
             >
-              {accounts.length === 0 ? <option value="">No practice account</option> : null}
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {accountLabel(account)}
-                </option>
-              ))}
+              {isDashboard ? (
+                <>
+                  {accounts.length > 0 ? (
+                    <optgroup label="Auren practice">
+                      {accounts.map((account) => (
+                        <option key={`practice:${account.id}`} value={`practice:${account.id}`}>
+                          {accountLabel(account)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {tradeseaAccounts.length > 0 ? (
+                    <optgroup label="Tradesea">
+                      {tradeseaAccounts.map((account) => (
+                        <option key={`tradesea:${account.id}`} value={`tradesea:${account.id}`}>
+                          {account.name || account.label} · {account.propFirmDisplayName || 'Tradesea'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {accounts.length === 0 && tradeseaAccounts.length === 0 ? (
+                    <option value="">No account available</option>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {accounts.length === 0 ? <option value="">No practice account</option> : null}
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {accountLabel(account)}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-[#A1A1AA]" strokeWidth={1.75} aria-hidden />
           </label>
 
-          {activeAccount ? (
+          {activeTradeseaAccount ? (
+            <span className="hidden rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-500 sm:inline-flex">
+              {activeTradeseaAccount.propFirmDisplayName || 'Tradesea'}
+            </span>
+          ) : activeAccount ? (
             <span
               className={`hidden rounded-md border px-2 py-1 text-[11px] font-semibold capitalize sm:inline-flex ${
                 activeAccount.status === 'active'

@@ -36,6 +36,7 @@ export interface TradeseaAccount {
   userId?: string
   externalAccountId?: string
   externalUserId?: string
+  isArchived?: boolean
 }
 
 export interface TradeseaAccountsResponse {

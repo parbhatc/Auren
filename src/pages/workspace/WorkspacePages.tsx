@@ -23,6 +23,7 @@ import { practiceSessionPath, ROUTES } from '../../constants/routes'
 import { useDisplayUnit } from '../../contexts/DisplayUnitContext'
 import { useTheme } from '../../hooks/useTheme'
 import { useActivePracticeData } from '../../hooks/useActivePracticeData'
+import { useDashboardAccountData } from '../../hooks/useDashboardAccountData'
 import {
   WorkspaceShell,
   PageHeading,
@@ -41,9 +42,25 @@ import {
 
 export function DashboardPage() {
   const { isDark } = useTheme()
-  const { account, stats } = useActivePracticeData()
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
+  const {
+    selection,
+    practiceAccount: account,
+    tradeseaAccount,
+    practiceStats: stats,
+    tradeseaDashboard,
+    days,
+    loading,
+    error,
+  } = useDashboardAccountData(calendarMonth)
   const { format } = useDisplayUnit()
-  const pnl = stats.totalPnl ?? (account ? account.balance - account.rules.startingBalance : 0)
+  const isTradesea = selection?.source === 'tradesea'
+  const pnl = isTradesea
+    ? Number(tradeseaDashboard?.totalPnl?.value) || 0
+    : stats.totalPnl ?? (account ? account.balance - account.rules.startingBalance : 0)
   const rules = account ? evaluatePracticeRules(account) : null
   const trades = stats.trades ?? []
   const netTradePnl = (trade: PracticeTradeRecord) =>
@@ -58,16 +75,28 @@ export function DashboardPage() {
       .filter((tradePnl) => tradePnl < 0)
       .reduce((sum, tradePnl) => sum + tradePnl, 0)
   )
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? grossProfit : 0
-  const winRate =
-    stats.winRate ??
-    (trades.length ? (trades.filter((trade) => trade.pnl > 0).length / trades.length) * 100 : 0)
+  const practiceProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? grossProfit : 0
+  const profitFactor = isTradesea
+    ? Number(tradeseaDashboard?.profitFactor?.value) || 0
+    : practiceProfitFactor
+  const winRate = isTradesea
+    ? Number(tradeseaDashboard?.tradeWinPer?.value) || 0
+    : stats.winRate ??
+      (trades.length ? (trades.filter((trade) => trade.pnl > 0).length / trades.length) * 100 : 0)
+  const totalTrades = isTradesea
+    ? Number(tradeseaDashboard?.totalNumberOfTrades) || 0
+    : stats.totalTrades ?? trades.length
+  const avgWinLossRatio = Number(tradeseaDashboard?.avgWinAndLoss?.avgWinLossRatio) || 0
   const riskUnit = account ? Math.max(1, account.rules.maxLoss / 10) : 100
-  const days = account?.dayPnL ?? []
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
+  const formatPnl = (value: number) => isTradesea
+    ? new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        signDisplay: value === 0 ? 'auto' : 'always',
+      }).format(value)
+    : format(value, account?.rules.startingBalance, riskUnit)
   const calendarYear = calendarMonth.getFullYear()
   const calendarMonthIndex = calendarMonth.getMonth()
   const calendarLabel = calendarMonth.toLocaleDateString(undefined, {
@@ -102,9 +131,14 @@ export function DashboardPage() {
     account && rules ? Math.max(0, account.rules.startingBalance - account.balance) : 0
   const drawdownProgress = account ? (drawdownUsed / Math.max(account.rules.maxLoss, 1)) * 100 : 0
   const points = useMemo(() => {
-    const values = days.length ? days.slice(-20).map((day) => day.pnl) : [0]
+    const tradeseaValues = tradeseaDashboard?.dailyNetCumulativePnl
+    const values = isTradesea && Array.isArray(tradeseaValues) && tradeseaValues.length
+      ? tradeseaValues.slice(-20).map((point) => Number(point.value) || 0)
+      : days.length
+        ? days.slice(-20).map((day) => day.pnl)
+        : [0]
     let running = 0
-    const cumulative = values.map((value) => (running += value))
+    const cumulative = isTradesea ? values : values.map((value) => (running += value))
     const min = Math.min(...cumulative, 0)
     const max = Math.max(...cumulative, 1)
     return cumulative
@@ -113,22 +147,40 @@ export function DashboardPage() {
           `${(index / Math.max(cumulative.length - 1, 1)) * 100},${88 - ((value - min) / Math.max(max - min, 1)) * 72}`
       )
       .join(' ')
-  }, [days])
+  }, [days, isTradesea, tradeseaDashboard])
+
+  if (loading) {
+    return (
+      <WorkspaceShell>
+        <main className="mx-auto flex min-h-[60vh] max-w-[1600px] items-center justify-center px-4">
+          <p className={`text-sm ${isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}>Loading account statistics…</p>
+        </main>
+      </WorkspaceShell>
+    )
+  }
 
   return (
     <WorkspaceShell>
       <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8">
         <PageHeading
-          eyebrow="Evaluation dashboard"
-          title="Performance and guardrails"
-          description="A high-density view of account performance, drawdown exposure, consistency, and daily execution discipline."
+          eyebrow={isTradesea ? 'Tradesea dashboard' : 'Evaluation dashboard'}
+          title={isTradesea ? 'Live account performance' : 'Performance and guardrails'}
+          description={isTradesea
+            ? 'TradeLens statistics for the connected Tradesea account, including net results, consistency, and daily performance.'
+            : 'A high-density view of account performance, drawdown exposure, consistency, and daily execution discipline.'}
         />
+
+        {error ? (
+          <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+            {error}
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label="Net P&L"
-            value={format(pnl, account?.rules.startingBalance, riskUnit)}
-            hint={`${stats.totalTrades ?? trades.length} realized trades`}
+            value={formatPnl(pnl)}
+            hint={`${totalTrades} realized trades`}
             tone={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral'}
           />
           <MetricCard
@@ -140,65 +192,73 @@ export function DashboardPage() {
           <MetricCard
             label="Profit factor"
             value={profitFactor.toFixed(2)}
-            hint={`Avg realized ${trades.length ? format(pnl / trades.length, account?.rules.startingBalance, riskUnit) : '—'}`}
+            hint={`Avg realized ${totalTrades ? formatPnl(pnl / totalTrades) : '—'}`}
           />
           <MetricCard
-            label="Discipline score"
-            value="100%"
-            hint="No rule violations recorded"
-            tone="positive"
+            label={isTradesea ? 'Avg win/loss ratio' : 'Discipline score'}
+            value={isTradesea ? avgWinLossRatio.toFixed(2) : '100%'}
+            hint={isTradesea ? 'Average winning trade ÷ average losing trade' : 'No rule violations recorded'}
+            tone={isTradesea ? (avgWinLossRatio >= 1 ? 'positive' : 'neutral') : 'positive'}
           />
         </div>
 
-        <Surface className="mt-4 p-4 sm:p-5">
-          <div className="mb-5 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-blue-500" />
-            <h2 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
-              Evaluation and prop-firm guardrails
-            </h2>
-          </div>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            <ProgressRow
-              label="Profit target"
-              value={profitTargetProgress}
-              detail={
-                account?.rules.profitTarget
-                  ? `${format(Math.max(0, pnl), account.rules.startingBalance, riskUnit)} / ${format(account.rules.profitTarget, account.rules.startingBalance, riskUnit)}`
-                  : 'Funded'
-              }
-            />
-            <ProgressRow
-              label={`${account?.rules.drawdownType === 'intraday' ? 'Trailing' : 'Static'} drawdown`}
-              value={drawdownProgress}
-              detail={`${format(drawdownUsed, account?.rules.startingBalance, riskUnit)} used`}
-              tone={drawdownProgress > 70 ? 'red' : 'amber'}
-            />
-            <ProgressRow
-              label="Daily loss limit"
-              value={0}
-              detail={
-                account?.rules.lockoutEnabled
-                  ? format(
-                      account.rules.sessionDailyLossLimit ?? account.rules.dailyLossLimit ?? 0,
-                      account.rules.startingBalance,
-                      riskUnit
-                    )
-                  : 'Not enabled'
-              }
-              tone="amber"
-            />
-            <ProgressRow
-              label="Consistency"
-              value={Math.min(100, account?.rules.consistencyPct ?? 100)}
-              detail={
-                account?.rules.consistencyPct
-                  ? `${account.rules.consistencyPct}% max day`
-                  : 'No limit'
-              }
-              tone="emerald"
-            />
-          </div>
-        </Surface>
+        {isTradesea ? (
+          <Surface className="mt-4 p-4 sm:p-5">
+            <div className="mb-5 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <h2 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
+                Connected Tradesea account
+              </h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Account', tradeseaAccount?.name || tradeseaAccount?.label || '—'],
+                ['Prop firm', tradeseaAccount?.propFirmDisplayName || tradeseaAccount?.propFirm || 'Tradesea'],
+                ['Account type', tradeseaAccount?.accountType || 'Live'],
+                ['Statistics source', 'Tradesea TradeLens'],
+              ].map(([label, value]) => (
+                <div key={label} className={`rounded-lg border px-4 py-3 ${isDark ? 'border-[#27272A] bg-[#121215]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#71717A]">{label}</p>
+                  <p className={`mt-1 truncate text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </Surface>
+        ) : (
+          <Surface className="mt-4 p-4 sm:p-5">
+            <div className="mb-5 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <h2 className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>
+                Evaluation and prop-firm guardrails
+              </h2>
+            </div>
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              <ProgressRow
+                label="Profit target"
+                value={profitTargetProgress}
+                detail={account?.rules.profitTarget ? `${formatPnl(Math.max(0, pnl))} / ${formatPnl(account.rules.profitTarget)}` : 'Funded'}
+              />
+              <ProgressRow
+                label={`${account?.rules.drawdownType === 'intraday' ? 'Trailing' : 'Static'} drawdown`}
+                value={drawdownProgress}
+                detail={`${formatPnl(drawdownUsed)} used`}
+                tone={drawdownProgress > 70 ? 'red' : 'amber'}
+              />
+              <ProgressRow
+                label="Daily loss limit"
+                value={0}
+                detail={account?.rules.lockoutEnabled ? formatPnl(account.rules.sessionDailyLossLimit ?? account.rules.dailyLossLimit ?? 0) : 'Not enabled'}
+                tone="amber"
+              />
+              <ProgressRow
+                label="Consistency"
+                value={Math.min(100, account?.rules.consistencyPct ?? 100)}
+                detail={account?.rules.consistencyPct ? `${account.rules.consistencyPct}% max day` : 'No limit'}
+                tone="emerald"
+              />
+            </div>
+          </Surface>
+        )}
 
         <div className="mt-4 grid gap-4 xl:grid-cols-3">
           <div className="grid gap-4 xl:col-span-2">
@@ -284,7 +344,7 @@ export function DashboardPage() {
                     <span
                       className={`font-semibold tabular-nums ${calendarMonthPnl > 0 ? 'text-emerald-500' : calendarMonthPnl < 0 ? 'text-red-500' : isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}
                     >
-                      {format(calendarMonthPnl, account?.rules.startingBalance, riskUnit)}
+                      {formatPnl(calendarMonthPnl)}
                     </span>
                   </p>
                 </div>
@@ -341,7 +401,7 @@ export function DashboardPage() {
                         <span
                           className={`mt-1 block truncate text-[10px] font-semibold tabular-nums ${cell.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}
                         >
-                          {format(cell.pnl, account?.rules.startingBalance, riskUnit)}
+                          {formatPnl(cell.pnl)}
                         </span>
                       )}
                     </div>
@@ -354,7 +414,7 @@ export function DashboardPage() {
                     <span
                       className={`mt-1 truncate text-[10px] font-semibold tabular-nums ${weekPnl > 0 ? 'text-emerald-500' : weekPnl < 0 ? 'text-red-500' : isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}
                     >
-                      {format(weekPnl, account?.rules.startingBalance, riskUnit)}
+                      {formatPnl(weekPnl)}
                     </span>
                   </div>,
                 ]
