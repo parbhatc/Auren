@@ -1,3 +1,5 @@
+import { practiceContractRoot, practiceMicroRoot } from '../practice/practiceContractFamily'
+
 export interface TradeseaPosition {
   id: string
   instrument?: string
@@ -105,4 +107,30 @@ export function findPositionsForInstrument(
     }
   }
   return out
+}
+
+/** Prefer the exact chart contract, then optionally show its micro on the mini chart. */
+export function findPositionForChartInstrument(
+  positions: unknown[] | undefined,
+  instrument: string,
+  showMicroOnMiniChart: boolean
+): TradeseaPosition | null {
+  const exact = findPositionsForInstrument(positions, instrument)[0]
+  if (exact) return exact
+  if (!showMicroOnMiniChart) return null
+
+  const chartRoot = practiceContractRoot(instrument)
+  const microRoot = practiceMicroRoot(chartRoot)
+  if (!microRoot || microRoot === chartRoot || !Array.isArray(positions)) return null
+
+  for (const row of positions) {
+    const position = parseTradeseaPosition(row)
+    if (
+      position?.instrument &&
+      practiceContractRoot(position.instrument) === microRoot
+    ) {
+      return position
+    }
+  }
+  return null
 }

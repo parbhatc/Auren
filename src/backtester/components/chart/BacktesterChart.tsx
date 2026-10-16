@@ -12,6 +12,7 @@ import type { BacktesterChartDataFeed } from './BacktesterChartDataFeed'
 import { CHART_ORDER_LINE_THEME } from '../../../constants/chartOrderLineTheme'
 import type { ResolutionString } from '../../../types/chart'
 import { requestChartAutoTrade } from '../../../components/common/aurenTradeContextMenu'
+import { registerAurenWidget } from '../../../chart/aurenWidgetRegistry'
 
 /** Wait until the chart mount has non-zero layout (avoids LWC "Value is null" on 0×0 containers). */
 function waitForMountLayout(mount: HTMLElement, timeoutMs = 4000): Promise<void> {
@@ -111,6 +112,7 @@ type BacktesterChartState = Record<string, never>
 
 class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartState> {
   widgetRef: BwcWidget | null = null
+  private unregisterWidget: (() => void) | null = null
   private shellRef = createRef<HTMLDivElement>()
   private bootGeneration = 0
   private chartMountEl: HTMLElement | null = null
@@ -486,6 +488,8 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
       }
 
       this.widgetRef = widget
+      this.unregisterWidget?.()
+      this.unregisterWidget = registerAurenWidget(widget)
       widget.replay?.enter?.()
       await this.handleChartReady()
       this.scheduleToolbarSlotMount(widget, generation)
@@ -546,6 +550,8 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
     this.bootGeneration += 1
     this.chartMountEl = null
     this.clearToolbarSlots()
+    this.unregisterWidget?.()
+    this.unregisterWidget = null
     this.widgetRef?.destroy?.()
     this.widgetRef = null
   }

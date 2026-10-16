@@ -242,6 +242,24 @@ server {
         proxy_read_timeout 86400;
     }
 
+    location /practice-market-data-ws {
+        proxy_pass http://127.0.0.1:${API_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_read_timeout 86400;
+    }
+
+    location /backtester-ws {
+        proxy_pass http://127.0.0.1:${API_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_read_timeout 86400;
+    }
+
     location /backtester/data-management-ws {
         proxy_pass http://127.0.0.1:${API_PORT};
         proxy_http_version 1.1;

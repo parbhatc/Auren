@@ -212,7 +212,13 @@ export type BwcChartApi = {
 export type BwcWidget = {
   chart: () => BwcChartApi
   indicators?: {
-    list?: () => Array<{ instanceId: string; defId: string }>
+    list?: () => Array<{
+      instanceId: string
+      defId: string
+      paneIndex?: number
+      inputs?: Record<string, unknown>
+      style?: Record<string, unknown>
+    }>
     patch?: (instanceId: string, patch: Record<string, unknown>) => void
   }
   getSymbol?: () => string

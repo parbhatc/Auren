@@ -45,7 +45,7 @@ function getSdk(): Promise<BwcSdk> {
 export async function registerAurenChartIndicators(): Promise<void> {
   if (registered) return
   const sdk = await getSdk()
-  const [fvg, levels, panels, presets, customSetups] = await Promise.all([
+  const [fvg, levels, panels, presets, customSetups, niceSweep] = await Promise.all([
     runtimeImport<{ default: unknown }>(withCacheBust('/testing/js/indicators/fvg/FvgIndicator.js')),
     runtimeImport<{ default: unknown }>(withCacheBust('/testing/js/indicators/levels/LevelsIndicator.js')),
     runtimeImport<{ registerTestingInputPanels: () => void }>(
@@ -57,10 +57,14 @@ export async function registerAurenChartIndicators(): Promise<void> {
     runtimeImport<{ default: unknown }>(
       withCacheBust('/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js')
     ),
+    runtimeImport<{ default: unknown }>(
+      withCacheBust('/auren-indicators/nice-sweep/NiceSweepIndicator.js')
+    ),
   ])
   sdk.registerIndicator(fvg.default)
   sdk.registerIndicator(levels.default)
   sdk.registerIndicator(customSetups.default)
+  sdk.registerIndicator(niceSweep.default)
   panels.registerTestingInputPanels()
   presets.registerTestingIndicatorPresets()
   const paperFeed = customSetups as typeof customSetups & {

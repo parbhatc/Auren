@@ -315,8 +315,6 @@ export class PracticeTradeCache extends ChartTradeCache {
 
     if (!lastBar && mark != null && contracts !== 0) {
 
-      const line = this.createLines(cacheKey, price, mark, contracts, stopLoss, takeProfit)
-
       const data = this.setData(
 
         cacheKey,
@@ -331,7 +329,7 @@ export class PracticeTradeCache extends ChartTradeCache {
 
         entryTime ?? Math.floor(Date.now() / 1000),
 
-        line,
+        null,
 
         typeof id === 'string' ? Number(id) || null : id,
 
@@ -349,6 +347,12 @@ export class PracticeTradeCache extends ChartTradeCache {
         normalizeChartResolution(softStopResolution)
 
       this.handleOpenPosition(data)
+
+      // The execution contract may be the related micro for the active mini
+      // chart (for example MNQ while viewing NQ). Reconcile immediately rather
+      // than waiting for a future chart tick, which may never arrive while the
+      // market-data connection is temporarily offline.
+      this.scheduleReconcilePositionLines()
 
       if (mark != null && Number.isFinite(mark)) {
         this.lastBracketMark.set(cacheKey, mark)
@@ -413,6 +417,8 @@ export class PracticeTradeCache extends ChartTradeCache {
     if (stopLoss != null || takeProfit != null) {
       this.seedBracketCheckpoint(cacheKey, entryTime ?? opened?.entryTime)
     }
+
+    if (opened) this.scheduleReconcilePositionLines()
 
     return opened
 

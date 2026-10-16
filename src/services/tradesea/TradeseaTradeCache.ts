@@ -2,10 +2,17 @@ import { aurenToast } from '../../utils/aurenToast'
 import ChartTradeCache from '../../components/common/ChartTradeCache'
 import { tradeseaAPI } from '../../api/tradesea.api'
 import { bracketOrdersForPosition } from './tradeseaBracketOrders'
-import { findPositionsForInstrument, parseTradeseaPosition } from './tradeseaPositions'
+import {
+  findPositionForChartInstrument,
+  findPositionsForInstrument,
+  instrumentsMatch,
+  parseTradeseaPosition,
+} from './tradeseaPositions'
 import { TradeseaTradeHandler } from './TradeseaTradeHandler'
 import { debugTradeseaSl } from './tradeseaDebug'
 import { chartResolutionToMs, formatChartResolution, normalizeChartResolution } from '../../utils/chartResolution'
+import { getShowMicroPositionsOnMiniCharts } from '../../constants/tradePanelSettings'
+import { practiceContractRoot } from '../practice/practiceContractFamily'
 
 let lastSyncPositionSlKey = ''
 let lastAppliedSlVisualKey = ''
@@ -22,6 +29,8 @@ type TradeseaCachedPosition = {
   stopLossOrderId?: number | string | null
   takeProfitOrderId?: number | string | null
   positionId?: string | null
+  /** Broker instrument backing a line that may be rendered on its related mini chart. */
+  tradeInstrument?: string
   bracketPendingUntil?: number
   stopLossMode?: 'hard' | 'soft'
   softStopTrigger?: 'bar_close'
@@ -32,6 +41,7 @@ type TradeseaCachedPosition = {
 
 export class TradeseaTradeCache extends ChartTradeCache {
   private stopLossCancelInFlight = false
+  private pendingTradeInstrument: string | null = null
   private softStops = new Map<string, { price: number; createdAt: number; resolution: string }>()
   private softStopBarMarks = new Map<string, { bucket: number; close: number; time: number }>()
   private softStopCloseInFlight = new Set<string>()
@@ -55,9 +65,9 @@ export class TradeseaTradeCache extends ChartTradeCache {
 
   /** Register a browser-only stop. Nothing is sent to Tradesea as a stop order. */
   async armSoftStop(symbol: string, price: number, resolution = '1'): Promise<void> {
-    const instrument = this.handler.resolveInstrumentPublic(symbol)
-    if (!instrument || !Number.isFinite(price)) return
     const existing = this.getPosition(symbol) as TradeseaCachedPosition | undefined
+    const instrument = existing?.tradeInstrument || this.handler.resolveInstrumentPublic(symbol)
+    if (!instrument || !Number.isFinite(price)) return
     const existingHardStopOrderId = existing?.stopLossOrderId
     const accountId = this.propFirm.selectedAccountId
     if (existingHardStopOrderId && accountId) {
@@ -104,6 +114,19 @@ export class TradeseaTradeCache extends ChartTradeCache {
     if (!Number.isFinite(price)) return
     const instrument = this.handler.resolveInstrumentPublic(symbol)
     if (!instrument) return
+
+    const active = this.getPositionForActiveChart()
+    const activePosition = active?.position as TradeseaCachedPosition | undefined
+    const activeTradeInstrument =
+      activePosition?.tradeInstrument ||
+      (active?.key ? this.handler.resolveInstrumentPublic(active.key) : '')
+    if (activePosition?.contracts && instrumentsMatch(instrument, activeTradeInstrument)) {
+      // Keep the chart pill on the same broker-contract mark used by account
+      // UP&L. This matters when MNQ is rendered over an NQ chart: NQ candles
+      // are only the visual backdrop and must not price the MNQ position.
+      this.updateActivePositionMark(price)
+    }
+
     const configured = this.softStops.get(instrument)
     if (!configured) return
     const durationMs = chartResolutionToMs(configured.resolution)
@@ -184,6 +207,23 @@ export class TradeseaTradeCache extends ChartTradeCache {
       stopLossOrderId,
       takeProfitOrderId
     )
+  }
+
+  protected getPositionPresentation(symbol: string, contracts: number) {
+    const position = this.cache.get(symbol) as TradeseaCachedPosition | undefined
+    const tradeInstrument = position?.tradeInstrument || this.pendingTradeInstrument || symbol
+    const datafeed = this.getDatafeed()
+    return {
+      symbolLabel: practiceContractRoot(tradeInstrument),
+      quantityLabel: String(Math.abs(contracts)),
+      tickSize: datafeed?.getTickSize?.(tradeInstrument) ?? 0.25,
+      tickValue: datafeed?.getTickValue?.(tradeInstrument) ?? 0.5,
+    }
+  }
+
+  calcMarkPnl(cacheKey: string, entry: number, mark: number, contracts: number): number {
+    const position = this.cache.get(cacheKey) as TradeseaCachedPosition | undefined
+    return super.calcMarkPnl(position?.tradeInstrument || cacheKey, entry, mark, contracts)
   }
 
   updateStopLoss(symbol: string, price: number | null, context?: string): void {
@@ -460,10 +500,11 @@ export class TradeseaTradeCache extends ChartTradeCache {
     if (!this.chart || !cacheKey) return
 
     const instrument = this.handler.resolveInstrumentPublic(cacheKey)
-    const openPositions = knownPosition
-      ? [knownPosition]
-      : findPositionsForInstrument(this.propFirm.positions, instrument)
-    const pos = openPositions[0]
+    const pos = knownPosition ?? findPositionForChartInstrument(
+      this.propFirm.positions,
+      instrument,
+      getShowMicroPositionsOnMiniCharts()
+    )
     if (!pos?.id || !pos.qty) {
       const cached = this.getPosition(cacheKey)
       if (cached?.contracts) {
@@ -481,7 +522,10 @@ export class TradeseaTradeCache extends ChartTradeCache {
     const brackets = bracketOrdersForPosition(this.propFirm.orders, pos.id)
     const existing = this.getPosition(cacheKey) as TradeseaCachedPosition | undefined
 
-    const softStop = this.softStops.get(instrument)
+    const tradeInstrument = pos.instrument
+      ? this.handler.resolveInstrumentPublic(pos.instrument)
+      : instrument
+    const softStop = this.softStops.get(tradeInstrument)
     const { stopLoss: brokerStopLoss, takeProfit, stopLossOrderId: brokerStopLossOrderId, takeProfitOrderId } =
       this.resolveBracketPrices(existing, brackets)
     const stopLoss = softStop?.price ?? brokerStopLoss
@@ -512,6 +556,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
 
     if (existing) {
       existing.positionId = pos.id
+      existing.tradeInstrument = tradeInstrument
       existing.stopLossOrderId = stopLossOrderId
       existing.takeProfitOrderId = takeProfitOrderId
       existing.entry = entry
@@ -526,20 +571,26 @@ export class TradeseaTradeCache extends ChartTradeCache {
       return
     }
 
-    this.onOpenPosition(
-      cacheKey,
-      entry,
-      contracts,
-      stopLoss,
-      takeProfit,
-      Math.floor(Date.now() / 1000),
-      null,
-      brackets.stopLoss?.id ?? null,
-      brackets.takeProfit?.id ?? null
-    )
+    this.pendingTradeInstrument = tradeInstrument
+    try {
+      this.onOpenPosition(
+        cacheKey,
+        entry,
+        contracts,
+        stopLoss,
+        takeProfit,
+        Math.floor(Date.now() / 1000),
+        null,
+        brackets.stopLoss?.id ?? null,
+        brackets.takeProfit?.id ?? null
+      )
+    } finally {
+      this.pendingTradeInstrument = null
+    }
     const created = this.getPosition(cacheKey)
     if (created) {
       created.positionId = pos.id
+      created.tradeInstrument = tradeInstrument
       created.stopLossMode = softStop ? 'soft' : 'hard'
       created.softStopTrigger = softStop ? 'bar_close' : undefined
       created.softStopResolution = softStop?.resolution
@@ -557,6 +608,19 @@ export class TradeseaTradeCache extends ChartTradeCache {
   ): void {
     const position = this.getPosition(cacheKey)
     if (!position || !contracts) return
+
+    // The cache key is the visible chart (for example NQ), while the broker
+    // position may be its micro contract (MNQ). Reapply presentation after the
+    // broker instrument is attached so an already-created pill cannot retain
+    // the chart's default label or tick economics.
+    const widget = this.getWidget() as {
+      positionOverlay?: {
+        setPresentation?: (presentation: ReturnType<TradeseaTradeCache['getPositionPresentation']>) => unknown
+      }
+    } | null
+    widget?.positionOverlay?.setPresentation?.(
+      this.getPositionPresentation(cacheKey, contracts)
+    )
 
     const datafeed = this.getDatafeed()
     const lastBar = datafeed?.getLastBarForChart?.(this.chart)

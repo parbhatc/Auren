@@ -21,6 +21,7 @@ import { debugPracticeChartSymbol } from '../tradesea/practiceChartSymbolDebug'
 import { candleDebug } from '../tradesea/candleDebug'
 import { CHART_ORDER_LINE_THEME } from '../../constants/chartOrderLineTheme'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
+import { registerAurenWidget } from '../../chart/aurenWidgetRegistry'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
@@ -349,6 +350,7 @@ export default function AurenChart(props: AurenChartProps) {
     if (!mount) return
 
     let cancelled = false
+    let unregisterWidget: (() => void) | null = null
     let compactToolbarObserver: MutationObserver | null = null
 
     if (!datafeedSource) return
@@ -419,6 +421,7 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         widgetRef.current = widget
+        unregisterWidget = registerAurenWidget(widget)
         await propsRef.current.onWidgetReady?.(widget)
 
         if (chartReloadPendingRef.current || mdsNeedsHistoryReloadRef.current) {
@@ -467,6 +470,8 @@ export default function AurenChart(props: AurenChartProps) {
         registerTradeContextActions: () => {},
         clearChartContextActions: () => {},
       })
+      unregisterWidget?.()
+      unregisterWidget = null
       widgetRef.current?.destroy?.()
       widgetRef.current = null
       purgeOrphanedBwcFloatingToolbars()
