@@ -13,6 +13,7 @@ const websocketPaths = [
   '/tradesea-trades-ws',
   '/practice-account-ws',
   '/practice-market-data-ws',
+  '/api/tradingview/stream',
   '/backtester-ws',
   '/backtester/data-management-ws',
 ]
