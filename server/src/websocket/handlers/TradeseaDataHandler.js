@@ -14,10 +14,49 @@ import {
 } from '../../utils/backtesterCsvPaths.js'
 import { normalizeTradeseaMarketDataSymbol } from '../../utils/tradeseaMarketDataSymbol.js'
 
+const DEFAULT_HISTORY_CHUNK_SIZE = 5_000
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function historyChunkSize(value) {
+  return Math.min(DEFAULT_HISTORY_CHUNK_SIZE, Math.max(500, Math.floor(Number(value) || DEFAULT_HISTORY_CHUNK_SIZE)))
+}
+
+function isRateLimited(response) {
+  return Number(response?.statusCode) === 429
+}
+
+function retryAfterMs(response, fallbackMs) {
+  const value = response?.headers?.['retry-after']
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+  if (value) {
+    const timestamp = Date.parse(String(value))
+    if (Number.isFinite(timestamp)) return Math.max(0, timestamp - Date.now())
+  }
+  return fallbackMs
+}
+
 class TradeseaDataHandler {
-  constructor(websocketInstance, identityService = TradeseaIdentityService) {
+  constructor(websocketInstance, identityService = TradeseaIdentityService, options = {}) {
     this.ws = websocketInstance
     this.identityService = identityService
+    const retries = Number(options.historyRetries ?? process.env.TRADESEA_HISTORY_RETRIES)
+    const retryBaseMs = Number(options.historyRetryBaseMs ?? process.env.TRADESEA_HISTORY_RETRY_BASE_MS)
+    const requestIntervalMs = Number(options.historyRequestIntervalMs ?? process.env.TRADESEA_HISTORY_REQUEST_INTERVAL_MS)
+    this.historyRetries = Math.max(0, Number.isFinite(retries) ? retries : 3)
+    this.historyRetryBaseMs = Math.max(100, Number.isFinite(retryBaseMs) ? retryBaseMs : 1_000)
+    this.historyRequestIntervalMs = Math.max(0, Number.isFinite(requestIntervalMs) ? requestIntervalMs : 350)
+    this.wait = options.wait || wait
+    this.nextHistoryRequestAt = 0
+  }
+
+  async waitForHistorySlot() {
+    const delay = Math.max(0, this.nextHistoryRequestAt - Date.now())
+    if (delay) await this.wait(delay)
+    this.nextHistoryRequestAt = Date.now() + this.historyRequestIntervalMs
   }
 
   async getHistory(connection, symbol, resolution, countback, from, to) {
@@ -35,11 +74,18 @@ class TradeseaDataHandler {
       countback: String(countback),
       currencyCode: 'USD',
     })
-    const response = await this.identityService.proxyUdfRequest(
-      connection.tokens,
-      connection.accountId,
-      `/history?${params.toString()}`
-    )
+    let response
+    for (let attempt = 0; ; attempt += 1) {
+      await this.waitForHistorySlot()
+      response = await this.identityService.proxyUdfRequest(
+        connection.tokens,
+        connection.accountId,
+        `/history?${params.toString()}`
+      )
+      if (!isRateLimited(response) || attempt >= this.historyRetries) break
+      const fallback = this.historyRetryBaseMs * (2 ** attempt)
+      await this.wait(retryAfterMs(response, fallback))
+    }
     let body = response.body
     if (typeof body === 'string') {
       try {
@@ -84,12 +130,12 @@ class TradeseaDataHandler {
   /**
    * Download Tradesea data and save to CSV files
    */
-  async download(apiSymbol, normalizedSymbol, connection, action = 'download', chartResolution = '1') {
+  async download(apiSymbol, normalizedSymbol, connection, action = 'download', chartResolution = '1', requestedChunkSize) {
     try {
       const resolution = String(chartResolution || '1')
       const csvResolution = csvFolderForChartResolution(resolution)
       let toTime = Math.floor(Date.now() / 1000)
-      const countback = 25000
+      const countback = historyChunkSize(requestedChunkSize)
 
       const allBars = []
       let overallFirstBarTime = null
@@ -148,7 +194,7 @@ class TradeseaDataHandler {
             `Fetched ${allBars.length} bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
           toTime = Math.floor(lastBar.t / 1000) - 1
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await this.wait(this.historyRequestIntervalMs)
         } catch (error) {
           console.error(`[TradeseaDataHandler] Error fetching chunk:`, error.message)
           throw error
@@ -235,7 +281,7 @@ class TradeseaDataHandler {
   /**
    * Update Tradesea data (merges with existing)
    */
-  async update(apiSymbol, normalizedSymbol, connection, chartResolution = '1') {
+  async update(apiSymbol, normalizedSymbol, connection, chartResolution = '1', requestedChunkSize) {
     try {
       const resolution = String(chartResolution || '1')
       const csvResolution = csvFolderForChartResolution(resolution)
@@ -266,7 +312,7 @@ class TradeseaDataHandler {
       
       const allNewBars = []
       let toTime = nowTimestamp
-      const countback = 25000
+      const countback = historyChunkSize(requestedChunkSize)
       let overallFirstBarTime = null
       let overallLastBarTime = null
 
@@ -350,7 +396,7 @@ class TradeseaDataHandler {
             `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
 
           toTime = Math.floor(lastBar.t / 1000) - 1
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await this.wait(this.historyRequestIntervalMs)
         } catch (error) {
           console.error(`[TradeseaDataHandler] Error fetching update chunk:`, error.message)
           throw error

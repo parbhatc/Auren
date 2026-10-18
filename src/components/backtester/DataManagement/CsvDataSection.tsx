@@ -299,8 +299,9 @@ export default function CsvDataSection({
             csvFolderToChartResolution(target.resolution),
             { quiet: true, refreshInventory: false }
           )
-        } catch {
-          failures.push(`${target.symbol} ${target.resolution}`)
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'Update failed'
+          failures.push(`${target.symbol} ${target.resolution} — ${reason}`)
         }
         setUpdateAllState({
           completed: index + 1,

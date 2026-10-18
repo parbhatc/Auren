@@ -698,7 +698,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Start download process using handler
         this.runDataHandlerSafely(
-          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'download', resolution),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'download', resolution, chunkSize),
           { action: 'download', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -795,7 +795,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Update data using handler
         this.runDataHandlerSafely(
-          this.tradeseaHandler.update(apiSymbol, normalizedSymbol, connection, resolution),
+          this.tradeseaHandler.update(apiSymbol, normalizedSymbol, connection, resolution, chunkSize),
           { action: 'update', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {
@@ -894,7 +894,7 @@ class BacktesterDataWebSocket extends WebSocketBase {
 
         // Overwrite data (same as download but doesn't delete folder)
         this.runDataHandlerSafely(
-          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'overwrite', resolution),
+          this.tradeseaHandler.download(apiSymbol, normalizedSymbol, connection, 'overwrite', resolution, chunkSize),
           { action: 'overwrite', symbol: normalizedSymbol, source, operationKey }
         )
       } else if (source === 'tradingview') {

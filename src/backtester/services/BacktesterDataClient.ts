@@ -199,7 +199,7 @@ export class BacktesterDataClient extends WebSocketClientBase {
    * @param symbol - The symbol to update
    * @param source - The source ('tradesea' or 'tradingview')
    */
-  sendUpdate(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1', chunkSize = 25_000): void {
+  sendUpdate(storageSymbol: string, source: 'tradesea' | 'tradingview', ticker?: string, resolution = '1', chunkSize = 5_000): void {
     const serverSource = source === 'tradesea' ? 'tradesea' : 'tradingview'
     this.send({
       type: 'update',

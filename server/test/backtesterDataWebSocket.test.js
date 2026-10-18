@@ -75,6 +75,37 @@ test('Tradesea CSV history uses delayed symbols for sandbox market data', async 
   assert.equal(requestUrl.searchParams.get('symbol'), 'CME-Delayed:NQ')
 })
 
+test('Tradesea CSV history backs off and retries HTTP 429 responses', async () => {
+  const delays = []
+  let attempts = 0
+  const identityService = {
+    async proxyUdfRequest() {
+      attempts += 1
+      if (attempts < 3) {
+        return { statusCode: 429, headers: {}, body: JSON.stringify({ message: 'Too many requests' }) }
+      }
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ s: 'ok', t: [100], o: [1], h: [2], l: [0.5], c: [1.5], v: [3] }),
+      }
+    },
+  }
+  const handler = new TradeseaDataHandler({}, identityService, {
+    historyRetries: 3,
+    historyRetryBaseMs: 100,
+    historyRequestIntervalMs: 0,
+    wait: async (ms) => delays.push(ms),
+  })
+
+  const result = await handler.getHistory({
+    tokens: {}, accountId: 'account-1', userId: 'user-1', connectionGroupId: 'group-1', delayed: false,
+  }, 'CME:NQ', '1', 5_000, 0, 300)
+
+  assert.equal(attempts, 3)
+  assert.deepEqual(delays, [100, 200])
+  assert.equal(result.bars.length, 1)
+})
+
 test('Tradesea CSV updates keep sub-minute data in its own resolution folder', async (t) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-tradesea-csv-'))
   t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }))
