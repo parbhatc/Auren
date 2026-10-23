@@ -176,11 +176,14 @@ export const renderPracticeTradeLayout = (
     showMobileNav?: boolean
     /** When false, the right column is a bare flex host (nested panels supply their own frames). */
     panelFrame?: boolean
+    /** Keep the panel mounted for chart-driven actions without reserving sidebar space. */
+    panelHidden?: boolean
   }
 ) => {
   const panelWidth = options?.panelWidth ?? 312
   const mobileScalpBar = options?.mobileScalpBar ?? null
   const panelFrame = options?.panelFrame !== false
+  const panelHidden = options?.panelHidden === true
   const showMobileNav = options?.showMobileNav !== false
   const hasScalpBar = mobileScalpBar != null
   const chartNavClearance =
@@ -204,11 +207,14 @@ export const renderPracticeTradeLayout = (
       {panelElement != null && (
         <div
           className={
-            panelFrame
+            panelHidden
+              ? 'hidden'
+              : panelFrame
               ? 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[#27272A] bg-[#18181B]'
               : 'hidden lg:flex h-full min-h-0 shrink-0 flex-col overflow-hidden gap-3'
           }
-          style={{ width: panelWidth }}
+          style={panelHidden ? undefined : { width: panelWidth }}
+          aria-hidden={panelHidden || undefined}
         >
           {panelElement}
         </div>

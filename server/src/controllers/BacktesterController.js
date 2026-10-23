@@ -8,6 +8,7 @@ import Database from '../config/Database.js'
 import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 import { listAllCsvFiles, listSymbolCsvFiles, listSymbolCsvResolutions, listSymbolChartResolutions } from '../utils/backtesterCsvPaths.js'
 import { buildCsvInventory } from '../utils/backtesterCsvInventory.js'
+import { calculateBacktesterTradePnl } from '../utils/backtesterTradePnl.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -738,22 +739,15 @@ class BacktesterController {
         // Get symbol config (tick size, tick value, and fees)
         const { tickSize, tickValue, totalFees } = this.getSymbolConfig(symbol)
         
-        // Calculate P&L based on direction
-        const contractsCount = Math.abs(contractsNumber)
-        let pnl
-        if (normalizedDirection === 'short') {
-          const priceDiff = entryPriceNumber - exitPriceNumber
-          const ticks = priceDiff / tickSize
-          pnl = ticks * tickValue * contractsCount
-        } else {
-          const priceDiff = exitPriceNumber - entryPriceNumber
-          const ticks = priceDiff / tickSize
-          pnl = ticks * tickValue * contractsCount
-        }
-        
-        // Subtract fees (fees apply per contract)
-        const feesPerTrade = totalFees * contractsCount
-        const netPnL = pnl - feesPerTrade
+        const netPnL = calculateBacktesterTradePnl({
+          direction: normalizedDirection,
+          entryPrice: entryPriceNumber,
+          exitPrice: exitPriceNumber,
+          contracts: contractsNumber,
+          tickSize,
+          tickValue,
+          totalFees,
+        })
         
         // Update session balance
         const storedBalance = Number(session.current_balance ?? session.initial_balance ?? 50000)
@@ -933,22 +927,15 @@ class BacktesterController {
         // Get symbol config for P&L calculation
         const { tickSize, tickValue, totalFees } = this.getSymbolConfig(trade.symbol)
         
-        // Calculate P&L (same as when trade was saved)
-        const contracts = Math.abs(trade.contracts || 0)
-        let pnl
-        if (trade.direction?.toLowerCase() === 'short') {
-          const priceDiff = trade.entry_price - trade.exit_price
-          const ticks = priceDiff / tickSize
-          pnl = ticks * tickValue * contracts
-        } else {
-          const priceDiff = trade.exit_price - trade.entry_price
-          const ticks = priceDiff / tickSize
-          pnl = ticks * tickValue * contracts
-        }
-        
-        // Subtract fees (fees apply per contract)
-        const feesPerTrade = totalFees * contracts
-        const netPnL = pnl - feesPerTrade
+        const netPnL = calculateBacktesterTradePnl({
+          direction: trade.direction,
+          entryPrice: trade.entry_price,
+          exitPrice: trade.exit_price,
+          contracts: trade.contracts,
+          tickSize,
+          tickValue,
+          totalFees,
+        })
         
         // Get current session balance
         const session = await Database.get(
@@ -1043,23 +1030,15 @@ class BacktesterController {
           // Get symbol config (tick size, tick value, and fees)
           const { tickSize, tickValue, totalFees } = this.getSymbolConfig(trade.symbol)
           
-          // Calculate P&L based on direction
-          const contracts = Math.abs(trade.contracts || 0)
-          let pnl
-          if (trade.direction?.toLowerCase() === 'short') {
-            const priceDiff = trade.entry_price - trade.exit_price
-            const ticks = priceDiff / tickSize
-            pnl = ticks * tickValue * contracts
-          } else {
-            const priceDiff = trade.exit_price - trade.entry_price
-            const ticks = priceDiff / tickSize
-            pnl = ticks * tickValue * contracts
-          }
-          
-          // Subtract fees (fees apply per contract)
-          const feesPerTrade = totalFees * contracts
-          
-          return sum + pnl - feesPerTrade
+          return sum + calculateBacktesterTradePnl({
+            direction: trade.direction,
+            entryPrice: trade.entry_price,
+            exitPrice: trade.exit_price,
+            contracts: trade.contracts,
+            tickSize,
+            tickValue,
+            totalFees,
+          })
         }, 0)
 
       // Calculate unrealized P&L from open positions (trades without exit_price) on current date

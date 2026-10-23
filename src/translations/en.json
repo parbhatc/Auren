@@ -346,7 +346,7 @@
       "none": "None"
     },
     "resetConfirmTitle": "Confirm Reset",
-    "resetConfirmMessage": "Are you sure you want to reset this session? All trades and results will be deleted. This action cannot be undone.",
+    "resetConfirmMessage": "Are you sure you want to reset this session? Any active position and its TP/SL will be canceled, and all trades and results will be deleted. This action cannot be undone.",
     "deleteSession": "Delete Session",
     "deleteConfirm": "Are you sure you want to delete this session? This action cannot be undone.",
     "sessionNamePlaceholder": "Enter session name",

@@ -75,7 +75,10 @@ export function buildBacktesterTradePadProps({
       )
     },
     onClose: (quantity, symbol) => tradeHandler?.logButtonPress('Close Position', {
-      quantity,
+      quantity:
+        Number.isFinite(Number(quantity)) && Number(quantity) > 0
+          ? Number(quantity)
+          : Number(contractQuantity) || 1,
       symbol: symbol || getChartSymbol(),
     }),
     onReverse: () => tradeHandler?.logButtonPress('Reverse Position', { symbol: getChartSymbol() }),

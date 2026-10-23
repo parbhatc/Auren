@@ -21,6 +21,7 @@ import Modal from '../../common/Modal'
 import { BacktestSession, NewSessionData } from '../../../types/backtester'
 import { DEFAULT_BACKTESTER_SYMBOL } from '../../../backtester/constants'
 import { UserData } from '../../../types/user'
+import { clearSavedReplayPositions } from '../../../utils/replayPreferences'
 
 /**
  * Replay sessions — standalone `/backtester` or embedded on hub `/?mode=replay`.
@@ -196,6 +197,7 @@ const BacktesterSessionsListWrapper = ({
 
     try {
       await backtesterAPI.updateSession(pendingResetSession)
+      clearSavedReplayPositions(pendingResetSession.id)
       await loadSessions()
       setResetSessionId(null)
       setResetError(null)
@@ -364,7 +366,7 @@ const BacktesterSessionsListWrapper = ({
       >
         <div className="space-y-4">
           <p className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-            {t('backtester.resetConfirmMessage', {}, 'Are you sure you want to reset this session? All trades and results will be deleted. This action cannot be undone.')}
+            {t('backtester.resetConfirmMessage', {}, 'Are you sure you want to reset this session? Any active position and its TP/SL will be canceled, and all trades and results will be deleted. This action cannot be undone.')}
           </p>
           <div className="flex items-center gap-4 pt-4">
             <button

@@ -242,9 +242,18 @@ class ChartTradeCache {
   }
 
   private runRealTimeBar(symbol: string, bar: any, tickSize: number|null = null, tickValue: number|null = null) {
-    const resolved = this.getPositionForActiveChart(symbol)
+    // Realtime callbacks arrive for every pane. Prefer an exact position for
+    // the callback's symbol and only fall back to the chart-position resolver
+    // when this bar actually belongs to the chart that owns the overlay. This
+    // prevents an ES pane update from marking or closing an NQ position.
+    const exactPosition = this.cache.get(symbol)
+    const resolved = exactPosition
+      ? { key: symbol, position: exactPosition }
+      : this.symbolMatchesActiveChart(symbol)
+        ? this.getPositionForActiveChart(symbol)
+        : null
     const cacheKey = resolved?.key ?? symbol
-    let position = resolved?.position ?? this.cache.get(symbol)
+    let position = resolved?.position
 
     if(position){
       if(!position.line && bar && bar.close !== null && bar.close !== undefined){
@@ -403,7 +412,8 @@ class ChartTradeCache {
       if(update){
         this.handleUpdateSize(oldSize, position.contracts, position)
         if(position.line && typeof position.line.updatePositionLine === 'function'){
-          position.line.updatePositionLine(position.entry, position.contracts, position.type)
+          const currentPrice = position.line.get?.('position')?.getPrice?.() ?? position.entry
+          position.line.updatePositionLine(position.entry, currentPrice, position.contracts)
         }
       }else{
         // Restore original contracts before calling handleClosePosition

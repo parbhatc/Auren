@@ -73,8 +73,23 @@ export class BwcPositionLineHandle {
     return undefined
   }
 
-  updatePositionLine(entry: number, _mark: number, contracts: number): boolean {
+  updatePositionLine(
+    entry: number,
+    markOrContracts: number,
+    contractsOrType: number | string
+  ): boolean {
     if (!this.active()) return false
+    // ChartTradeCache has two legacy call shapes:
+    //   (entry, mark, signedContracts) while scaling in, and
+    //   (entry, signedContracts, positionType) after a partial close.
+    // Reading the third argument unconditionally turned "short" into the
+    // quantity, causing BWC to clear the position overlay after closing one
+    // contract even though the host cache still held the remainder.
+    const thirdArgContracts = Number(contractsOrType)
+    const contracts = Number.isFinite(thirdArgContracts)
+      ? thirdArgContracts
+      : Number(markOrContracts)
+    if (!Number.isFinite(contracts) || contracts === 0) return false
     const position = this.bridge.tradeCache.getPosition(this.symbol) as {
       stopLoss?: number | null
       takeProfit?: number | null
@@ -156,7 +171,6 @@ export class BwcPositionLineHandle {
 
 export class BwcPositionBridge {
   private wired = false
-  private suppressChartEvents = false
   private activeSymbol: string | null = null
   private readonly handles = new Map<string, BwcPositionLineHandle>()
   private offLiveBar: (() => void) | null = null
@@ -218,7 +232,6 @@ export class BwcPositionBridge {
     })
 
     overlay.onStopLossChanged((_old, newPrice) => {
-      if (this.suppressChartEvents) return
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateStopLoss(symbol, null, 'onCancel')
@@ -226,7 +239,6 @@ export class BwcPositionBridge {
     })
 
     overlay.onTakeProfitChanged((_old, newPrice) => {
-      if (this.suppressChartEvents) return
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateTakeProfit(symbol, null, 'onCancel')
@@ -315,12 +327,26 @@ export class BwcPositionBridge {
     if (!overlay || revision !== this.syncRevision || this.activeSymbol !== symbol) return
 
     const createBrackets = opts.createBrackets !== false
+    const cachedPosition = this.tradeCache.getPosition(symbol) as {
+      stopLoss?: number | null
+      takeProfit?: number | null
+    } | null
+    // A queued sync can start after the user has already dragged a bracket.
+    // Always prefer the live cache over the prices captured when sync() was
+    // enqueued so an older chart task cannot restore a stale exit level.
+    const desiredStopLoss = cachedPosition
+      ? cachedPosition.stopLoss ?? null
+      : stopLoss
+    const desiredTakeProfit = cachedPosition
+      ? cachedPosition.takeProfit ?? null
+      : takeProfit
     const current = overlay.getPosition()
     const unchanged =
       current?.entry === entry &&
       current.qty === contracts &&
       (!createBrackets ||
-        (current.stopLoss === stopLoss && current.takeProfit === takeProfit))
+        (current.stopLoss === desiredStopLoss &&
+          current.takeProfit === desiredTakeProfit))
     if (unchanged) return
 
     const sameSide =
@@ -328,73 +354,57 @@ export class BwcPositionBridge {
       current.qty !== 0 &&
       Math.sign(current.qty) === Math.sign(contracts)
 
-    this.suppressChartEvents = true
-    try {
-      if (
-        sameSide &&
-        overlay.modifyPosition &&
-        (current.entry !== entry || current.qty !== contracts)
-      ) {
-        await overlay.modifyPosition({ entry, qty: contracts })
-      } else if (
-        !current ||
-        current.entry !== entry ||
-        current.qty !== contracts ||
-        !sameSide
-      ) {
-        this.clearOverlayProgrammatically(overlay)
-        const qty = Math.abs(contracts)
-        if (contracts > 0) await overlay.buy({ price: entry, qty })
-        else if (contracts < 0) await overlay.sell({ price: entry, qty })
-      }
-
-      if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
-        // A close occurred while the async overlay mutation was in flight.
-        // Newer syncs are queued behind this one, so clearing here cannot erase
-        // a replacement position.
-        this.clearOverlayProgrammatically(overlay)
-        return
-      }
-
-      if (!createBrackets) return
-
-      const snap = overlay.getPosition()
-      if (stopLoss != null) {
-        if (snap?.stopLoss !== stopLoss) await overlay.setStopLoss(stopLoss)
-      } else if (snap?.stopLoss != null) {
-        overlay.clearStopLoss()
-      }
-
-      if (takeProfit != null) {
-        if (snap?.takeProfit !== takeProfit) await overlay.setTakeProfit(takeProfit)
-      } else if (snap?.takeProfit != null) {
-        overlay.clearTakeProfit()
-      }
-
-      if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
-        this.clearOverlayProgrammatically(overlay)
-        return
-      }
-
-      this.writeBracketsToCache(symbol, stopLoss, takeProfit)
-      this.getOverlay()?.refreshLayout?.()
-    } finally {
-      this.suppressChartEvents = false
+    if (
+      sameSide &&
+      overlay.modifyPosition &&
+      (current.entry !== entry || current.qty !== contracts)
+    ) {
+      await overlay.modifyPosition({ entry, qty: contracts })
+    } else if (
+      !current ||
+      current.entry !== entry ||
+      current.qty !== contracts ||
+      !sameSide
+    ) {
+      this.clearOverlayProgrammatically(overlay)
+      const qty = Math.abs(contracts)
+      if (contracts > 0) await overlay.buy({ price: entry, qty })
+      else if (contracts < 0) await overlay.sell({ price: entry, qty })
     }
-  }
 
-  private writeBracketsToCache(
-    symbol: string,
-    stopLoss?: number | null,
-    takeProfit?: number | null
-  ): void {
-    const position = this.tradeCache.getPosition(symbol) as {
-      stopLoss?: number | null
-      takeProfit?: number | null
-    } | null
-    if (!position) return
-    if (stopLoss !== undefined) position.stopLoss = stopLoss
-    if (takeProfit !== undefined) position.takeProfit = takeProfit
+    if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
+      // A close occurred while the async overlay mutation was in flight.
+      // Newer syncs are queued behind this one, so clearing here cannot erase
+      // a replacement position.
+      this.clearOverlayProgrammatically(overlay)
+      return
+    }
+
+    if (!createBrackets) return
+
+    const snap = overlay.getPosition()
+    if (desiredStopLoss != null) {
+      if (snap?.stopLoss !== desiredStopLoss) {
+        await overlay.setStopLoss(desiredStopLoss)
+      }
+    } else if (snap?.stopLoss != null) {
+      overlay.clearStopLoss()
+    }
+
+    if (desiredTakeProfit != null) {
+      if (snap?.takeProfit !== desiredTakeProfit) {
+        await overlay.setTakeProfit(desiredTakeProfit)
+      }
+    } else if (snap?.takeProfit != null) {
+      overlay.clearTakeProfit()
+    }
+
+    if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
+      this.clearOverlayProgrammatically(overlay)
+      return
+    }
+
+    this.getOverlay()?.refreshLayout?.()
   }
 
   updateStopLoss(
@@ -413,26 +423,18 @@ export class BwcPositionBridge {
     const overlay = this.getOverlay()
     if (!overlay || !this.isActiveSymbol(symbol)) return false
 
-    this.suppressChartEvents = true
-    try {
-      if (price == null) {
-        overlay.clearStopLoss()
-        if (context !== 'sync') this.tradeCache.updateStopLoss(symbol, null, context)
-        this.writeBracketsToCache(symbol, null)
-        return true
-      }
-      if (context === 'sync') {
-        void overlay.setStopLoss(price)
-        this.writeBracketsToCache(symbol, price)
-        return true
-      }
-      this.tradeCache.updateStopLoss(symbol, price, context)
-      void overlay.setStopLoss(price)
-      this.writeBracketsToCache(symbol, price)
+    if (price == null) {
+      overlay.clearStopLoss()
+      if (context !== 'sync') this.tradeCache.updateStopLoss(symbol, null, context)
       return true
-    } finally {
-      this.suppressChartEvents = false
     }
+    if (context === 'sync') {
+      void overlay.setStopLoss(price)
+      return true
+    }
+    this.tradeCache.updateStopLoss(symbol, price, context)
+    void overlay.setStopLoss(price)
+    return true
   }
 
   updateTakeProfit(
@@ -451,25 +453,17 @@ export class BwcPositionBridge {
     const overlay = this.getOverlay()
     if (!overlay || !this.isActiveSymbol(symbol)) return false
 
-    this.suppressChartEvents = true
-    try {
-      if (price == null) {
-        overlay.clearTakeProfit()
-        if (context !== 'sync') this.tradeCache.updateTakeProfit(symbol, null, context)
-        this.writeBracketsToCache(symbol, undefined, null)
-        return true
-      }
-      if (context === 'sync') {
-        void overlay.setTakeProfit(price)
-        this.writeBracketsToCache(symbol, undefined, price)
-        return true
-      }
-      this.tradeCache.updateTakeProfit(symbol, price, context)
-      void overlay.setTakeProfit(price)
-      this.writeBracketsToCache(symbol, undefined, price)
+    if (price == null) {
+      overlay.clearTakeProfit()
+      if (context !== 'sync') this.tradeCache.updateTakeProfit(symbol, null, context)
       return true
-    } finally {
-      this.suppressChartEvents = false
     }
+    if (context === 'sync') {
+      void overlay.setTakeProfit(price)
+      return true
+    }
+    this.tradeCache.updateTakeProfit(symbol, price, context)
+    void overlay.setTakeProfit(price)
+    return true
   }
 }

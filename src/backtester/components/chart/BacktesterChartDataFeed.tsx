@@ -490,9 +490,12 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     if (!bar || bar.close == null || !Number.isFinite(bar.close)) return null
 
     const last = bar.close
-    const tick = this.getTickSize(root)
-    const bid = last - tick
-    const ask = last + tick
+    // Replay bars do not contain bid/ask quotes. Inventing a spread here made
+    // a newly opened position appear one tick underwater immediately (for
+    // example 52 MNQ contracts displayed -$26). Use the replay close as the
+    // executable book until the backtester has real quote data.
+    const bid = last
+    const ask = last
     const vol = Number(bar.volume) || 0
 
     return {

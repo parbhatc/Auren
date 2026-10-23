@@ -2,6 +2,11 @@ import ChartTradeCache from '../../components/common/ChartTradeCache'
 import { backtesterAPI } from '../../api/backtester.api'
 import { BacktesterTradeHandler } from './BacktesterTradeHandler'
 import type { BacktesterChartDataFeed } from '../components/chart/BacktesterChartDataFeed'
+import {
+  loadSavedReplayPositions,
+  saveReplayPositions,
+  type SavedReplayPosition,
+} from '../../utils/replayPreferences'
 
 /**
  * Backtester Trade Cache
@@ -11,6 +16,7 @@ class BacktesterTradeCache extends ChartTradeCache {
   private tradeHandler: BacktesterTradeHandler
   private sessionId: string | null = null
   private pendingExecutionSymbol: string | null = null
+  private restoringSavedPositions = false
 
   private normalizeTradeTimestampSec(value: number | null | undefined): number {
     const num = Number(value)
@@ -27,8 +33,84 @@ class BacktesterTradeCache extends ChartTradeCache {
     this.tradeHandler = handler
     const session = handler.getSession()
     this.sessionId = session?.id || null
+    this.restoreSavedPositions()
     // Load balance from database
     this.loadSessionBalance()
+  }
+
+  private getSavedPositionRows(): SavedReplayPosition[] {
+    return [...this.cache.entries()].flatMap(([chartSymbol, position]) => {
+      const contracts = Number(position?.contracts)
+      if (!position || !Number.isFinite(contracts) || contracts === 0) return []
+      return [{
+        chartSymbol,
+        executionSymbol: String(position.executionSymbol || '').trim() || undefined,
+        entry: Number(position.entry),
+        contracts,
+        stopLoss:
+          position.stopLoss != null && Number.isFinite(Number(position.stopLoss))
+            ? Number(position.stopLoss)
+            : null,
+        takeProfit:
+          position.takeProfit != null && Number.isFinite(Number(position.takeProfit))
+            ? Number(position.takeProfit)
+            : null,
+        entryTime: this.normalizeTradeTimestampSec(position.entryTime),
+        stopLossMode: position.stopLossMode === 'soft' ? 'soft' as const : 'hard' as const,
+        softStopTrigger: 'bar_close' as const,
+      }]
+    })
+  }
+
+  private persistSavedPositions(): void {
+    if (this.restoringSavedPositions) return
+    saveReplayPositions(this.sessionId, this.getSavedPositionRows())
+  }
+
+  private restoreSavedPositions(): void {
+    const saved = loadSavedReplayPositions(this.sessionId)
+    if (!saved.length) return
+    this.restoringSavedPositions = true
+    try {
+      for (const row of saved) {
+        const position = super.onOpenPosition(
+          row.chartSymbol,
+          row.entry,
+          row.contracts,
+          row.stopLoss,
+          row.takeProfit,
+          row.entryTime,
+          null,
+          null,
+          null,
+          row.stopLossMode,
+          row.softStopTrigger,
+        )
+        if (position) position.executionSymbol = row.executionSymbol || row.chartSymbol
+      }
+    } finally {
+      this.restoringSavedPositions = false
+    }
+    queueMicrotask(() => {
+      this.tradeHandler.onPositionUpdate?.()
+      const symbol = this.tradeHandler.resolveChartSymbol()
+      this.tradeHandler.onUnrealizedPnLUpdate?.(
+        this.tradeHandler.getPositionUplFor(symbol) ?? 0
+      )
+    })
+  }
+
+  switchSession(sessionId: string | null): void {
+    if (sessionId === this.sessionId) return
+    this.persistSavedPositions()
+    this.restoringSavedPositions = true
+    try {
+      super.onFlattenAllPosition()
+    } finally {
+      this.restoringSavedPositions = false
+    }
+    this.sessionId = sessionId
+    this.restoreSavedPositions()
   }
 
   getDatafeed(): BacktesterChartDataFeed | null {
@@ -56,7 +138,10 @@ class BacktesterTradeCache extends ChartTradeCache {
         stopLoss,
         takeProfit
       )
-      if (position) position.executionSymbol = executionSymbol
+      if (position) {
+        position.executionSymbol = executionSymbol
+        this.persistSavedPositions()
+      }
       return position
     } finally {
       this.pendingExecutionSymbol = null
@@ -109,6 +194,12 @@ class BacktesterTradeCache extends ChartTradeCache {
       position.takeProfit ?? null
     )
     super.handleClosePosition(position, price, exitTime)
+    this.persistSavedPositions()
+  }
+
+  handleOpenPosition(position: any) {
+    super.handleOpenPosition(position)
+    this.persistSavedPositions()
   }
 
   handleUpdateSize(oldSize: number, newSize: number, position: any) {
@@ -137,6 +228,101 @@ class BacktesterTradeCache extends ChartTradeCache {
       )
     }
     super.handleUpdateSize(oldSize, newSize, position)
+    this.persistSavedPositions()
+  }
+
+  handleUpdateStopLoss(price: number | null, oldPrice: number | null, position: any, context?: string) {
+    super.handleUpdateStopLoss(price, oldPrice, position, context)
+    this.persistSavedPositions()
+    this.closeIfMovedBracketShouldFill(position, price, 'stop loss')
+  }
+
+  handleUpdateTakeProfit(price: number | null, oldPrice: number | null, position: any, context?: string) {
+    super.handleUpdateTakeProfit(price, oldPrice, position, context)
+    this.persistSavedPositions()
+    this.closeIfMovedBracketShouldFill(position, price, 'take profit')
+  }
+
+  private closeIfMovedBracketShouldFill(
+    position: any,
+    price: number | null,
+    bracket: 'stop loss' | 'take profit'
+  ): boolean {
+    const bracketPrice = Number(price)
+    const contracts = Number(position?.contracts)
+    const symbol = String(position?.symbol || '').trim()
+    if (
+      price == null ||
+      !Number.isFinite(bracketPrice) ||
+      !Number.isFinite(contracts) ||
+      contracts === 0 ||
+      !symbol ||
+      this.getPosition(symbol) !== position
+    ) return false
+
+    const bar = this.getDatafeed()?.getLastBarForSymbol(symbol)
+    const mark = Number(bar?.close)
+    if (!Number.isFinite(mark)) return false
+
+    const isLong = contracts > 0
+    const marketable = bracket === 'take profit'
+      ? (isLong ? mark >= bracketPrice : mark <= bracketPrice)
+      : (isLong ? mark <= bracketPrice : mark >= bracketPrice)
+    const touchedByCurrentReplayBar = this.didBarHitPrice(bar, bracketPrice)
+    if (!marketable && !touchedByCurrentReplayBar) return false
+
+    this.onClosePosition(
+      symbol,
+      Math.abs(contracts),
+      bracketPrice,
+      bar?.time ?? Date.now()
+    )
+    this.tradeHandler.onPositionUpdate?.()
+    this.tradeHandler.onUnrealizedPnLUpdate?.(0)
+    console.log(
+      `[Backtester Trade Cache] Moved ${bracket} fills on the current replay bar for symbol: `,
+      symbol,
+      ' at price: ',
+      bracketPrice,
+      ' with mark: ',
+      mark
+    )
+    return true
+  }
+
+  onFlattenAllPosition() {
+    super.onFlattenAllPosition()
+    this.persistSavedPositions()
+  }
+
+  /**
+   * Discard one open replay position without booking it as a completed trade.
+   * This is intentionally different from closing at market: it removes the
+   * position and its attached brackets from both the chart and replay restore
+   * storage, while leaving realized P&L and session statistics unchanged.
+   */
+  cancelOpenPosition(symbol?: string): boolean {
+    const requestedSymbol = String(symbol || '').trim()
+    const position = requestedSymbol ? this.getPosition(requestedSymbol) : null
+    const fallback = position ?? [...this.cache.values()].find(
+      (candidate) => Number(candidate?.contracts) !== 0
+    )
+    if (!fallback) return false
+
+    this.clearPositionLocal(fallback)
+    fallback.contracts = 0
+    this.persistSavedPositions()
+    return true
+  }
+
+  /** Discard every open replay position when its owning session is reset. */
+  cancelAllOpenPositions(): boolean {
+    const hadOpenPosition = [...this.cache.values()].some(
+      (position) => Number(position?.contracts) !== 0
+    )
+    if (!hadOpenPosition) return false
+    this.onFlattenAllPosition()
+    return true
   }
 
   async handlePriceUpdate(symbol: string, entryPrice: number, bar: any, tickSize: number, tickValue: number) {
@@ -150,14 +336,26 @@ class BacktesterTradeCache extends ChartTradeCache {
       tickValue = datafeed?.getTickValue(executionSymbol) ?? tickValue
       let stopLoss = position.stopLoss
       let takeProfit = position.takeProfit
+      const mark = Number(bar?.close)
+
+      // BWC's overlay uses an explicit host mark once a routed position opens.
+      // Refresh it from the owning symbol's replay bar so the position pill no
+      // longer remains frozen at $0.00.
+      if (Number.isFinite(mark)) {
+        this.updateActivePositionMark(mark)
+      }
 
       if(this.didBarHitPrice(bar, stopLoss)){
         //stop loss hit
-        this.onClosePosition(symbol, position.contracts, stopLoss, bar.time)
+        this.onClosePosition(symbol, Math.abs(position.contracts), stopLoss, bar.time)
+        this.tradeHandler.onPositionUpdate?.()
+        this.tradeHandler.onUnrealizedPnLUpdate?.(0)
         console.log('[Backtester Trade Cache] Stop loss hit for symbol: ', symbol, ' at price: ', stopLoss, ' at time: ', bar.time)
       } else if(this.didBarHitPrice(bar, takeProfit)){
         //take profit hit
-        this.onClosePosition(symbol, position.contracts, takeProfit, bar.time)
+        this.onClosePosition(symbol, Math.abs(position.contracts), takeProfit, bar.time)
+        this.tradeHandler.onPositionUpdate?.()
+        this.tradeHandler.onUnrealizedPnLUpdate?.(0)
         console.log('[Backtester Trade Cache] Take profit hit for symbol: ', symbol, ' at price: ', takeProfit, ' at time: ', bar.time)
       } else {
         //no hit, update unrealized P&L
@@ -171,7 +369,7 @@ class BacktesterTradeCache extends ChartTradeCache {
   }
 
   closeTrade(symbol: string, direction: 'long' | 'short', entryPrice: number, exitPrice: number, contracts: number, entryTime: number, exitTime: number, stopLoss?: number | null, takeProfit?: number | null) {
-    let tradeData = this.getTradeData(symbol, direction, entryPrice, exitPrice, contracts, entryTime, exitTime, stopLoss, takeProfit)
+    let tradeData = this.getTradeData(symbol, direction, entryPrice, exitPrice, Math.abs(contracts), entryTime, exitTime, stopLoss, takeProfit)
     backtesterAPI.saveTrade(tradeData as any)
       .then(() => {
         // Notify handler that stats should be refreshed
@@ -215,8 +413,8 @@ class BacktesterTradeCache extends ChartTradeCache {
     )
   }
 
-  didBarHitPrice(bar: any, price: number) {
-    return price >= bar.low && price <= bar.high
+  didBarHitPrice(bar: any, price: number | null | undefined) {
+    return price != null && price >= bar.low && price <= bar.high
   }
 }
 

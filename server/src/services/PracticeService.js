@@ -32,6 +32,7 @@ import {
   broadcastOpenPosition,
   broadcastModifyPosition,
   broadcastClosePosition,
+  broadcastPracticeAccountEvent,
 } from './practice/PracticeAccountHub.js'
 
 function normalizeTradeSymbol(symbol) {
@@ -520,7 +521,16 @@ class PracticeService {
         userId,
       ]
     )
-    return this.getAccount(userId, accountId)
+    const resetAccount = await this.getAccount(userId, accountId)
+    if (resetAccount) {
+      broadcastPracticeAccountEvent(userId, accountId, {
+        type: 'account_snapshot',
+        accountId,
+        account: resetAccount,
+        positions: [],
+      })
+    }
+    return resetAccount
   }
 
   async deleteAccount(userId, accountId) {

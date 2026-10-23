@@ -72,10 +72,11 @@ export function TerminalTradeLayout({
     <div className="relative flex flex-1 flex-col min-h-0 min-w-0 w-full h-full">
       {renderPracticeTradeLayout(
         chartElement,
-        padDetached || orderPaneCollapsed ? null : <TradePanel {...padProps} />,
+        <TradePanel {...padProps} />,
         {
           panelWidth: 312,
           panelFrame: false,
+          panelHidden: padDetached || orderPaneCollapsed,
           mobileScalpBar:
             mobileOverlayOpen || mobileTradePrefs.floatingPad ? null : (
             <MobileScalpBar

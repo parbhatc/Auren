@@ -41,6 +41,8 @@ export class BacktesterTradeHandler {
   private nextCandleTimeout: NodeJS.Timeout | null = null
   /** A select-bar jump uses bars already loaded in BWC, so its ack must not refetch them. */
   private pendingSelectedBarAnchorSec: number | null = null
+  /** Preserve the selected pane's resolution until the server acknowledges the jump. */
+  private pendingSelectedBarResolution: string | null = null
   /** Assigned by the host view to refresh position/P&L UI after trade actions. */
   onPositionUpdate?: () => void
   onUnrealizedPnLUpdate?: (pnl: number) => void
@@ -84,6 +86,7 @@ export class BacktesterTradeHandler {
    */
   updateSession(session: BacktestSession | null): void {
     this.session = session
+    this.tradeCache?.switchSession(session?.id || null)
   }
 
   /**
@@ -158,7 +161,11 @@ export class BacktesterTradeHandler {
     const cache = this.tradeCache
     if (!cache) return null
     const chartSymbol = this.resolveChartSymbol(symbolKey)
-    const position = cache.getPosition(chartSymbol)
+    const chartRoot = this.normalizeSymbol(chartSymbol)
+    const position = [...cache.getCache().entries()].find(
+      ([cacheKey, candidate]) =>
+        Boolean(candidate?.contracts) && this.normalizeSymbol(cacheKey) === chartRoot
+    )?.[1]
     const contracts = Number(position?.contracts)
     if (!position || !contracts) return null
     const datafeed = this.getDatafeed()
@@ -194,6 +201,43 @@ export class BacktesterTradeHandler {
       }]
     })
     return summarizePracticePositionFamily(symbolKey, positions)
+  }
+
+  hasOpenPosition(): boolean {
+    return Boolean(
+      [...(this.tradeCache?.getCache().values() ?? [])].some(
+        (position) => Number(position?.contracts) !== 0
+      )
+    )
+  }
+
+  /** Remove an accidental replay trade without recording an exit or P&L. */
+  cancelOpenTrade(symbol?: string): boolean {
+    const cancelled = this.tradeCache?.cancelOpenPosition(
+      this.resolveChartSymbol(symbol)
+    ) ?? false
+    if (!cancelled) return false
+
+    try {
+      this.onPositionUpdate?.()
+      this.onUnrealizedPnLUpdate?.(0)
+    } catch {
+      // The position is already cancelled; UI refresh failures must not restore it.
+    }
+    return true
+  }
+
+  /** Reset semantics: discard all open replay positions without recording exits. */
+  cancelAllOpenTrades(): boolean {
+    const cancelled = this.tradeCache?.cancelAllOpenPositions() ?? false
+    if (!cancelled) return false
+    try {
+      this.onPositionUpdate?.()
+      this.onUnrealizedPnLUpdate?.(0)
+    } catch {
+      // The reset already cleared the positions; UI refresh is best-effort.
+    }
+    return true
   }
 
   getActiveChartResolution(): string {
@@ -444,9 +488,12 @@ export class BacktesterTradeHandler {
     this.scheduleSyncAllPanesReplayCursor()
   }
 
-  private syncWidgetReplayCursor(anchorSec?: number, _chartResolution?: string): void {
+  private syncWidgetReplayCursor(anchorSec?: number, chartResolution?: string): void {
     if (anchorSec != null && Number.isFinite(anchorSec)) {
-      this.datafeed?.setPlaybackAnchorSec?.(Math.floor(anchorSec))
+      const resolution = String(
+        chartResolution || this.getBwcWidget()?.getResolution?.() || '1',
+      ) as ResolutionString
+      this.datafeed?.setPlaybackAnchorSec?.(Math.floor(anchorSec), resolution)
     }
     this.syncAllPanesReplayCursor()
   }
@@ -485,8 +532,10 @@ export class BacktesterTradeHandler {
         const anchorSec = this.parseReplayResponseTime(data.time)
         if (this.pendingSelectedBarAnchorSec != null) {
           const selectedAnchorSec = this.pendingSelectedBarAnchorSec
+          const selectedResolution = this.pendingSelectedBarResolution ?? undefined
           this.pendingSelectedBarAnchorSec = null
-          this.syncWidgetReplayCursor(anchorSec ?? selectedAnchorSec)
+          this.pendingSelectedBarResolution = null
+          this.syncWidgetReplayCursor(anchorSec ?? selectedAnchorSec, selectedResolution)
           console.log('[Backtester Trade Handler] Replayed to: ' + data.time)
           return
         }
@@ -903,8 +952,10 @@ export class BacktesterTradeHandler {
 
     // The selected candle is already present in the chart. Move the host replay
     // cursor over that data in place so the exact visible range is retained.
+    const chartResolution = this.getBwcWidget()?.getResolution?.()
     this.pendingSelectedBarAnchorSec = unixSec
-    this.syncWidgetReplayCursor(unixSec)
+    this.pendingSelectedBarResolution = chartResolution ? String(chartResolution) : null
+    this.syncWidgetReplayCursor(unixSec, chartResolution)
 
     if (this.client?.isConnected()) {
       this.client.send({

@@ -99,7 +99,7 @@ export function QuickTradeCard({
         {!ui.hideClosePosition && (
           <DomStyleAction
             compact
-            onClick={props.onClose}
+            onClick={() => props.onClose()}
             disabled={tradeDisabled}
             title="Close position"
             isDark={isDark}
@@ -143,7 +143,7 @@ export function QuickTradeCard({
       <div className="flex flex-wrap items-center justify-center gap-1">
         {!ui.hideClosePosition && (
           <DomStyleAction
-            onClick={props.onClose}
+            onClick={() => props.onClose()}
             disabled={tradeDisabled}
             title="Close position"
             isDark={isDark}

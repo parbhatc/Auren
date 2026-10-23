@@ -88,7 +88,7 @@ export function DomActionButtons({
         >
           {!ui.hideClosePosition ? (
             <ActionBtn
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
               disabled={tradeDisabled}
               title="Close position"
               className="border border-slate-600/80 bg-slate-800/70 text-slate-200 hover:border-slate-500 hover:bg-slate-700/80"

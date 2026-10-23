@@ -13,6 +13,7 @@ import { isPadDetached, setPadDetached, togglePadDetached } from '../../../utils
 import { getMobileTradePrefs, setMobileFloatingPad } from '../../../utils/mobileTradePrefs'
 import { normalizeBacktesterSymbolRoot } from './backtesterSymbolSearch'
 import KeyboardShortcutsHelp from '../../common/KeyboardShortcutsHelp'
+import ConfirmDialog from '../../common/ConfirmDialog'
 import { TradeHeader } from '../../trading/Trading/TradeHeader'
 import { TradingRendererNav } from '../../trading/Trading/tradingRenderer/TradingRendererNav'
 import { TradingChartHost } from '../../trading/Trading/tradingRenderer/TradingChartHost'
@@ -27,7 +28,7 @@ import { getInitialChartSymbol } from '../../../backtester/constants'
 import { publishAccountStats } from '../../../services/trading/accountStatsStore'
 import Logo from '../../common/Logo'
 import { HeaderThemeButton } from '../../trading/shared/header/HeaderThemeButton'
-import { ArrowLeft, LogOut, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { ArrowLeft, Ban, LogOut, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import ReplayJournalCapture, { type ReplayJournalSnapshot } from './ReplayJournalCapture'
 import InSessionJournalCapture from '../../../journal/InSessionJournalCapture'
 import { createJournalDraft } from '../../../journal/journalCapture'
@@ -36,8 +37,11 @@ import {
   getShortcutsWithCustomizations,
 } from '../../../utils/keyboardShortcutsStorage'
 import {
+  getReplayPositionsResetStorageKey,
+  getReplayPositionsStorageKey,
   getRestoreLastReplayCandle,
   loadSavedReplayCursor,
+  REPLAY_POSITIONS_RESET_EVENT,
   saveReplayCursor,
 } from '../../../utils/replayPreferences'
 
@@ -70,6 +74,29 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     )
   }
 
+  private cancelPositionsForResetSession = (sessionId: string | null | undefined) => {
+    if (!sessionId || sessionId !== this.props.session?.id) return
+    this.tradeHandler?.cancelAllOpenTrades()
+  }
+
+  private handleReplayPositionsReset = (event: Event) => {
+    const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId
+    this.cancelPositionsForResetSession(sessionId)
+  }
+
+  private handleReplayPositionStorage = (event: StorageEvent) => {
+    const sessionId = this.props.session?.id
+    if (!sessionId) return
+    const positionKey = getReplayPositionsStorageKey(sessionId)
+    const resetKey = getReplayPositionsResetStorageKey(sessionId)
+    if (
+      event.key === resetKey ||
+      (event.key === positionKey && event.newValue == null)
+    ) {
+      this.cancelPositionsForResetSession(sessionId)
+    }
+  }
+
   state = {
     isPlaying: false,
     playbackSpeed: 1,
@@ -85,6 +112,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     showKeyboardShortcutsHelp: false,
     journalOpenRequest: 0,
     orderPaneCollapsed: false,
+    cancelTradeConfirmOpen: false,
   }
 
   private readOrderPaneCollapsed = (sessionId?: string | null): boolean => {
@@ -112,6 +140,8 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   componentDidMount() {
     document.addEventListener('keydown', this.handleKeyboardShortcut)
     window.addEventListener('auren:replay-restore-preference', this.saveCurrentReplayCursor)
+    window.addEventListener(REPLAY_POSITIONS_RESET_EVENT, this.handleReplayPositionsReset)
+    window.addEventListener('storage', this.handleReplayPositionStorage)
     ;(window as any).__backtesterDatafeed = this.datafeed
     ;(window as any).__backtesterChartView = this
 
@@ -240,6 +270,8 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleKeyboardShortcut)
     window.removeEventListener('auren:replay-restore-preference', this.saveCurrentReplayCursor)
+    window.removeEventListener(REPLAY_POSITIONS_RESET_EVENT, this.handleReplayPositionsReset)
+    window.removeEventListener('storage', this.handleReplayPositionStorage)
     this.datafeed.onSymbolsLoaded = null
     this.datafeed.onPlaybackAnchorChange = null
 
@@ -363,11 +395,17 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     try {
       const stats = await backtesterAPI.getSessionStats(session.id)
       if (stats.success) {
+        const localPositionUpl = this.tradeHandler?.getPositionUplFor?.(this.getChartSymbol())
         this.setState(
           {
             balance: stats.balance,
             realizedPnL: stats.realizedPnL,
-            unrealizedPnL: stats.unrealizedPnL,
+            // The server has no current replay mark for an open local position.
+            // Keep the client-calculated value instead of replacing it with 0.
+            unrealizedPnL:
+              localPositionUpl != null && Number.isFinite(localPositionUpl)
+                ? localPositionUpl
+                : stats.unrealizedPnL,
           },
           () => this.publishStats()
         )
@@ -1072,6 +1110,16 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     this.initializeWebSocket()
   }
 
+  private requestCancelTrade = () => {
+    if (!this.tradeHandler?.hasOpenPosition()) return
+    this.setState({ cancelTradeConfirmOpen: true })
+  }
+
+  private confirmCancelTrade = () => {
+    this.tradeHandler?.cancelOpenTrade(this.getChartSymbol())
+    this.setState({ cancelTradeConfirmOpen: false })
+  }
+
   render() {
     const { isDark, toggleTheme, navigate, session } = this.props
 
@@ -1079,6 +1127,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
     const { sessions = [] } = this.props
 
     const chartSymbol = session ? this.getChartSymbol() : ''
+    const hasOpenPosition = Boolean(this.tradeHandler?.hasOpenPosition())
     // Memoized: this rebuilds unconditionally on every render otherwise,
     // recreating an object + inline closures and re-rendering the trade
     // panel subtree on every bar (during step-spam/auto-play this fires
@@ -1309,6 +1358,25 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             }
             headerConnectionAccessory={
               <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={this.requestCancelTrade}
+                  disabled={!hasOpenPosition}
+                  title={hasOpenPosition ? 'Cancel open backtest trade' : 'No open backtest trade'}
+                  aria-label="Cancel open backtest trade"
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
+                    hasOpenPosition
+                      ? isDark
+                        ? 'border-red-500/35 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                        : 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                      : isDark
+                        ? 'border-[#27272A] bg-[#18181B] text-[#52525B]'
+                        : 'border-slate-200 bg-slate-50 text-slate-400'
+                  }`}
+                >
+                  <Ban className="h-3.5 w-3.5" aria-hidden />
+                  <span className="hidden sm:inline">Cancel trade</span>
+                </button>
                 <InSessionJournalCapture
                   key={session.id}
                   isDark={isDark}
@@ -1371,12 +1439,11 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
             <div className="relative flex-1 flex flex-col min-h-0">
               {renderPracticeTradeLayout(
                 chartElement,
-                padDetached || this.state.orderPaneCollapsed || !tradePadProps
-                  ? null
-                  : <TradePanel {...tradePadProps} />,
+                tradePadProps ? <TradePanel {...tradePadProps} /> : null,
                 {
                   mobileScalpBar: mobileBar,
                   showMobileNav: this.state.showNav,
+                  panelHidden: padDetached || this.state.orderPaneCollapsed,
                 }
               )}
               {!padDetached && tradePadProps ? (
@@ -1436,6 +1503,17 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
           isOpen={this.state.showKeyboardShortcutsHelp}
           onClose={() => this.setState({ showKeyboardShortcutsHelp: false })}
           shortcuts={this.getKeyboardShortcuts()}
+          isDark={isDark}
+        />
+        <ConfirmDialog
+          isOpen={this.state.cancelTradeConfirmOpen}
+          title="Cancel open backtest trade?"
+          message="This removes the open simulated position and its TP/SL orders. It will not record an exit or change realized P&L."
+          confirmText="Cancel trade"
+          cancelText="Keep trade"
+          onConfirm={this.confirmCancelTrade}
+          onCancel={() => this.setState({ cancelTradeConfirmOpen: false })}
+          variant="danger"
           isDark={isDark}
         />
       </div>

@@ -31,11 +31,11 @@ export default function ReplaySettingsPanel({ isDark }: { isDark: boolean }) {
             setRestoreLastReplayCandle(enabled)
           }}
           isDark={isDark}
-          label="Restore last candle after refresh"
+          label="Restore last candle and open position after refresh"
         />
         <p className={`mt-2 text-[10px] leading-4 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-          Saves the most recently revealed candle separately for each replay session. When off,
-          replay opens from the session start as before.
+          Saves the most recently revealed candle and any open position separately for each replay
+          session. When off, replay opens from the session start without restoring a position.
         </p>
       </div>
     </div>
