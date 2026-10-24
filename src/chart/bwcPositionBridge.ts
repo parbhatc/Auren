@@ -367,6 +367,11 @@ export class BwcPositionBridge {
       !sameSide
     ) {
       this.clearOverlayProgrammatically(overlay)
+      // `setMarkPrice` is intentionally sticky so the host can drive the
+      // executable mark between candle paints. A mark from the previous
+      // position must not be reused for a new fill, otherwise a fresh replay
+      // trade can display non-zero UPL before the next bar is requested.
+      overlay.setMarkPrice?.(entry)
       const qty = Math.abs(contracts)
       if (contracts > 0) await overlay.buy({ price: entry, qty })
       else if (contracts < 0) await overlay.sell({ price: entry, qty })

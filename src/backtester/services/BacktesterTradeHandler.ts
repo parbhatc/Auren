@@ -742,7 +742,8 @@ export class BacktesterTradeHandler {
     quantity: number,
     symbol: string,
     brackets: BracketOptions,
-    executionSymbol = symbol
+    executionSymbol = symbol,
+    entryPrice?: number
   ): void {
     const chartSymbol = this.resolveChartSymbol(symbol)
     const lastBar = chartSymbol ? this.resolveLastBar(chartSymbol) : null
@@ -753,8 +754,13 @@ export class BacktesterTradeHandler {
     const qty = Number(quantity)
     if (!Number.isFinite(qty) || qty <= 0) return
 
-    const mark = lastBar.close
+    // Auto sizing captures the replay mark at the instant the user selects
+    // the chart level. Use that exact fill instead of resolving another cache
+    // entry after React has applied the calculated quantity.
+    const submittedEntry = Number(entryPrice)
+    const mark = Number.isFinite(submittedEntry) ? submittedEntry : lastBar.close
     const signed = qty * (side === 'buy' ? 1 : -1)
+    const hadOpenPosition = Boolean(this.tradeCache.getPosition(chartSymbol)?.contracts)
     const validSl =
       brackets.stopLoss != null && (side === 'buy' ? brackets.stopLoss < mark : brackets.stopLoss > mark)
     const validTp =
@@ -770,7 +776,13 @@ export class BacktesterTradeHandler {
 
     try {
       this.onPositionUpdate?.()
-      this.onUnrealizedPnLUpdate?.(this.getPositionUplFor(chartSymbol) ?? 0)
+      if (!hadOpenPosition) {
+        // A new market fill is the current mark until replay advances.
+        this.tradeCache.updateActivePositionMark(mark)
+        this.onUnrealizedPnLUpdate?.(0)
+      } else {
+        this.onUnrealizedPnLUpdate?.(this.getPositionUplFor(chartSymbol) ?? 0)
+      }
     } catch {
       // ignore
     }

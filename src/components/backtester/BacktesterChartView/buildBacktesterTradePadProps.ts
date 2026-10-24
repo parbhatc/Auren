@@ -71,7 +71,8 @@ export function buildBacktesterTradePadProps({
         qty,
         getChartSymbol(),
         brackets,
-        order?.executionSymbol || getChartSymbol()
+        order?.executionSymbol || getChartSymbol(),
+        order?.entryPrice
       )
     },
     onClose: (quantity, symbol) => tradeHandler?.logButtonPress('Close Position', {
