@@ -198,7 +198,7 @@ export class TradeseaTradeHandler {
     return getBwcActiveResolution(this.widget)
   }
 
-  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => boolean | void): (() => void) | null {
     this.cancelChartPricePick?.()
     const cancel = pickBwcChartPriceOnce(
       this.widget,
@@ -209,8 +209,9 @@ export class TradeseaTradeHandler {
         return Number(price.toFixed(8))
       },
       (price, context) => {
-        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-        onPrice(price, context)
+        const accepted = onPrice(price, context)
+        if (accepted !== false && this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        return accepted
       }
     )
     this.cancelChartPricePick = cancel

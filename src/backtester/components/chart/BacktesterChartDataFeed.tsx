@@ -627,7 +627,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
         .filter((bar) => anchor == null || this.normalizeBarTime(bar.time) <= anchor)
         .slice(-Math.max(1, limit))
     }
-    const last = this.getLastBarForSymbol(symbol)
+    const last = this.getLastBarForSymbol(symbol, resolution)
     return last ? [last] : []
   }
 
@@ -1193,18 +1193,29 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return this.lastBarsCache.get(cacheKey) || null
   }
 
-  getLastBarForSymbol(symbol: string): Bar | null {
-    for(let [, value] of this.subscriptions.entries()){
-      if(value.symbol === symbol && value.lastBar !== null && value.lastBar !== undefined){
-        return value.lastBar
-      }
+  getLastBarForSymbol(symbol: string, resolution?: ResolutionString): Bar | null {
+    const root = this.normalizeSymbol(symbol)
+    const requestedResolution = resolution ? String(resolution).trim().toUpperCase() : null
+    const anchor = this.getPlaybackAnchorSec()
+    const candidates: Bar[] = []
+
+    for (const value of this.subscriptions.values()) {
+      if (this.normalizeSymbol(value.symbol) !== root || !value.lastBar) continue
+      if (requestedResolution && String(value.resolution).trim().toUpperCase() !== requestedResolution) continue
+      candidates.push(value.lastBar)
     }
-    for(let [key, value] of this.lastBarsCache.entries()){
-      if(key.includes(symbol)){
-        return value
-      }
+
+    for (const [key, value] of this.lastBarsCache.entries()) {
+      const suffix = requestedResolution ? `:${requestedResolution}` : null
+      if (suffix && !key.endsWith(suffix)) continue
+      const keySymbol = suffix ? key.slice(0, -suffix.length) : key.slice(0, key.lastIndexOf(':'))
+      if (this.normalizeSymbol(keySymbol) === root) candidates.push(value)
     }
-    return null
+
+    const eligible = candidates
+      .filter((bar) => anchor == null || this.normalizeBarTime(bar.time) <= anchor)
+      .sort((a, b) => this.normalizeBarTime(a.time) - this.normalizeBarTime(b.time))
+    return eligible[eligible.length - 1] ?? null
   }
 
   /** Symbol config lookup by exact key, root, or normalized-root match (O(1) via map). */

@@ -288,14 +288,15 @@ export class PracticeTradeHandler {
     return getBwcActiveResolution(this.widget as never)
   }
 
-  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => boolean | void): (() => void) | null {
     this.cancelChartPricePick?.()
     const cancel = pickBwcChartPriceOnce(
       this.widget as never,
       (rawPrice, context) => snapPracticePriceToTick(context.symbol || this.getChartSymbol(), rawPrice),
       (price, context) => {
-        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-        onPrice(price, context)
+        const accepted = onPrice(price, context)
+        if (accepted !== false && this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        return accepted
       }
     )
     this.cancelChartPricePick = cancel

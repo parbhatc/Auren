@@ -533,7 +533,7 @@ export function OrderTab({
       const sizingContext = resolveAutoSizingContext(context)
       if (!sizingContext) {
         setAutoMessage('Waiting for a live market price on this chart.')
-        return
+        return false
       }
       const liveEntry = sizingContext.entry
       const side: OrderSide = mode === 'auto'
@@ -554,7 +554,7 @@ export function OrderTab({
               ? 'A buy take profit must be above the market entry.'
               : 'A sell take profit must be below the market entry.'
         )
-        return
+        return false
       }
       selectionCommitted = true
       cancelPricePickRef.current?.()
@@ -586,6 +586,7 @@ export function OrderTab({
         ...sizingContext,
       })
       setAutoMessage('Calculating contract size…')
+      return true
     }
     const cancel = props.pickChartPriceOnce(selectChartPrice)
     cancelPricePickRef.current = cancel

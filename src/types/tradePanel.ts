@@ -118,8 +118,8 @@ export type TradePanelProps = {
   autoRiskContractRouting?: boolean
   /** Route Auto sizing without changing the chart or manually selected contract. */
   riskExecutionProductRoot?: string
-  /** Arm a one-shot click on the active chart and return its snapped price. */
-  pickChartPriceOnce?: (onPrice: (price: number, context: ChartPricePickContext) => void) => (() => void) | null
+  /** Arm a chart click and return its snapped price. Return false to keep selection armed. */
+  pickChartPriceOnce?: (onPrice: (price: number, context: ChartPricePickContext) => boolean | void) => (() => void) | null
   /** Current active pane resolution, used to describe soft-close behavior before selection. */
   getActiveChartResolution?: () => string
   /** Resolve sizing from the pane under the Auto cursor, not the initially selected pane. */

@@ -109,8 +109,8 @@ export function buildBacktesterTradePadProps({
     getAutoOrderSizingContext: (context) => {
       const chartRoot = resolveBacktesterSymbolRoot(context.symbol || activeSymbolRoot())
       const executionSymbol = practiceMicroRoot(chartRoot) || chartRoot
-      const entry = tradeHandler?.getMarkPrice(context.symbol || chartRoot)
-        ?? datafeed.getLastBarForSymbol(chartRoot)?.close
+      const entry = tradeHandler?.getMarkPrice(context.symbol || chartRoot, context.resolution)
+        ?? datafeed.getLastBarForSymbol(chartRoot, context.resolution)?.close
         ?? null
       if (entry == null || !Number.isFinite(entry)) return null
       const ticks = resolvePracticeInstrumentTicks(executionSymbol)

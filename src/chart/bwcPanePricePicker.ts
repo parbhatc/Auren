@@ -49,7 +49,7 @@ function getPanes(widget: BwcPaneWidget | null | undefined): BwcPane[] {
 export function pickBwcChartPriceOnce(
   widget: BwcPaneWidget | null | undefined,
   snapPrice: (price: number, context: ChartPricePickContext) => number,
-  onPrice: (price: number, context: ChartPricePickContext) => void
+  onPrice: (price: number, context: ChartPricePickContext) => boolean | void
 ): (() => void) | null {
   const panes = getPanes(widget)
   const subscriptions: Array<{ pane: BwcPane; handler: (event: { point?: { y?: number } }) => void }> = []
@@ -76,8 +76,10 @@ export function pickBwcChartPriceOnce(
       }
       const price = snapPrice(rawPrice, context)
       if (!Number.isFinite(price)) return
-      cancel()
-      onPrice(price, context)
+      // Validation belongs to the ticket because it knows whether this price is
+      // a stop loss or take profit. Keep listening when it rejects the click so
+      // the user can move to the valid side and try again without rearming Auto.
+      if (onPrice(price, context) !== false) cancel()
     }
     pane.chart.subscribeClick(handler)
     subscriptions.push({ pane, handler })

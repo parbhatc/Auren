@@ -139,20 +139,39 @@ export class BacktesterTradeHandler {
     return this.session?.symbol || ''
   }
 
-  private resolveLastBar(symbol: string): { close: number; time?: number } | null {
+  private resolveLastBar(symbol: string, resolution?: string): { close: number; time?: number } | null {
     const datafeed = this.getDatafeed()
     if (!datafeed) return null
     const root = this.normalizeSymbol(symbol)
+
+    // The widget bars are the authoritative visible replay state. Cached
+    // subscriptions can contain a newer bar after Previous Candle or a bar
+    // from another timeframe, which made Auto entries differ from the candle.
+    const activeRoot = this.normalizeSymbol(this.resolveChartSymbol())
+    if (root === activeRoot) {
+      const anchor = datafeed.getPlaybackAnchorSecPublic?.()
+      const visible = this.getBwcWidget()?.getBars?.() ?? []
+      const eligible = visible
+        .filter((candidate) => {
+          const time = Number(candidate?.time)
+          const close = Number(candidate?.close)
+          return Number.isFinite(time) && Number.isFinite(close) && (anchor == null || time <= anchor)
+        })
+        .sort((a, b) => Number(a.time) - Number(b.time))
+      const bar = eligible[eligible.length - 1]
+      if (bar) return { close: Number(bar.close), time: Number(bar.time) }
+    }
+
     return (
-      datafeed.getLastBarForSymbol(symbol) ??
-      datafeed.getLastBarForSymbol(root) ??
+      datafeed.getLastBarForSymbol(symbol, resolution as ResolutionString | undefined) ??
+      datafeed.getLastBarForSymbol(root, resolution as ResolutionString | undefined) ??
       datafeed.getLastBarForChart(this.tradeCache?.getChart()) ??
       null
     )
   }
 
-  getMarkPrice(symbol: string): number | null {
-    const bar = this.resolveLastBar(symbol)
+  getMarkPrice(symbol: string, resolution?: string): number | null {
+    const bar = this.resolveLastBar(symbol, resolution)
     const close = bar?.close
     return close != null && Number.isFinite(close) ? close : null
   }
@@ -244,7 +263,7 @@ export class BacktesterTradeHandler {
     return getBwcActiveResolution(this.widget as never)
   }
 
-  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => void): (() => void) | null {
+  pickChartPriceOnce(onPrice: (price: number, context: ChartPricePickContext) => boolean | void): (() => void) | null {
     this.cancelChartPricePick?.()
     const cancel = pickBwcChartPriceOnce(
       this.widget as never,
@@ -255,8 +274,9 @@ export class BacktesterTradeHandler {
         return Number(price.toFixed(8))
       },
       (price, context) => {
-        if (this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
-        onPrice(price, context)
+        const accepted = onPrice(price, context)
+        if (accepted !== false && this.cancelChartPricePick === cancel) this.cancelChartPricePick = null
+        return accepted
       }
     )
     this.cancelChartPricePick = cancel
@@ -312,7 +332,7 @@ export class BacktesterTradeHandler {
   }
 
   private getBwcWidget(): {
-    getBars?: () => Array<{ time?: number }>
+    getBars?: () => Array<{ time?: number; close?: number }>
     getResolution?: () => string
     replay?: {
       getState?: () => { stepInterval?: string; autoSelectInterval?: boolean }
@@ -330,7 +350,7 @@ export class BacktesterTradeHandler {
         getChartWidget?: () => unknown
       } | null
       return (chartComponent?.widgetRef ?? chartComponent?.getChartWidget?.() ?? null) as {
-        getBars?: () => Array<{ time?: number }>
+        getBars?: () => Array<{ time?: number; close?: number }>
         getResolution?: () => string
         replay?: {
           getState?: () => { stepInterval?: string; autoSelectInterval?: boolean }
@@ -1068,6 +1088,19 @@ export class BacktesterTradeHandler {
       stepResolution as ResolutionString,
     )
     this.scheduleSyncAllPanesReplayCursor()
+
+    // Previous Candle does not emit a realtime bar, so explicitly reprice the
+    // open position from the last visible bar at/before the rewound cursor.
+    // This must not run normal bracket-hit processing while navigating history.
+    const chartSymbol = this.resolveChartSymbol()
+    const eligibleRewoundBars = (this.getBwcWidget()?.getBars?.() ?? [])
+      .filter((bar) => {
+        const time = Number(bar?.time)
+        return Number.isFinite(time) && Number.isFinite(Number(bar?.close)) && time <= targetSec
+      })
+      .sort((a, b) => Number(a.time) - Number(b.time))
+    const rewoundBar = eligibleRewoundBars[eligibleRewoundBars.length - 1]
+    this.tradeCache?.repriceOpenPosition(chartSymbol, rewoundBar)
 
     if (this.client?.isConnected()) {
       this.client.send({

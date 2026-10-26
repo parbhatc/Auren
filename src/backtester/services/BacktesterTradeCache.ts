@@ -234,12 +234,17 @@ class BacktesterTradeCache extends ChartTradeCache {
   handleUpdateStopLoss(price: number | null, oldPrice: number | null, position: any, context?: string) {
     super.handleUpdateStopLoss(price, oldPrice, position, context)
     this.persistSavedPositions()
+    // The BWC overlay reports its initial programmatic bracket sync through the
+    // same callback as a user drag. It is not a move and must not fill against
+    // the already-completed replay candle.
+    if (price === oldPrice) return
     this.closeIfMovedBracketShouldFill(position, price, 'stop loss')
   }
 
   handleUpdateTakeProfit(price: number | null, oldPrice: number | null, position: any, context?: string) {
     super.handleUpdateTakeProfit(price, oldPrice, position, context)
     this.persistSavedPositions()
+    if (price === oldPrice) return
     this.closeIfMovedBracketShouldFill(position, price, 'take profit')
   }
 
@@ -337,12 +342,26 @@ class BacktesterTradeCache extends ChartTradeCache {
       let stopLoss = position.stopLoss
       let takeProfit = position.takeProfit
       const mark = Number(bar?.close)
+      const barTime = this.normalizeTradeTimestampSec(bar?.time)
+      const entryTime = this.normalizeTradeTimestampSec(position.entryTime)
 
       // BWC's overlay uses an explicit host mark once a routed position opens.
       // Refresh it from the owning symbol's replay bar so the position pill no
       // longer remains frozen at $0.00.
       if (Number.isFinite(mark)) {
         this.updateActivePositionMark(mark)
+      }
+
+      // A replay market order fills at the close of the currently revealed bar.
+      // That bar's earlier high/low happened before the position existed, so it
+      // must not immediately trigger a newly attached bracket. Begin evaluating
+      // SL/TP only when replay advances to a later bar.
+      if (barTime <= entryTime) {
+        const pnl = Number.isFinite(mark)
+          ? this.calcPnL(entryPrice, mark, position.contracts, tickSize, tickValue)
+          : 0
+        this.tradeHandler.onUnrealizedPnLUpdate?.(pnl)
+        return
       }
 
       if(this.didBarHitPrice(bar, stopLoss)){
@@ -366,6 +385,39 @@ class BacktesterTradeCache extends ChartTradeCache {
         console.log('[Backtester Trade Cache] No hit for symbol: ', symbol, ' at price: ', bar.close, ' at time: ', bar.time)
       }
     }
+  }
+
+  /**
+   * Reprice an open position after the replay cursor moves backward.
+   * Rewinding is navigation, not market playback, so this deliberately updates
+   * the chart mark and UP&L without evaluating the historical bar for SL/TP.
+   */
+  repriceOpenPosition(symbol: string, bar: { close?: number } | null | undefined): boolean {
+    const resolved = this.getPosition(symbol)
+      ? { key: symbol, position: this.getPosition(symbol) }
+      : this.getPositionForActiveChart(symbol)
+    const position = resolved?.position as any
+    const mark = Number(bar?.close)
+    const contracts = Number(position?.contracts)
+    const entry = Number(position?.entry)
+    if (
+      !resolved ||
+      !position ||
+      !Number.isFinite(mark) ||
+      !Number.isFinite(contracts) ||
+      contracts === 0 ||
+      !Number.isFinite(entry)
+    ) return false
+
+    const executionSymbol = String(position.executionSymbol || resolved.key)
+    const datafeed = this.getDatafeed()
+    const tickSize = datafeed?.getTickSize(executionSymbol) ?? 0.25
+    const tickValue = datafeed?.getTickValue(executionSymbol) ?? tickSize * 2
+    this.updateActivePositionMark(mark)
+    this.tradeHandler.onUnrealizedPnLUpdate?.(
+      this.calcPnL(entry, mark, contracts, tickSize, tickValue)
+    )
+    return true
   }
 
   closeTrade(symbol: string, direction: 'long' | 'short', entryPrice: number, exitPrice: number, contracts: number, entryTime: number, exitTime: number, stopLoss?: number | null, takeProfit?: number | null) {
