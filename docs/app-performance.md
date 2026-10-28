@@ -103,3 +103,63 @@ TypeScript, production build and diff whitespace checks passed. Sanitized
 timings and history evidence are saved in
 `.codex/app-speed-browser-evidence.json`; screenshots are
 `.codex/practice-terminal-final.png` and `.codex/replay-cache-final.png`.
+
+## Multi-pane panning follow-up, October 28, 2026
+
+A held left-button drag can move freely in both dimensions without first
+dragging each pane's price axis. Deliberate vertical movement takes ownership
+of the fitted price range and switches the layout's main charts into manual
+mode. Pure horizontal movement and vertical noise under five pixels retain
+autoscale. With the layout's date-range link enabled, plot drags move the peer
+charts vertically in the same frame as the source, in addition to the existing
+horizontal synchronization. Each instrument translates the shared pixel delta
+on its own price scale, preserving its own prices and zoom. Either chart can
+drive the movement. Indicator subpanes keep their independent scale behavior.
+Axis drags publish the same shared manual-mode transition.
+
+The engine switches peer modes during the gesture and commits the shared
+setting after release or cancellation. Explicitly disabling autoscale now
+updates the real ProChart scale, and viewport restoration follows the shared
+preference instead of a stale per-pane auto-fit snapshot.
+
+Viewport-only autosave notifications no longer clone all drawings or serialize
+the layout on every source and peer pan frame. They save the final state after
+the pointer is released, including when a stationary hold outlasts the normal
+debounce. Actual drawing changes still persist immediately. Date-range sync
+also skips unchanged logical deltas instead of repeatedly redrawing peers
+while the pointer is held still.
+Destroying the widget cancels pending viewport saves and prevents late timer
+callbacks from restarting the retry loop or writing detached state.
+
+Regression tests send 240 source/peer viewport notifications and require zero
+storage writes or drawing clones during the held gesture, then verify the final
+viewport is saved. Another test sends 120 stationary synchronization polls and
+requires zero peer range updates. Real price-scale and native pointer tests
+verify both panes pan vertically before axis interaction, preserve pointer
+distance, respect disabled drawing interactions and restore correctly.
+The native two-chart regression also covers movement from either pane, the
+first autoscale-unlock delta, different price spans and pane heights, circular
+return, pointer-up flushing, zero movement and turning the layout link off.
+
+The Practice browser check covered vertical drags on both panes without any
+axis adjustment, diagonal movement with linked dates, and a 1m/30s return followed
+by another vertical drag on chart 2. The slow browser automation's long-press
+tooltip was disabled in the temporary test tab for these gestures. No orders
+were placed. Screenshot: `.codex/practice-pan-fixed.png`.
+
+Drawing tools now share controller-driven tool transitions across the layout.
+Committing a long or short position returns every pane to the cursor, so the
+next click on another chart cannot place a second drawing. This works whether
+drawing-content synchronization is enabled or disabled. Explicit stay-in-mode
+and retained freehand/multipoint tool policies remain available. Newly attached
+panes inherit the current tool and drawing mode.
+
+The browser confirmed both panes move during a vertical drag from either
+chart. After one temporary long-position drawing was placed on chart 1, both
+pane DOM modes returned to cursor and clicking chart 2 kept the cursor active.
+The temporary drawing was removed; existing user drawings were preserved.
+Screenshot: `.codex/practice-linked-pan-fixed.png`.
+
+Latest validation: 427 BWC tests and seven Auren chart-loading/bundle integration
+tests passed; the direct Vite production build passed in 21.86 seconds. The
+previous full Auren suite (388 tests) and application TypeScript also passed.
