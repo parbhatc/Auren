@@ -1,6 +1,7 @@
 /** Practice hub: market-data + simulated eval/funded accounts (API-backed). */
 
 import { practiceAPI } from '../api/practice.api'
+import { getAuthToken } from '../api/api'
 import {
   getDefaultPracticeRules,
   getPracticePlanFromAccount,
@@ -117,7 +118,38 @@ export interface PracticeAccount {
 
 let accountsCache: PracticeAccount[] | null = null
 let marketDataCache: PracticeMarketDataSettings | null = null
-let refreshInFlight: Promise<void> | null = null
+let cacheOwner: string | null | undefined
+let cacheGeneration = 0
+let localAccountsOwner: string | null | undefined
+let localMarketDataOwner: string | null | undefined
+let refreshInFlight: {
+  owner: string | null
+  generation: number
+  promise: Promise<{ error?: unknown }>
+} | null = null
+
+function syncPracticeOwner(): string | null {
+  const owner = getAuthToken()
+  if (owner !== cacheOwner) {
+    cacheOwner = owner
+    cacheGeneration += 1
+    accountsCache = null
+    marketDataCache = null
+  }
+  // Claim legacy local data for its first authenticated session. Switching
+  // accounts must not expose or migrate that session's local rows to another.
+  if (owner) {
+    if (localAccountsOwner === undefined) localAccountsOwner = owner
+    if (localMarketDataOwner === undefined) localMarketDataOwner = owner
+  }
+  return owner
+}
+
+function practiceSession() {
+  const owner = syncPracticeOwner()
+  const generation = cacheGeneration
+  return { owner, generation, isCurrent: () => syncPracticeOwner() === owner && cacheGeneration === generation }
+}
 
 /** Notify UI to re-read cache (does not hit the API). */
 export function notifyPracticeDataChanged(): void {
@@ -126,6 +158,7 @@ export function notifyPracticeDataChanged(): void {
 }
 
 function loadLocalAccounts(): PracticeAccount[] {
+  if (localAccountsOwner !== undefined && localAccountsOwner !== syncPracticeOwner()) return []
   try {
     const raw = localStorage.getItem(PRACTICE_STORAGE_KEYS.ACCOUNTS)
     if (!raw) return []
@@ -137,6 +170,9 @@ function loadLocalAccounts(): PracticeAccount[] {
 }
 
 function loadLocalMarketData(): PracticeMarketDataSettings {
+  if (localMarketDataOwner !== undefined && localMarketDataOwner !== syncPracticeOwner()) {
+    return { propFirmId: 'tradesea', accountId: '', accountLabel: '' }
+  }
   try {
     const raw = localStorage.getItem(PRACTICE_STORAGE_KEYS.MARKET_DATA)
     if (raw) return JSON.parse(raw) as PracticeMarketDataSettings
@@ -153,15 +189,18 @@ function loadLocalMarketData(): PracticeMarketDataSettings {
   }
 }
 
-async function migrateLocalToApiIfNeeded(): Promise<void> {
+async function migrateLocalToApiIfNeeded(session: ReturnType<typeof practiceSession>): Promise<void> {
+  if (!session.owner || !session.isCurrent() || localAccountsOwner !== session.owner) return
   if (localStorage.getItem(PRACTICE_STORAGE_KEYS.MIGRATED)) return
   const localAccounts = loadLocalAccounts()
   const localMd = loadLocalMarketData()
   try {
     if (localMd.accountId) {
       await practiceAPI.saveMarketData(localMd)
+      if (!session.isCurrent()) return
     }
     for (const acc of localAccounts) {
+      if (!session.isCurrent()) return
       const rules = acc.rules || getDefaultPracticeRules(acc.size, acc.mode)
       await practiceAPI.createAccount({
         mode: acc.mode,
@@ -169,6 +208,7 @@ async function migrateLocalToApiIfNeeded(): Promise<void> {
         rules,
       })
     }
+    if (!session.isCurrent()) return
     localStorage.setItem(PRACTICE_STORAGE_KEYS.MIGRATED, '1')
     localStorage.removeItem(PRACTICE_STORAGE_KEYS.ACCOUNTS)
   } catch {
@@ -176,38 +216,50 @@ async function migrateLocalToApiIfNeeded(): Promise<void> {
   }
 }
 
-export async function refreshPracticeFromApi(options?: { notify?: boolean }): Promise<void> {
-  if (refreshInFlight) {
-    await refreshInFlight
-    if (options?.notify) notifyPracticeDataChanged()
-    return
+export async function refreshPracticeFromApi(options?: { notify?: boolean; strict?: boolean }): Promise<void> {
+  const session = practiceSession()
+  let flight = refreshInFlight
+  if (!flight || flight.owner !== session.owner || flight.generation !== session.generation) {
+    const promise = (async (): Promise<{ error?: unknown }> => {
+      await migrateLocalToApiIfNeeded(session)
+      if (!session.isCurrent()) return { error: new DOMException('Practice session changed', 'AbortError') }
+      try {
+        const [mdRes, accRes] = await Promise.all([
+          practiceAPI.getMarketData(),
+          practiceAPI.listAccounts(),
+        ])
+        if (!session.isCurrent()) return { error: new DOMException('Practice session changed', 'AbortError') }
+        const hasSettings = mdRes?.success === true && mdRes.settings && typeof mdRes.settings === 'object'
+        const hasAccounts = accRes?.success === true && Array.isArray(accRes.accounts)
+        if (hasSettings) marketDataCache = mdRes.settings
+        if (hasAccounts) accountsCache = accRes.accounts
+        return hasSettings && hasAccounts ? {} : { error: new Error('Practice account data could not be loaded.') }
+      } catch (error) {
+        if (session.isCurrent()) {
+          accountsCache = loadLocalAccounts()
+          marketDataCache = loadLocalMarketData()
+        }
+        return { error }
+      }
+    })()
+    flight = { owner: session.owner, generation: session.generation, promise }
+    refreshInFlight = flight
   }
-
-  refreshInFlight = (async () => {
-    await migrateLocalToApiIfNeeded()
-    try {
-      const [mdRes, accRes] = await Promise.all([
-        practiceAPI.getMarketData(),
-        practiceAPI.listAccounts(),
-      ])
-      if (mdRes.success) marketDataCache = mdRes.settings
-      if (accRes.success) accountsCache = accRes.accounts
-    } catch {
-      accountsCache = loadLocalAccounts()
-      marketDataCache = loadLocalMarketData()
-    }
-  })()
-
   try {
-    await refreshInFlight
+    const result = await flight.promise
+    if (!session.isCurrent()) {
+      if (options?.strict) throw new DOMException('Practice session changed', 'AbortError')
+      return
+    }
+    if (options?.strict && result.error) throw result.error
+    if (options?.notify) notifyPracticeDataChanged()
   } finally {
-    refreshInFlight = null
+    if (refreshInFlight === flight) refreshInFlight = null
   }
-
-  if (options?.notify) notifyPracticeDataChanged()
 }
 
 export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
+  syncPracticeOwner()
   const raw =
     marketDataCache || {
       propFirmId: 'tradesea',
@@ -231,19 +283,22 @@ export function getPracticeMarketDataSettings(): PracticeMarketDataSettings {
 export async function savePracticeMarketDataSettings(
   settings: PracticeMarketDataSettings
 ): Promise<void> {
+  const session = practiceSession()
   const normalized = migratePracticeMarketDataSettings({
     ...settings,
     propFirmId: normalizePracticePropFirmId(settings.propFirmId),
   })
   marketDataCache = normalized
+  localMarketDataOwner = session.owner ?? undefined
   localStorage.setItem(PRACTICE_STORAGE_KEYS.MARKET_DATA, JSON.stringify(normalized))
   try {
     await practiceAPI.saveMarketData(normalized)
+    if (!session.isCurrent()) return
     await refreshPracticeFromApi()
   } catch {
     /* saved locally */
   }
-  notifyPracticeDataChanged()
+  if (session.isCurrent()) notifyPracticeDataChanged()
 }
 
 export function getPracticeSettings(): PracticeMarketDataSettings {
@@ -259,6 +314,7 @@ export function savePracticeSettings(
 }
 
 export function getPracticeAccounts(): PracticeAccount[] {
+  syncPracticeOwner()
   return accountsCache ? [...accountsCache] : loadLocalAccounts()
 }
 
@@ -268,6 +324,7 @@ export function getPracticeAccountById(id: string): PracticeAccount | undefined 
 
 /** Apply a single account row from WS without refetching all practice data. */
 export function patchPracticeAccount(account: PracticeAccount): void {
+  syncPracticeOwner()
   const list = accountsCache ? [...accountsCache] : loadLocalAccounts()
   const idx = list.findIndex((a) => a.id === account.id)
   if (idx >= 0) list[idx] = account
@@ -282,8 +339,9 @@ export async function createPracticeAccount(
   rules?: Partial<PracticeAccountRules>,
   displayName?: string
 ): Promise<PracticeAccount> {
+  const session = practiceSession()
   const res = await practiceAPI.createAccount({ mode, size, displayName, rules })
-  await refreshPracticeFromApi({ notify: true })
+  if (session.isCurrent()) await refreshPracticeFromApi({ notify: true })
   return res.account
 }
 
@@ -291,12 +349,13 @@ export async function updatePracticeAccount(
   id: string,
   patch: Omit<Partial<PracticeAccount>, 'rules'> & { rules?: Partial<PracticeAccountRules> }
 ): Promise<PracticeAccount | undefined> {
+  const session = practiceSession()
   if (patch.rules || patch.displayName !== undefined) {
     const res = await practiceAPI.updateAccount(id, {
       displayName: patch.displayName,
       rules: patch.rules,
     })
-    await refreshPracticeFromApi()
+    if (session.isCurrent()) await refreshPracticeFromApi()
     return res.account
   }
   const { rules: _rulesPatch, ...accountPatch } = patch
@@ -312,23 +371,28 @@ export async function applyPracticeBalanceChange(
   _delta: number,
   _options?: { recordDay?: boolean }
 ): Promise<PracticeAccount | undefined> {
+  const session = practiceSession()
   await refreshPracticeFromApi()
-  return getPracticeAccountById(id)
+  return session.isCurrent() ? getPracticeAccountById(id) : undefined
 }
 
 export async function resetPracticeAccount(id: string): Promise<PracticeAccount | undefined> {
+  const session = practiceSession()
   const res = await practiceAPI.resetAccount(id)
-  await refreshPracticeFromApi({ notify: true })
+  if (session.isCurrent()) await refreshPracticeFromApi({ notify: true })
   return res.account
 }
 
 export async function deletePracticeAccount(id: string): Promise<void> {
+  const session = practiceSession()
   await practiceAPI.deleteAccount(id)
-  await refreshPracticeFromApi({ notify: true })
+  if (session.isCurrent()) await refreshPracticeFromApi({ notify: true })
 }
 
 export async function resetAllPracticeAccounts(): Promise<void> {
+  const session = practiceSession()
   await practiceAPI.deleteAllAccounts()
+  if (!session.isCurrent()) return
   accountsCache = []
   notifyPracticeDataChanged()
 }

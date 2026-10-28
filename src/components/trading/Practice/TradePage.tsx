@@ -1,8 +1,9 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
+import { getAuthToken } from '../../../api/api'
 import { getThemeColors } from '../../../constants/theme'
-import { propFirmRegistry } from '../../../propfirms'
+import { propFirmRegistry } from '../../../propfirms/registry'
 import { ROUTES, practiceTradeStatsPath } from '../../../constants/routes'
 import { BarChart3, RefreshCw, ShieldCheck } from 'lucide-react'
 import TradingRenderer from '../Trading/TradingRenderer'
@@ -25,14 +26,20 @@ import { getPracticePlanFromAccount } from '../../../services/practice/practiceP
 import BlownAccountModal from '../shared/modals/BlownAccountModal'
 import PassedAccountModal from '../shared/modals/PassedAccountModal'
 
-class TradePage extends Component {
+export type PracticeTradePageProps = {
+  practiceAccountId?: string
+  accountCatalogReady?: boolean
+}
+
+class TradePage extends Component<PracticeTradePageProps> {
   render() {
-    return <TradePageInner />
+    return <TradePageInner {...this.props} />
   }
 }
 
-function TradePageInner() {
-  const { practiceAccountId } = useParams<{ practiceAccountId: string }>()
+function TradePageInner({ practiceAccountId: selectedAccountId, accountCatalogReady = false }: PracticeTradePageProps) {
+  const { practiceAccountId: routeAccountId } = useParams<{ practiceAccountId: string }>()
+  const practiceAccountId = selectedAccountId ?? routeAccountId
   const navigate = useNavigate()
   const { isDark, toggleTheme } = useTheme()
   const colors = getThemeColors(isDark)
@@ -45,9 +52,13 @@ function TradePageInner() {
   const [, setUpdateTrigger] = useState(0)
 
   const marketFirmRef = useRef<any>(null)
+  const validationGeneration = useRef(0)
   const marketFirm = marketFirmRef.current
 
   const runValidation = useCallback(async () => {
+    const generation = ++validationGeneration.current
+    const owner = getAuthToken()
+    const isCurrent = () => generation === validationGeneration.current && owner === getAuthToken()
     const id = practiceAccountId || ''
     const account = getPracticeAccountById(id)
     if (!account) {
@@ -97,6 +108,7 @@ function TradePageInner() {
         account.marketDataAccountLabel || firmSelection.accountLabel
 
       const validationResult = await activeMarketFirm.validate()
+      if (!isCurrent()) return
       if (!validationResult.success) {
         setValidationError(validationResult.message || t('practice.page.loadFailed'))
         return
@@ -105,10 +117,12 @@ function TradePageInner() {
       activeMarketFirm.setPracticeMode(true, marketAccountId, marketAccountLabel, id)
 
       activeMarketFirm.setOnDataReady(() => {
+        if (!isCurrent()) return
         setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
         setUpdateTrigger((n) => n + 1)
       })
       await activeMarketFirm.onValidateSuccess()
+      if (!isCurrent()) return
       if (activeMarketFirm.practiceTradeHandler) {
         activeMarketFirm.practiceTradeHandler.onAccountUpdated = undefined
         activeMarketFirm.practiceTradeHandler.onUnrealizedPnLUpdate = () => {
@@ -123,22 +137,26 @@ function TradePageInner() {
           })
         }
         activeMarketFirm.practiceTradeHandler.onAccountBlown = () => {
+          if (!isCurrent()) return
           setShowBlownModal(true)
           void refreshPracticeFromApi().then(() => {
+            if (!isCurrent()) return
             setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
             setUpdateTrigger((n) => n + 1)
           })
         }
         activeMarketFirm.practiceTradeHandler.onAccountPassed = () => {
+          if (!isCurrent()) return
           setShowPassedModal(true)
           void refreshPracticeFromApi().then(() => {
+            if (!isCurrent()) return
             setPracticeAccount(getPracticeAccountById(practiceAccountId || '') || null)
             setUpdateTrigger((n) => n + 1)
           })
         }
       }
     } catch (error: unknown) {
-      setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
+      if (isCurrent()) setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
     }
   }, [practiceAccountId])
 
@@ -148,7 +166,8 @@ function TradePageInner() {
     const bootstrap = async () => {
       setIsValidating(true)
       try {
-        await refreshPracticeFromApi()
+        if (!accountCatalogReady) await refreshPracticeFromApi()
+        if (cancelled) return
         await runValidation()
       } catch (error: unknown) {
         if (!cancelled) {
@@ -190,10 +209,11 @@ function TradePageInner() {
 
     return () => {
       cancelled = true
+      validationGeneration.current += 1
       window.removeEventListener('practiceAccountsChanged', onAccountsChanged)
       marketFirmRef.current?.cleanup()
     }
-  }, [runValidation, practiceAccountId])
+  }, [runValidation, practiceAccountId, accountCatalogReady])
 
   const handleRefresh = () => {
     const activeMarketFirm = marketFirmRef.current
@@ -233,7 +253,7 @@ function TradePageInner() {
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
-              onClick={() => navigate(ROUTES.PRACTICE)}
+              onClick={() => navigate(ROUTES.PROPS_SETTINGS)}
               className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
                 isDark
                   ? 'bg-blue-500 text-white hover:bg-blue-400'
@@ -244,7 +264,7 @@ function TradePageInner() {
             </button>
             <button
               type="button"
-              onClick={() => navigate(ROUTES.PRACTICE)}
+              onClick={() => navigate(ROUTES.PRACTICE_ACCOUNTS)}
               className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
                 isDark
                   ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]'
@@ -285,7 +305,7 @@ function TradePageInner() {
           onGoToHub={() => {
             setShowBlownModal(false)
             marketFirm?.cleanup()
-            navigate(ROUTES.PRACTICE)
+            navigate(ROUTES.PRACTICE_ACCOUNTS)
           }}
           onGoToStats={goToStats}
         />
@@ -305,7 +325,7 @@ function TradePageInner() {
           onGoToHub={() => {
             setShowPassedModal(false)
             marketFirm?.cleanup()
-            navigate(ROUTES.PRACTICE)
+            navigate(ROUTES.PRACTICE_ACCOUNTS)
           }}
           onGoToStats={goToStats}
         />
@@ -346,7 +366,7 @@ function TradePageInner() {
         onGoToHub={() => {
           setShowBlownModal(false)
           marketFirm?.cleanup()
-          navigate(ROUTES.PRACTICE)
+          navigate(ROUTES.PRACTICE_ACCOUNTS)
         }}
         onGoToStats={goToStats}
       />
@@ -359,7 +379,7 @@ function TradePageInner() {
         onGoToHub={() => {
           setShowPassedModal(false)
           marketFirm?.cleanup()
-          navigate(ROUTES.PRACTICE)
+          navigate(ROUTES.PRACTICE_ACCOUNTS)
         }}
         onGoToStats={goToStats}
       />
@@ -367,7 +387,7 @@ function TradePageInner() {
   )
 }
 
-function TerminalBootScreen({ isDark }: { isDark: boolean }) {
+export function TerminalBootScreen({ isDark }: { isDark: boolean }) {
   const surface = isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
   const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
   const skeleton = isDark ? 'bg-white/[0.055]' : 'bg-black/[0.055]'

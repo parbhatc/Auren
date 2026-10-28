@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { useTheme } from '../../../hooks/useTheme'
-import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
+import { PRACTICE_PROP_FIRM_CONFIGS } from '../../../constants/practicePropFirms'
 import {
   getPracticeAccountById,
   refreshPracticeFromApi,
@@ -27,7 +27,7 @@ export default function NewsPage() {
   const [showNav, setShowNav] = useState(() =>
     practiceAccountId ? getInitialPracticeShowNav(practiceAccountId) : true
   )
-  const tradeseaFirm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
+  const tradeseaFirm = PRACTICE_PROP_FIRM_CONFIGS.find((firm) => firm.id === 'tradesea')
 
   const runValidation = useCallback(async () => {
     const id = practiceAccountId || ''

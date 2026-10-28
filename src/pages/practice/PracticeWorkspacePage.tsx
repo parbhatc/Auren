@@ -171,23 +171,28 @@ export default function PracticeWorkspacePage() {
   return (
     <div className={`auren-shell-offset min-h-screen ${isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'}`}>
       <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">Practice workspace</p>
-            <h1 className={`text-2xl font-semibold tracking-tight sm:text-3xl ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Evaluation and funded accounts</h1>
-            <p className={`mt-2 max-w-2xl text-sm ${muted}`}>Create a simulated account, choose its plan, then press Play to open the protected trading terminal.</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">Account management</p>
+            <h1 className={`text-2xl font-semibold tracking-tight ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Practice accounts</h1>
+            <p className={`mt-2 max-w-2xl text-sm ${muted}`}>Create simulated evaluation and funded accounts and manage their plans and rules.</p>
           </div>
-          <button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium ${surface} ${isDark ? 'text-[#FAFAFA] hover:bg-[#27272A]' : 'text-[#09090B] hover:bg-[#F4F4F5]'}`}>
-            <Database className="h-4 w-4" strokeWidth={1.75} aria-hidden /> Connection settings <ChevronRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-          </button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button type="button" onClick={() => navigate(ROUTES.PRACTICE)} className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${isDark ? 'bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]' : 'bg-[#18181B] text-white hover:bg-[#27272A]'}`}>
+              <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden /> Open Practice
+            </button>
+            <button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium ${surface} ${isDark ? 'text-[#FAFAFA] hover:bg-[#27272A]' : 'text-[#09090B] hover:bg-[#F4F4F5]'}`}>
+              <Database className="h-4 w-4" strokeWidth={1.75} aria-hidden /> Connection settings <ChevronRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
         </div>
 
         {error ? <div role="alert" className={`mb-5 flex items-start gap-2 rounded-lg border p-3 text-sm ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />{error}</div> : null}
 
         <div
           role="tablist"
-          aria-label="Practice account workspace"
+          aria-label="Practice account management"
           className={`mb-6 grid grid-cols-2 rounded-xl border p-1 sm:inline-grid sm:min-w-80 ${isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-[#F4F4F5]'}`}
         >
           <button

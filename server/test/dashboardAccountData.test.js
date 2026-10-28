@@ -139,6 +139,89 @@ test('live statistics render before a slow calendar and skip practice discovery'
   assert.deepEqual((await request).days, [{ date: '2026-10-12', pnl: 450 }])
 })
 
+test('a dashboard return reuses visible live cards before the first calendar finishes', async () => {
+  select('tradesea', live.id)
+  const calendar = deferred()
+  const progress = deferred()
+  state.getCalendar = () => { state.calls.calendar += 1; return calendar.promise }
+  const first = loadDashboardAccountData(month, { onProgress: progress.resolve })
+  await progress.promise
+  const snapshot = getDashboardAccountSnapshot(month)
+  assert.equal(snapshot?.tradeseaDashboard.totalPnl.value, 450)
+  assert.equal(snapshot.loading, false)
+  assert.equal(snapshot.refreshing, false)
+  const returned = await loadDashboardAccountData(month, { refreshPractice: false })
+  assert.equal(returned.tradeseaDashboard.totalPnl.value, 450)
+  assert.equal(state.calls.dashboard, 1, 'a recent snapshot can be reused without another statistics download')
+  assert.equal(state.calls.calendar, 1)
+
+  calendar.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [{ date: '2026-10-13', pnl: 90 }] } })
+  await first
+  assert.deepEqual(getDashboardAccountSnapshot(month).days, [{ date: '2026-10-13', pnl: 90 }])
+})
+
+test('practice-only invalidation does not prevent pending live cards or calendar from being cached', async () => {
+  select('tradesea', live.id)
+  const dashboard = deferred()
+  const calendar = deferred()
+  const progress = deferred()
+  state.getDashboard = () => dashboard.promise
+  state.getCalendar = () => calendar.promise
+  const request = loadDashboardAccountData(month, { onProgress: progress.resolve })
+  await new Promise(setImmediate)
+  invalidateDashboardAccountSnapshots('practice')
+  dashboard.resolve({ s: 'success', d: { totalPnl: { value: 125 } } })
+  await progress.promise
+  assert.equal(getDashboardAccountSnapshot(month)?.tradeseaDashboard.totalPnl.value, 125)
+  invalidateDashboardAccountSnapshots('practice')
+  calendar.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [{ date: '2026-10-14', pnl: 125 }] } })
+  await request
+  assert.deepEqual(getDashboardAccountSnapshot(month).days, [{ date: '2026-10-14', pnl: 125 }])
+})
+
+test('live invalidation cannot be undone by an older partial or completed response', async () => {
+  for (const invalidateBeforeCards of [true, false]) {
+    invalidateDashboardAccountSnapshots()
+    select('tradesea', live.id)
+    const dashboard = deferred()
+    const calendar = deferred()
+    const progress = deferred()
+    state.getDashboard = () => dashboard.promise
+    state.getCalendar = () => calendar.promise
+    const request = loadDashboardAccountData(month, { onProgress: progress.resolve })
+    await new Promise(setImmediate)
+    if (invalidateBeforeCards) invalidateDashboardAccountSnapshots('tradesea')
+    dashboard.resolve({ s: 'success', d: { totalPnl: { value: 125 } } })
+    await progress.promise
+    if (!invalidateBeforeCards) invalidateDashboardAccountSnapshots('tradesea')
+    assert.equal(getDashboardAccountSnapshot(month), null)
+    calendar.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [] } })
+    await request
+    assert.equal(getDashboardAccountSnapshot(month), null)
+  }
+})
+
+test('auth replacement cannot publish or cache an older live dashboard response', async () => {
+  select('tradesea', live.id)
+  const dashboard = deferred()
+  const calendar = deferred()
+  let progressCalls = 0
+  state.getDashboard = () => dashboard.promise
+  state.getCalendar = () => calendar.promise
+  const request = loadDashboardAccountData(month, { onProgress: () => { progressCalls += 1 } })
+  await new Promise(setImmediate)
+  state.token = 'replacement-owner'
+  dashboard.resolve({ s: 'success', d: { totalPnl: { value: 125 } } })
+  await new Promise(setImmediate)
+  assert.equal(progressCalls, 0)
+  assert.equal(getDashboardAccountSnapshot(month), null)
+  calendar.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [] } })
+  await request
+  assert.equal(getDashboardAccountSnapshot(month), null)
+  state.token = 'owner'
+  assert.equal(getDashboardAccountSnapshot(month), null, 'the obsolete request must not create its partial or completed snapshot')
+})
+
 test('calendar failure preserves the main dashboard and its fallback calendar', async () => {
   select('tradesea', live.id)
   state.getCalendar = async () => { throw new Error('calendar offline') }
@@ -343,3 +426,42 @@ test('a response from a previous session is neither rendered nor persisted', asy
   assert.equal(storage.get('aurenDashboardAccount'), undefined)
   cleanup()
 })
+
+for (const source of ['practice', 'tradesea']) {
+  test(`${source} invalidation starts fresh reads instead of joining and remembering an older pending response`, async () => {
+    select(source, source === 'practice' ? practice.id : live.id)
+    const previous = deferred()
+    const oldCalendar = deferred()
+    state.getStats = () => {
+      state.calls.stats += 1
+      return state.calls.stats === 1 ? previous.promise : Promise.resolve({ totalPnl: 900 })
+    }
+    state.getDashboard = () => {
+      state.calls.dashboard += 1
+      return state.calls.dashboard === 1 ? previous.promise : Promise.resolve({ s: 'success', d: { totalPnl: { value: 900 } } })
+    }
+    state.getCalendar = () => {
+      state.calls.calendar += 1
+      return state.calls.calendar === 1 ? oldCalendar.promise : Promise.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [{ date: '2026-10-12', pnl: 900 }] } })
+    }
+    const first = loadDashboardAccountData(month, { refreshPractice: false })
+    for (let index = 0; index < 12; index++) await Promise.resolve()
+    invalidateDashboardAccountSnapshots(source)
+    const refreshed = loadDashboardAccountData(month, { refreshPractice: false, force: true })
+    for (let index = 0; index < 12; index++) await Promise.resolve()
+    if (source === 'practice') assert.equal(state.calls.stats, 2)
+    else {
+      assert.equal(state.calls.dashboard, 2)
+      assert.equal(state.calls.calendar, 2)
+    }
+    const fresh = await refreshed
+    assert.equal(source === 'practice' ? fresh.practiceStats.totalPnl : fresh.tradeseaDashboard.totalPnl.value, 900)
+    previous.resolve(source === 'practice' ? { totalPnl: 1 } : { s: 'success', d: { totalPnl: { value: 1 } } })
+    oldCalendar.resolve({ s: 'success', d: { pnlAndTradeCountCalendar: [{ date: '2026-10-12', pnl: 1 }] } })
+    await first
+    const snapshot = getDashboardAccountSnapshot(month)
+    assert.equal(source === 'practice' ? snapshot.practiceStats.totalPnl : snapshot.tradeseaDashboard.totalPnl.value, 900,
+      'a pre-invalidation result cannot acquire the newer load revision and replace fresh statistics')
+    if (source === 'tradesea') assert.equal(snapshot.days[0].pnl, 900)
+  })
+}

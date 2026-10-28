@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { useTheme } from '../../../hooks/useTheme'
 import { getThemeColors } from '../../../constants/theme'
-import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
+import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms/registry'
 import { ROUTES } from '../../../constants/routes'
 import TradingRenderer from '../Trading/TradingRenderer'
 import { t } from '../../../utils/translator'
@@ -13,6 +13,8 @@ import { getAuthToken } from '../../../api/api'
 import { getTradeTradeseaAccount } from '../../../constants/trade'
 import { acquireLiveTradeSession, invalidateLiveTradeSession } from '../../../services/trading/liveTradeSession'
 import { LiveTradeViewActive } from '../../../contexts/LiveTradeViewContext'
+import { loadAurenChartBoot } from '../../../services/chart/loadAurenChartBoot'
+import { traceStartup } from '../../../services/debug/startupTrace'
 
 export default function LiveTradePage() {
   const viewActive = useContext(LiveTradeViewActive)
@@ -39,6 +41,9 @@ export default function LiveTradePage() {
     }
     localStorage.setItem('activePropFirm', firmId)
     tradeseaFirm.setPracticeMode(false)
+    // Fetch the chart module graph while the server validates the account.
+    // A failed warmup is retried by the chart's normal boot path.
+    void loadAurenChartBoot().catch(() => undefined)
     return acquireLiveTradeSession({
       owner: tradeseaFirm,
       getIdentity: () => ({
@@ -51,14 +56,17 @@ export default function LiveTradePage() {
         && tradeseaFirm.selectedAccountId === getTradeTradeseaAccount().accountId
         && tradeseaFirm.chartServices?.accountId === tradeseaFirm.selectedAccountId,
       load: async (assertCurrent) => {
-        const validationResult = await tradeseaFirm.validate()
-        assertCurrent()
-        if (!validationResult.success) throw new Error(validationResult.message || t('practice.page.loadFailed'))
-        tradeseaFirm.accountsFetched = false
-        await tradeseaFirm.onValidateSuccess()
-        assertCurrent()
-        if (!tradeseaFirm.streamsReady) {
-          throw new Error(tradeseaFirm.streamsError || t('practice.page.loadFailed'))
+        traceStartup('account-start')
+        try {
+          await tradeseaFirm.initializeLiveTrade()
+          assertCurrent()
+          if (!tradeseaFirm.streamsReady) {
+            throw new Error(tradeseaFirm.streamsError || t('practice.page.loadFailed'))
+          }
+          traceStartup('account-ready')
+        } catch (error) {
+          traceStartup('account-error')
+          throw error
         }
       },
     })
@@ -111,7 +119,8 @@ export default function LiveTradePage() {
   if (isValidating && !refreshing) {
     return (
       <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
-        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+        <ProductHeader isDark={isDark} toggleTheme={toggleTheme}
+          marketDataStatus={{ label: 'Connecting market data…', connected: false }} />
         <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
           <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         </main>
@@ -122,7 +131,8 @@ export default function LiveTradePage() {
   if (validationError) {
     return (
       <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
-        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
+        <ProductHeader isDark={isDark} toggleTheme={toggleTheme}
+          marketDataStatus={{ label: 'Market data disconnected', connected: false }} />
         <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
           <div
             className={`max-w-md w-full p-6 rounded-2xl border ${

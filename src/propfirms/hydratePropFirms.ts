@@ -10,30 +10,24 @@ export async function hydratePropFirmsList(
 ): Promise<PropFirm[]> {
   let result = [...propFirmsList]
   const firmIds = PRACTICE_PROP_FIRM_CONFIGS.map((c) => c.id)
-
-  for (const firmType of firmIds) {
-    const listed = result.find((f) => f.type === firmType)
-    if (!listed) continue
+  const responses = await Promise.all(firmIds.map(async (firmType) => {
     try {
-      const firmResponse = await getPropFirm(firmType)
-      if (firmResponse.success && firmResponse.propFirm) {
-        result = result.map((f) => (f.type === firmType ? firmResponse.propFirm! : f))
-      }
+      return await getPropFirm(firmType)
     } catch {
-      /* keep list entry without credentials */
+      // A missing or unavailable firm must not prevent the others from loading.
+      return undefined
     }
-  }
+  }))
 
-  for (const firmType of firmIds) {
-    if (result.some((f) => f.type === firmType)) continue
-    try {
-      const firmResponse = await getPropFirm(firmType)
-      if (firmResponse.success && firmResponse.propFirm) {
-        result = [...result, firmResponse.propFirm]
-      }
-    } catch {
-      /* firm not configured yet */
-    }
+  // Merge in configuration order regardless of which request finishes first.
+  // Preserve listed entries when their detail lookup fails and append new firms.
+  for (const [index, firmType] of firmIds.entries()) {
+    const firmResponse = responses[index]
+    if (!firmResponse?.success || !firmResponse.propFirm) continue
+    const hydrated = firmResponse.propFirm
+    result = result.some((firm) => firm.type === firmType)
+      ? result.map((firm) => (firm.type === firmType ? hydrated : firm))
+      : [...result, hydrated]
   }
 
   return result

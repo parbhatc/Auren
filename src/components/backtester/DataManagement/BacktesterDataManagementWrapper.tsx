@@ -4,6 +4,7 @@ import { useTheme } from '../../../hooks/useTheme'
 import { getThemeColors } from '../../../constants/theme'
 import { ROUTES } from '../../../constants/routes'
 import { authAPI } from '../../../api/auth.api'
+import { clearAuthToken } from '../../../api/api'
 import { backtesterAPI } from '../../../api/backtester.api'
 import { toast } from 'react-toastify'
 import BacktesterDataManagementRenderer from './BacktesterDataManagementRenderer'
@@ -154,7 +155,6 @@ const BacktesterDataManagementWrapper = () => {
       } catch (err: any) {
         console.error('Error fetching data:', err)
         if (err?.response?.status === 401) {
-          localStorage.removeItem('token')
           navigate(ROUTES.LOGIN)
         } else if (err?.response?.status === 403) {
           setError(t('backtesterDataManagement.adminRequired'))
@@ -490,7 +490,7 @@ const BacktesterDataManagementWrapper = () => {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
+    clearAuthToken()
     navigate(ROUTES.LOGIN)
   }
 

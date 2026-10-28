@@ -10,7 +10,11 @@ import { registerConsoleCaptureGlobals } from './services/debug/consoleLogCaptur
 import { installBwcTouchScrollLockIntercept } from './utils/bwcTouchScrollLock'
 import { retireLegacyPwaCaches } from './utils/pwa'
 import { installReliableTouchButtons } from './utils/reliableTouchButtons'
+import { installStartupTrace } from './services/debug/startupTrace'
+import { installAuthSessionLifecycle } from './api/auth.api'
 
+installStartupTrace()
+installAuthSessionLifecycle()
 registerCandleDebugGlobals()
 registerConsoleCaptureGlobals()
 installBwcTouchScrollLockIntercept()

@@ -2,7 +2,8 @@ import { Component, createRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Calendar, Settings, X } from 'lucide-react'
 import { EconomicNewsPanelProps } from '../../types/common'
-import { economicNewsAPI } from '../../api/economicNews.api'
+import { economicNewsAPI, type EconomicEvent } from '../../api/economicNews.api'
+import { getAuthToken } from '../../api/api'
 import Checkbox from './Checkbox'
 import { formatNewsTime } from '../../utils/newsTime'
 
@@ -12,9 +13,15 @@ import { formatNewsTime } from '../../utils/newsTime'
  */
 class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
   settingsDialogRef = createRef<HTMLDivElement>()
+  private mounted = false
+  private request: AbortController | null = null
+  private requestKey: string | null = null
+  private requestId = 0
+  private owner: string | null = null
 
   state = {
-    events: [] as any[],
+    monthEvents: [] as EconomicEvent[],
+    monthKey: null as string | null,
     loading: true,
     error: null as string | null,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -42,6 +49,7 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
   }
 
   componentDidMount() {
+    this.mounted = true
     // Load timezone from localStorage
     const savedTimezone = localStorage.getItem('user_timezone')
     if (savedTimezone) {
@@ -57,12 +65,17 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
 
   componentDidUpdate(prevProps: EconomicNewsPanelProps) {
     // Refetch events if date prop changes (e.g., when backtester session date changes)
-    if (prevProps.date !== this.props.date) {
+    if (prevProps.date !== this.props.date || this.owner !== getAuthToken()) {
       this.fetchTodayEvents()
     }
   }
 
   componentWillUnmount() {
+    this.mounted = false
+    this.requestId += 1
+    this.request?.abort()
+    this.request = null
+    this.requestKey = null
     window.removeEventListener('storage', this.handleStorageChange)
     document.removeEventListener('mousedown', this.handleClickOutside)
   }
@@ -104,8 +117,6 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
       }
       this.saveFiltersToStorage(newFilters)
       return { filters: newFilters }
-    }, () => {
-      this.fetchTodayEvents()
     })
   }
 
@@ -120,87 +131,78 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
       }
       this.saveFiltersToStorage(newFilters)
       return { filters: newFilters }
-    }, () => {
-      this.fetchTodayEvents()
     })
   }
 
   handleStorageChange = (e: StorageEvent) => {
     if (e.key === 'user_timezone' && e.newValue) {
-      this.setState({ timezone: e.newValue }, () => {
-        this.fetchTodayEvents()
-      })
+      this.setState({ timezone: e.newValue })
     }
   }
 
+  getTargetDate = () => {
+    // Keep date-only replay dates on their intended local calendar day.
+    return this.props.date
+      ? (typeof this.props.date === 'string'
+          ? /^\d{4}-\d{2}-\d{2}$/.test(this.props.date)
+            ? new Date(`${this.props.date}T12:00:00`)
+            : new Date(this.props.date)
+          : this.props.date)
+      : new Date()
+  }
+
+  getMonthKey = (date: Date) => JSON.stringify([getAuthToken(), date.getFullYear(), date.getMonth() + 1])
+
   fetchTodayEvents = async () => {
+    const dateToUse = this.getTargetDate()
+    const monthKey = this.getMonthKey(dateToUse)
+    this.owner = getAuthToken()
+    if (this.requestKey === monthKey) return
+    this.request?.abort()
+    const requestId = ++this.requestId
+    this.requestKey = null
+    this.request = null
+    if (this.state.monthKey === monthKey) {
+      this.setState({ loading: false, error: null })
+      return
+    }
+    const controller = new AbortController()
+    this.request = controller
+    this.requestKey = monthKey
+    const owner = this.owner
+    const isCurrent = () => this.mounted && requestId === this.requestId && owner === getAuthToken()
+    this.setState({ loading: true, error: null })
     try {
-      // Use provided date prop if available (for backtester sessions), otherwise use current date
-      // Date-only strings are UTC when passed directly to `new Date()`. In US
-      // time zones that shifts (for example) 2026-07-16 back to July 15.
-      // Anchor them at local noon so calendar news stays on the requested day.
-      const dateToUse = this.props.date
-        ? (typeof this.props.date === 'string'
-            ? /^\d{4}-\d{2}-\d{2}$/.test(this.props.date)
-              ? new Date(`${this.props.date}T12:00:00`)
-              : new Date(this.props.date)
-            : this.props.date)
-        : new Date()
-      const year = dateToUse.getFullYear()
-      const month = dateToUse.getMonth() + 1
-
-      const response = await economicNewsAPI.getEvents(year, month)
-      
-      if (response.success && response.events) {
-        // Filter events for the target date using timezone
-        const timezone = this.state.timezone
-        const targetDate = dateToUse
-        const targetDateStr = new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(targetDate)
-        const [monthPart, dayPart, yearPart] = targetDateStr.split('/')
-        const formattedTargetDate = `${yearPart}-${monthPart}-${dayPart}`
-        
-        let todayEvents = response.events.filter((event: any) => {
-          if (!event.date) return false
-          const eventDate = event.date.split('T')[0]
-          return eventDate === formattedTargetDate
-        })
-
-        // Apply filters
-        const { filters } = this.state
-        todayEvents = todayEvents.filter((event: any) => {
-          // Currency filter
-          const currencyMatch = filters.currencies[event.currency as keyof typeof filters.currencies] || 
-                                filters.currencies.ALL
-          
-          // Impact filter
-          const impactKey = event.impact?.toLowerCase() || 'low'
-          const impactMatch = filters.impact[impactKey as keyof typeof filters.impact] || false
-          
-          return currencyMatch && impactMatch
-        })
-
-        // Sort by time and limit to top 5
-        const sortedEvents = todayEvents
-          .sort((a: any, b: any) => {
-            const timeA = this.parseTime(a.time)
-            const timeB = this.parseTime(b.time)
-            return timeA - timeB
-          })
-          .slice(0, 5)
-
-        this.setState({ events: sortedEvents, loading: false })
-      } else {
-        this.setState({ loading: false })
-      }
+      const response = await economicNewsAPI.getEvents(dateToUse.getFullYear(), dateToUse.getMonth() + 1, { signal: controller.signal })
+      if (!isCurrent()) return
+      this.setState({ monthEvents: response.success ? response.events || [] : [], monthKey, loading: false })
     } catch (error: any) {
+      if (!isCurrent()) return
       console.error('Error fetching economic news:', error)
       this.setState({ error: 'Failed to load news', loading: false })
+    } finally {
+      if (requestId === this.requestId) {
+        this.request = null
+        this.requestKey = null
+      }
     }
+  }
+
+  getTodayEvents = () => {
+    const date = this.getTargetDate()
+    if (this.state.monthKey !== this.getMonthKey(date)) return []
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      timeZone: this.state.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(date)
+    const [month, day, year] = formatted.split('/')
+    const targetDate = `${year}-${month}-${day}`
+    const { filters } = this.state
+    return this.state.monthEvents.filter((event) => {
+      if (event.date?.split('T')[0] !== targetDate) return false
+      const currencyMatch = filters.currencies[event.currency as keyof typeof filters.currencies] || filters.currencies.ALL
+      const impactKey = event.impact?.toLowerCase() || 'low'
+      return currencyMatch && filters.impact[impactKey as keyof typeof filters.impact]
+    }).sort((a, b) => this.parseTime(a.time) - this.parseTime(b.time)).slice(0, 5)
   }
 
   parseTime = (timeStr: string): number => {
@@ -235,7 +237,8 @@ class EconomicNewsPanel extends Component<EconomicNewsPanelProps> {
 
   render() {
     const { isDark } = this.props
-    const { events, loading, error, showSettings, filters } = this.state
+    const { loading, error, showSettings, filters } = this.state
+    const events = this.getTodayEvents()
 
     return (
       <div

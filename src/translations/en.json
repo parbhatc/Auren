@@ -554,7 +554,7 @@
       "resetRules": "Reset",
       "switchAccount": "Practice account",
       "yourAccounts": "Your accounts",
-      "manageAccounts": "Manage accounts on hub",
+      "manageAccounts": "Manage accounts",
       "confirmCreateTitle": "Create practice account?",
       "confirmCreateMessage": "Create this practice account with the rules below?",
       "confirmCreateAccount": "{title}",

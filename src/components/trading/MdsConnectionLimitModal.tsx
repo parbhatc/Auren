@@ -5,9 +5,10 @@ type MdsConnectionLimitModalProps = {
   isOpen: boolean
   isDark: boolean
   onRefresh: () => void
+  onDismiss: () => void
 }
 
-export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnectionLimitModalProps) {
+export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh, onDismiss }: MdsConnectionLimitModalProps) {
   if (!isOpen) return null
 
   const shell = isDark
@@ -69,6 +70,13 @@ export function MdsConnectionLimitModal({ isOpen, isDark, onRefresh }: MdsConnec
         >
           <RefreshCw className="h-4 w-4" aria-hidden />
           Refresh
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className={`text-sm underline-offset-4 hover:underline ${bodyClass}`}
+        >
+          Continue without live data
         </button>
       </div>
     </div>,

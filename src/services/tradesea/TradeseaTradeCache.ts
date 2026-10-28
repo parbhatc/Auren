@@ -508,8 +508,11 @@ export class TradeseaTradeCache extends ChartTradeCache {
     if (!pos?.id || !pos.qty) {
       const cached = this.getPosition(cacheKey)
       if (cached?.contracts) {
-        this.cache.delete(cacheKey)
-        cached.line?.removeAll?.()
+        // getPosition() can resolve a related broker/chart symbol (for example
+        // an MNQ position rendered on NQ). Deleting cacheKey leaves that actual
+        // entry behind, so the chart keeps showing a position after the
+        // authoritative socket snapshot says the account is flat.
+        this.clearPositionLocal(cached)
       }
       return
     }

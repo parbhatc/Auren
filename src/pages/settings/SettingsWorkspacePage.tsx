@@ -4,6 +4,7 @@ import ProductHeader from '../../components/layout/ProductHeader'
 import SettingsTabs from '../../components/settings/SettingsTabs'
 import { ROUTES } from '../../constants/routes'
 import { useTheme } from '../../hooks/useTheme'
+import { prefetchRouteOnIntent } from '../../navigation/routeModules'
 
 export default function SettingsWorkspacePage() {
   const { isDark, toggleTheme } = useTheme()
@@ -34,6 +35,22 @@ export default function SettingsWorkspacePage() {
         </header>
         <SettingsTabs key={location.pathname} isDark={isDark} navigate={navigate} />
         <Outlet />
+        <section aria-labelledby="practice-accounts-settings" className={`mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+          <div>
+            <h2 id="practice-accounts-settings" className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Practice accounts</h2>
+            <p className={`mt-1 text-xs ${isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'}`}>Create simulated accounts and manage their plans and rules.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.PRACTICE_ACCOUNTS)}
+            onPointerEnter={() => prefetchRouteOnIntent(ROUTES.PRACTICE_ACCOUNTS)}
+            onFocus={() => prefetchRouteOnIntent(ROUTES.PRACTICE_ACCOUNTS)}
+            onTouchStart={() => prefetchRouteOnIntent(ROUTES.PRACTICE_ACCOUNTS)}
+            className={`inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border px-3 text-sm font-medium ${isDark ? 'border-[#3F3F46] text-[#FAFAFA] hover:bg-[#27272A]' : 'border-[#D4D4D8] text-[#09090B] hover:bg-[#F4F4F5]'}`}
+          >
+            Manage accounts
+          </button>
+        </section>
       </main>
     </div>
   )

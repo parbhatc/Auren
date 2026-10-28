@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -15,7 +15,6 @@ import { WorkspaceShell, PageHeading, Surface } from '../../components/layout/Wo
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { ROUTES } from '../../constants/routes'
 import { useTheme } from '../../hooks/useTheme'
-import JournalEntryEditor from '../../journal/JournalEntryEditor'
 import {
   journalOutcomeLabel,
   journalSetupStages,
@@ -24,6 +23,8 @@ import {
 } from '../../journal/journalConditions'
 import { journalLocalDateTime, summarizeJournalEntry } from '../../../shared/journalRecap.js'
 import { createJournalDraft } from '../../journal/journalCapture'
+
+const JournalEntryEditor = lazy(() => import('../../journal/JournalEntryEditor'))
 
 const journalPrice = (value?: string) => {
   if (value == null || String(value).trim() === '') return '—'
@@ -82,8 +83,8 @@ export default function JournalPage() {
       .then((records) => {
         if (!controller.signal.aborted) setEntries(records)
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
+      .catch((error) => {
+        if (!controller.signal.aborted && error?.name !== 'AbortError')
           setError('Journal entries could not be loaded. Try again when the server is available.')
       })
       .finally(() => {
@@ -94,8 +95,8 @@ export default function JournalPage() {
       .then((records) => {
         if (!controller.signal.aborted) setPlaybooks(records.map(playbookFromRecord))
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
+      .catch((error) => {
+        if (!controller.signal.aborted && error?.name !== 'AbortError')
           setError(
             'Your saved playbooks could not be loaded. Refresh to try again.'
           )
@@ -565,6 +566,11 @@ export default function JournalPage() {
           </div>
         )}
         {draft && (
+          <Suspense fallback={
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="status">
+              <p className="rounded-lg bg-zinc-900 px-5 py-4 text-sm text-white">Opening journal editor…</p>
+            </div>
+          }>
           <JournalEntryEditor
             key={draft.id || 'new'}
             initialEntry={draft}
@@ -573,6 +579,7 @@ export default function JournalPage() {
             onSave={saveEntry}
             onClose={closeEditor}
           />
+          </Suspense>
         )}
         <ConfirmDialog
           isOpen={!!pendingDelete}

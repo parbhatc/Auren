@@ -2,6 +2,7 @@ import { Component } from 'react'
 import { ROUTES } from '../../constants/routes'
 import { t } from '../../utils/translator'
 import { SettingsTabsProps } from '../../types/settings'
+import { prefetchRouteOnIntent } from '../../navigation/routeModules'
 
 class SettingsTabs extends Component<SettingsTabsProps> {
   render() {
@@ -32,6 +33,9 @@ class SettingsTabs extends Component<SettingsTabsProps> {
                 key={tab.path}
                 type="button"
                 onClick={() => navigate(tab.path)}
+                onPointerEnter={() => prefetchRouteOnIntent(tab.path)}
+                onFocus={() => prefetchRouteOnIntent(tab.path)}
+                onTouchStart={() => prefetchRouteOnIntent(tab.path)}
                 className={`${tab.desktopOnly ? 'hidden sm:block' : ''} px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive
                     ? isDark

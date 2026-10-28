@@ -1,5 +1,6 @@
 import { BarChart3, Database, History } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
+import { prefetchRouteOnIntent } from '../../../navigation/routeModules'
 
 export type BacktesterTab = 'sessions' | 'stats' | 'data'
 
@@ -37,6 +38,9 @@ export default function BacktesterNav({
             key={tab.id}
             type="button"
             onClick={() => navigate(tab.route)}
+            onPointerEnter={() => prefetchRouteOnIntent(tab.route)}
+            onFocus={() => prefetchRouteOnIntent(tab.route)}
+            onTouchStart={() => prefetchRouteOnIntent(tab.route)}
             className={`inline-flex min-w-max flex-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
               active
                 ? isDark

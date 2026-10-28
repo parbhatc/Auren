@@ -144,6 +144,76 @@ test('a late live catalog cannot overwrite a replacement bootstrap after cleanup
   assertCurrentState()
 })
 
+test('cold Live startup uses authoritative accounts without a credential or connection preflight', async () => {
+  let accountReads = 0
+  state.getPropFirm = () => { throw new Error('Live must not fetch credentials before accounts') }
+  state.getConnectionStatus = () => { throw new Error('Accounts already verifies the provider session') }
+  state.getAccounts = async () => {
+    accountReads += 1
+    return { connected: true, accounts: [market, live], defaultAccountId: market.id }
+  }
+  const datafeed = { setTradeHandler() {} }
+  state.prepareTradeseaChartServices = async (accountId) => {
+    state.connects.push(accountId)
+    return { accountId, datafeed, streamConfig: {} }
+  }
+  const firm = new TradeseaPropFirm()
+  firm.getHandler = () => null
+  // Starting a new lease must refresh an old catalog, while the chosen saved
+  // account still wins over the provider's default selection.
+  firm.accountsFetched = true
+  firm.accounts = [{ id: 'stale-account', label: 'Old account' }]
+  firm.formattedAccounts = [{ account: firm.accounts[0] }]
+  await firm.initializeLiveTrade()
+  assert.equal(accountReads, 1)
+  assert.deepEqual(firm.accounts, [market, live])
+  assert.equal(firm.selectedAccountId, live.id)
+  assert.equal(firm.chartServices.datafeed, datafeed)
+  assert.equal(firm.streamsReady, true)
+  assert.equal(firm.accountsLoading, false)
+  assert.deepEqual(state.connects, [live.id])
+})
+
+for (const outcome of [
+  { connected: false, message: 'Market data is not connected. Connect in Settings → Market data.', type: 'no_prop_firm' },
+  { connected: false, sessionExpired: true, message: 'Market data session expired. Reconnect in Settings → Market data.', type: 'token_expired' },
+  { connected: true, accounts: [], message: 'No supported accounts are available.', type: 'no_accounts' },
+]) {
+  test(`Live account bootstrap preserves the ${outcome.type} error without starting streams`, async () => {
+    state.getAccounts = async () => outcome
+    const firm = new TradeseaPropFirm()
+    await assert.rejects(firm.initializeLiveTrade(), { message: outcome.message, type: outcome.type })
+    assert.equal(firm.accountsFetched, false)
+    assert.equal(firm.accountsLoading, false)
+    assert.equal(firm.streamsReady, false)
+    assert.deepEqual(state.connects, [])
+  })
+}
+
+test('a superseded authoritative Live bootstrap cannot select accounts or start streams', async () => {
+  const catalog = deferred()
+  const started = deferred()
+  state.getAccounts = () => { started.resolve(); return catalog.promise }
+  const firm = new TradeseaPropFirm()
+  const pending = firm.initializeLiveTrade()
+  await started.promise
+  firm.cleanup()
+  const assertCurrentState = beginCurrentLiveState(firm)
+  catalog.resolve({ connected: true, accounts: [{ id: 'old-live', label: 'Old live account' }] })
+  await pending
+  assertCurrentState()
+})
+
+test('the Live bootstrap cannot replace a practice session', async () => {
+  state.getAccounts = () => { throw new Error('Practice bootstrap must use its existing path') }
+  const firm = new TradeseaPropFirm()
+  firm.setPracticeMode(true, market.id, market.label)
+  await assert.rejects(firm.initializeLiveTrade(), /Live startup requires live mode/)
+  assert.equal(firm.practiceMode, true)
+  assert.equal(firm.selectedAccountId, market.id)
+  assert.deepEqual(state.connects, [])
+})
+
 test('late validation credentials are rejected after cleanup', async () => {
   const credentials = deferred()
   state.getPropFirm = () => credentials.promise

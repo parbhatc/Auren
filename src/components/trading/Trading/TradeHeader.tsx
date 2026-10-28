@@ -15,6 +15,7 @@ import type { MdsStatusClient } from '../../../services/mds/mdsStatusClient'
 import { MdsConnectionLimitModal } from '../MdsConnectionLimitModal'
 import type { FormattedAccount } from '../../../utils/marketAccountDisplay'
 import { getPracticeAccountById } from '../../../constants/practice'
+import { clearAuthToken } from '../../../api/api'
 
 export function TradeHeader({
   isDark,
@@ -236,7 +237,7 @@ export function TradeHeader({
           <button
             type="button"
             onClick={() => {
-              localStorage.removeItem('token')
+              clearAuthToken()
               navigate(ROUTES.LOGIN)
             }}
             className={`${headerActionVisibility} p-1.5 rounded ${
@@ -271,6 +272,7 @@ export function TradeHeader({
         isOpen={connectionLimitOpen}
         isDark={isDark}
         onRefresh={handleConnectionLimitRefresh}
+        onDismiss={() => setConnectionLimitOpen(false)}
       />
     </div>
   )

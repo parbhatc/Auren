@@ -53,7 +53,6 @@ const BacktesterChartViewWrapper = () => {
         }
       } catch (err: any) {
         if (err?.response?.status === 401) {
-          localStorage.removeItem('token')
           navigate(ROUTES.LOGIN)
         }
       } finally {

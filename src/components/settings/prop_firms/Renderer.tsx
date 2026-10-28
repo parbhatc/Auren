@@ -13,7 +13,7 @@ import {
   canClearPropFirmSettings,
   getPropFirmSettingsDescription,
   getPropFirmSettingsPanel,
-} from '../../../propfirms'
+} from '../../../propfirms/connect/settingsPanels'
 import { t } from '../../../utils/translator'
 import { fieldLabelClass, selectInputClass } from '../../../styles/aurenTheme'
 import ErrorMessage from '../../common/ErrorMessage'

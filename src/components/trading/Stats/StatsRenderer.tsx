@@ -12,7 +12,7 @@ import StatsTabs from './StatsTabs'
 import OverviewTab from './OverviewTab'
 import StatsCalendar from './StatsCalendar'
 import TradesTable from './TradesTable'
-import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms'
+import { propFirmRegistry, TradeseaPropFirm } from '../../../propfirms/registry'
 import {
   buildDayStatsPayload,
   isSyntheticTradeseaTrade,

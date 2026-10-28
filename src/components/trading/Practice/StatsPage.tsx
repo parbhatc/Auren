@@ -6,7 +6,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react'
 
 import { useTheme } from '../../../hooks/useTheme'
 
-import { propFirmRegistry } from '../../../propfirms'
+import { propFirmRegistry } from '../../../propfirms/registry'
 
 import { firmUsesBrokerAccounts } from '../../../propfirms/MarketDataConnection'
 

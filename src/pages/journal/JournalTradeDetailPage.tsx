@@ -1,5 +1,5 @@
 import JournalScreenshotView from '../../journal/JournalScreenshotView'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -22,7 +22,8 @@ import {
   formatRiskLeg,
   journalOutcomeLabel,
 } from '../../journal/journalConditions'
-import JournalReviewChart from '../../journal/JournalReviewChart'
+
+const JournalReviewChart = lazy(() => import('../../journal/JournalReviewChart'))
 
 export default function JournalTradeDetailPage() {
   const { tradeId } = useParams<{ tradeId: string }>()
@@ -711,7 +712,13 @@ export default function JournalTradeDetailPage() {
                   ))}
                 </div>
               </div>
-              <JournalReviewChart entry={entry} isDark={isDark} />
+              <Suspense fallback={
+                <div className="flex min-h-80 items-center justify-center text-sm text-zinc-500" role="status">
+                  Loading review chart…
+                </div>
+              }>
+                <JournalReviewChart entry={entry} isDark={isDark} />
+              </Suspense>
               <p className="px-2 pb-1 pt-3 text-[10px] leading-4 text-[#71717A]">
                 Drag to pan and scroll to zoom. BWC-native boxes mark the saved HTF PDA and IFVG
                 zones; bounded level segments connect each source high or low to its sweep.

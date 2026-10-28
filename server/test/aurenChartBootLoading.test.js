@@ -9,6 +9,7 @@ async function loadBootFixture(t, importModule) {
   t.after(() => { globalThis.__aurenChartImportFixture = previous })
   const source = fs.readFileSync(new URL('../../src/chart/aurenChartBoot.ts', import.meta.url), 'utf8')
     .replace("import chartAssetVersion from 'virtual:auren-chart-version'", "const chartAssetVersion = 'fixture-version'")
+    .replace("from '../utils/bwcDebugHud'", `from ${JSON.stringify(new URL('../../src/utils/bwcDebugHud.ts', import.meta.url).href)}`)
     .replace("new Function('url', 'return import(url)')", 'globalThis.__aurenChartImportFixture')
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },

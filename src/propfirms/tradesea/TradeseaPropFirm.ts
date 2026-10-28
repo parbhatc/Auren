@@ -380,6 +380,17 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
 
+  /**
+   * The account endpoint validates and refreshes the provider session on the
+   * server. Live does not need a separate credential read and connection probe
+   * before that same authoritative check. Settings and practice keep validate().
+   */
+  async initializeLiveTrade(): Promise<void> {
+    if (this.practiceMode) throw new Error('Live startup requires live mode')
+    this.accountsFetched = false
+    await this.onValidateSuccess()
+  }
+
   async onValidateSuccess(options?: { skipStreams?: boolean }): Promise<void> {
     const generation = this.lifecycleGeneration
     if (this.practiceMode) {
@@ -453,7 +464,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
         )
 
-        error.type = 'no_accounts'
+        error.type = result.connected ? 'no_accounts' : result.sessionExpired ? 'token_expired' : 'no_prop_firm'
 
         throw error
 

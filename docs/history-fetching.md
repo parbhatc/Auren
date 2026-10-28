@@ -228,8 +228,8 @@ Local measured traces are saved in `.codex/history-before.json` and
 
 ## Verification
 
-- Auren: 243 tests, application TypeScript and production build.
-- BWC Pro: 379 tests, including request sharing, range coverage, expiry, replay
+- Auren: 388 tests, application TypeScript and production build.
+- BWC Pro: 406 tests, including request sharing, range coverage, expiry, replay
   gaps, stale generations, visible-pane borrowing, indicator declarations,
   mixed-timeframe prevention and warm-cache candle finalization.
 - Deterministic primary warmup fixture: 3,600 candles previously required 26

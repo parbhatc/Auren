@@ -19,6 +19,22 @@ export default defineConfig({
     host: true,
     strictPort: false,
     hmr: false,
+    // Cache development transforms before the first browser visit, including
+    // Live's lazy route graph and the main entry's Tailwind/PostCSS work.
+    warmup: {
+      clientFiles: [
+        './src/main.tsx',
+        './src/components/auth/Login/index.tsx',
+        './src/pages/trading/live/TradePage.tsx',
+        './src/pages/workspace/DashboardPage.tsx',
+        './src/pages/workspace/AnalyticsPage.tsx',
+        './src/pages/workspace/NewsWorkspacePage.tsx',
+        './src/pages/journal/JournalPage.tsx',
+        './src/pages/practice/PracticeTerminalPage.tsx',
+        './src/pages/settings/SettingsWorkspacePage.tsx',
+        './src/components/backtester/BacktesterSessionsList/index.tsx',
+      ],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3001',

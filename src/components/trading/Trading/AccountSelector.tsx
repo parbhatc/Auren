@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, RefreshCw } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { ROUTES } from '../../../constants/routes'
 import {
   getPracticeAccountDisplayTitle,
   getPracticeAccounts,
+  PRACTICE_STORAGE_KEYS,
   refreshPracticeFromApi,
   type PracticeAccount,
   type PracticeAccountStatus,
@@ -33,6 +35,7 @@ export function AccountSelector({
   refreshing?: boolean
   compact?: boolean
 }) {
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [accounts, setAccounts] = useState<PracticeAccount[]>(() => getPracticeAccounts())
   const ref = useRef<HTMLDivElement>(null)
@@ -42,7 +45,9 @@ export function AccountSelector({
   }, [])
 
   useEffect(() => {
-    void refreshPracticeFromApi().then(syncAccounts)
+    // Trade/Stats/News/Pad load their account catalog before this header mounts.
+    // Reflect that shared data; only the explicit Refresh control refetches it.
+    syncAccounts()
     const onChange = () => syncAccounts()
     window.addEventListener('practiceAccountsChanged', onChange)
     return () => window.removeEventListener('practiceAccountsChanged', onChange)
@@ -95,6 +100,16 @@ export function AccountSelector({
     setOpen(false)
     if (account.id === currentAccountId) return
     if (account.status !== 'active') {
+      navigate(ROUTES.PRACTICE_ACCOUNTS)
+      return
+    }
+    try {
+      localStorage.setItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID, account.id)
+    } catch {
+      /* Storage is optional. */
+    }
+    window.dispatchEvent(new Event('practiceAccountsChanged'))
+    if (pathname === ROUTES.PRACTICE) {
       navigate(ROUTES.PRACTICE)
       return
     }
@@ -235,9 +250,9 @@ export function AccountSelector({
                         </div>
                         <p className={`text-xs mt-0.5 tabular-nums ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                           ${account.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          {' Â· '}
+                          {' · '}
                           {formatPracticeSize(account.size)}
-                          {' Â· '}
+                          {' · '}
                           <span className="capitalize">{account.status}</span>
                         </p>
                       </button>
@@ -253,7 +268,7 @@ export function AccountSelector({
               type="button"
               onClick={() => {
                 setOpen(false)
-                navigate(ROUTES.PRACTICE)
+                navigate(ROUTES.PRACTICE_ACCOUNTS)
               }}
               className={`w-full text-center px-3 py-2 text-xs font-medium rounded-md ${
                 isDark ? 'text-blue-400 hover:bg-[#27272A]' : 'text-blue-700 hover:bg-blue-50'

@@ -20,6 +20,7 @@ class AuthMiddleware {
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
           return res.status(HTTP_STATUS.UNAUTHORIZED).json({
             success: false,
+            code: 'APP_AUTH_REQUIRED',
             message: 'No token provided',
           })
         }
@@ -31,6 +32,7 @@ class AuthMiddleware {
         if (!decoded) {
           return res.status(HTTP_STATUS.UNAUTHORIZED).json({
             success: false,
+            code: 'APP_AUTH_INVALID',
             message: 'Invalid or expired token',
           })
         }
@@ -40,6 +42,7 @@ class AuthMiddleware {
         if (!user) {
           return res.status(HTTP_STATUS.UNAUTHORIZED).json({
             success: false,
+            code: 'APP_AUTH_USER_NOT_FOUND',
             message: 'User not found',
           })
         }

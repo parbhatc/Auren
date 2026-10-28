@@ -25,6 +25,7 @@ import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 import { registerAurenWidget } from '../../chart/aurenWidgetRegistry'
 import { trackHistoryBroker, traceChartResume } from '../debug/historyRequestTrace'
 import { LiveTradeViewActive } from '../../contexts/LiveTradeViewContext'
+import { traceStartup } from '../debug/startupTrace'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
@@ -291,12 +292,14 @@ export default function AurenChart(props: AurenChartProps) {
 
     void (async () => {
       try {
+        traceStartup('chart-mount')
         const {
           registerAurenChartIndicators,
           bootChart,
           registerTradeContextActions: bwcRegisterTradeContext,
           clearChartContextActions: bwcClearTradeContext,
         } = await loadAurenChartBoot()
+        traceStartup('chart-modules-ready')
 
         bindBwcTradeContextHooks({
           registerTradeContextActions: bwcRegisterTradeContext,
@@ -333,6 +336,7 @@ export default function AurenChart(props: AurenChartProps) {
           orderLineTheme: CHART_ORDER_LINE_THEME,
           onSymbolChange: notifySymbolChange,
         })) as BwcWidget
+        traceStartup('chart-candles-ready')
 
         if (cancelled) {
           widget.destroy?.()

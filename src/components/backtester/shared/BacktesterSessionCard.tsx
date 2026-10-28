@@ -5,6 +5,7 @@ import { listCardClass } from '../../../styles/aurenTheme'
 import { ghostButtonClass, primaryButtonClass } from '../../../styles/aurenTheme'
 import { ROUTES } from '../../../constants/routes'
 import { t } from '../../../utils/translator'
+import { prefetchRouteOnIntent } from '../../../navigation/routeModules'
 
 const SYMBOL_ACCENTS: Record<string, { dark: string; light: string }> = {
   NQ: { dark: 'bg-violet-500/15 text-violet-300 border-violet-500/30', light: 'bg-violet-100 text-violet-700 border-violet-200' },
@@ -56,6 +57,9 @@ export default function BacktesterSessionCard({
       <button
         type="button"
         onClick={onPlay}
+        onPointerEnter={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
+        onFocus={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
+        onTouchStart={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
         className={`flex-1 min-w-0 text-left p-4 transition-colors ${
           isDark ? 'hover:bg-slate-800/80' : 'hover:bg-slate-50'
         }`}
@@ -98,6 +102,9 @@ export default function BacktesterSessionCard({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onPlay() }}
+          onPointerEnter={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
+          onFocus={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
+          onTouchStart={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_CHART)}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium ${primaryButtonClass()}`}
         >
           <Play className="w-4 h-4" />
@@ -106,6 +113,8 @@ export default function BacktesterSessionCard({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onStats() }}
+          onPointerEnter={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_STATS)}
+          onFocus={() => prefetchRouteOnIntent(ROUTES.BACKTESTER_STATS)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium ${ghostButtonClass(isDark)}`}
         >
           <BarChart3 className="w-4 h-4" />

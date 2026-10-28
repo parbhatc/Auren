@@ -17,8 +17,10 @@ export const ROUTES = {
   UTILS_SETTINGS: '/settings/utils',
   KEYBOARD_SHORTCUTS_SETTINGS: '/settings/keyboard-shortcuts',
   PRACTICE_SETTINGS: '/settings/practice',
-  /** Simulated evaluation and funded account workspace */
+  /** Simulated trading terminal using the selected active practice account */
   PRACTICE: '/practice',
+  /** Create, reset and manage simulated evaluation and funded accounts */
+  PRACTICE_ACCOUNTS: '/practice/accounts',
   /** Simulated accounts — `/practice/trade/:accountId` */
   PRACTICE_TRADE: '/practice/trade',
   /** Live prop-firm trading terminal */

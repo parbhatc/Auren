@@ -59,7 +59,6 @@ const Wrapper = ({ embedded, onBack }: { embedded?: boolean; onBack?: () => void
         if (err?.response?.status === 403) {
           setError(t('roles.accessDenied'))
         } else if (err?.response?.status === 401) {
-          localStorage.removeItem('token')
           navigate(ROUTES.LOGIN)
         } else {
           setError(err?.response?.data?.message || t('roles.loadError'))

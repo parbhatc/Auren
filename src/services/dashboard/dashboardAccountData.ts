@@ -40,7 +40,8 @@ export function emptyDashboardData(): DashboardAccountData {
 const SNAPSHOT_TTL_MS = 30_000
 const snapshots = new Map<string, { data: DashboardAccountData; fetchedAt: number }>()
 const requests = new Map<string, Promise<unknown>>()
-let snapshotRevision = 0
+type SnapshotRevisions = Record<DashboardAccountSelection['source'], number>
+const snapshotRevisions: SnapshotRevisions = { practice: 0, tradesea: 0 }
 
 function monthRange(month: Date) {
   const today = new Date()
@@ -74,14 +75,18 @@ export function getDashboardAccountSnapshot(month: Date): DashboardAccountData |
 }
 
 export function invalidateDashboardAccountSnapshots(source?: DashboardAccountSelection['source']): void {
-  snapshotRevision += 1
+  if (source) snapshotRevisions[source] += 1
+  else {
+    snapshotRevisions.practice += 1
+    snapshotRevisions.tradesea += 1
+  }
   for (const [key, snapshot] of snapshots) {
     if (!source || snapshot.data.selection?.source === source) snapshots.delete(key)
   }
 }
 
-function remember(month: Date, data: DashboardAccountData, revision: number): DashboardAccountData {
-  if (revision === snapshotRevision && data.selection && !data.error) {
+function remember(month: Date, data: DashboardAccountData, revisions: SnapshotRevisions): DashboardAccountData {
+  if (data.selection && revisions[data.selection.source] === snapshotRevisions[data.selection.source] && !data.error) {
     const key = cacheKey(data.selection, month)
     snapshots.delete(key)
     snapshots.set(key, { data: { ...data, refreshing: false }, fetchedAt: Date.now() })
@@ -107,7 +112,7 @@ export async function loadDashboardAccountData(
   } = {}
 ): Promise<DashboardAccountData> {
   const owner = getAuthToken()
-  const revision = snapshotRevision
+  const revisions = { ...snapshotRevisions }
   const saved = getDashboardAccountSelection()
   let accounts: TradeseaAccount[] | null = null
   const loadTradeseaAccounts = async () => {
@@ -152,10 +157,10 @@ export async function loadDashboardAccountData(
     }
     try {
       const practiceStats = await requestOnce(
-        JSON.stringify([owner, 'stats', practiceAccount.id, practiceAccount.updatedAt]),
+        JSON.stringify([owner, 'stats', practiceAccount.id, practiceAccount.updatedAt, revisions.practice]),
         () => practiceAPI.getStats(practiceAccount.id)
       ) as DashboardPracticeStats
-      return owner === getAuthToken() ? remember(month, { ...data, practiceStats }, revision) : data
+      return owner === getAuthToken() ? remember(month, { ...data, practiceStats }, revisions) : data
     } catch {
       return { ...data, error: 'Practice statistics could not be loaded.' }
     }
@@ -168,11 +173,11 @@ export async function loadDashboardAccountData(
   const data = { ...emptyDashboardData(), selection, tradeseaAccount, loading: false }
   // Publish the dashboard as soon as it is ready. A slow calendar endpoint
   // must not prevent the statistics cards and navigation from being usable.
-  const calendarRequest = requestOnce(`${key}:calendar`, () => tradeseaAPI.getTradelensCalendar(body))
+  const calendarRequest = requestOnce(`${key}:calendar:${revisions.tradesea}`, () => tradeseaAPI.getTradelensCalendar(body))
     .then((response) => response.s === 'success' ? response.d?.pnlAndTradeCountCalendar : undefined)
     .catch(() => undefined)
   try {
-    const response = await requestOnce(`${key}:dashboard`, () => tradeseaAPI.getTradelensDashboard(body))
+    const response = await requestOnce(`${key}:dashboard:${revisions.tradesea}`, () => tradeseaAPI.getTradelensDashboard(body))
     const dashboard = response.s === 'success' ? response.d as TradeseaTradelensDashboard : null
     const dashboardDays = dashboard?.pnlAndTradeCountCalendar ?? []
     const toDays = (days: typeof dashboardDays) => days.map((day) => ({
@@ -182,10 +187,15 @@ export async function loadDashboardAccountData(
       ...data, tradeseaDashboard: dashboard, days: toDays(dashboardDays),
       error: dashboard ? '' : response.error || 'Tradesea statistics could not be loaded.',
     }
-    if (owner === getAuthToken()) options.onProgress?.({ ...result, refreshing: true })
+    if (owner === getAuthToken()) {
+      // A route return must reuse the visible cards even while the independent
+      // calendar is still pending. The completed calendar updates this snapshot.
+      remember(month, result, revisions)
+      options.onProgress?.({ ...result, refreshing: true })
+    }
     const calendarDays = await calendarRequest
     const completed = { ...result, days: toDays(calendarDays ?? dashboardDays) }
-    return owner === getAuthToken() ? remember(month, completed, revision) : completed
+    return owner === getAuthToken() ? remember(month, completed, revisions) : completed
   } catch {
     return { ...data, error: 'Tradesea statistics could not be loaded.' }
   }

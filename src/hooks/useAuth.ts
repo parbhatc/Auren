@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authAPI } from '../api/auth.api'
+import { setAuthToken } from '../api/api'
 import { handleApiError } from '../utils/errorHandler'
 import { AUTH_MESSAGES, ERROR_MESSAGES } from '../constants/messages'
 import { ROUTES } from '../constants/routes'
@@ -40,7 +41,7 @@ export const useAuth = (): UseAuthReturn => {
       const response = await authAPI.login(credentials)
 
       if (response.success && response.token) {
-        localStorage.setItem('token', response.token)
+        setAuthToken(response.token)
         navigate(ROUTES.HOME)
         return true
       } else {
@@ -98,7 +99,7 @@ export const useAuth = (): UseAuthReturn => {
       const response = await authAPI.verifyEmail({ email, code })
 
       if (response.success && response.token) {
-        localStorage.setItem('token', response.token)
+        setAuthToken(response.token)
         setSuccess(response.message || 'Email verified successfully!')
         // Navigate to dashboard after successful verification
         setTimeout(() => {

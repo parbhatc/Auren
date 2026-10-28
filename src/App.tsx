@@ -24,38 +24,38 @@ import './App.css'
 import { RouteScrollRestore } from './components/common/RouteScrollRestore'
 import { syncLiveTradeSession } from './services/trading/liveTradeSession'
 import LiveTradeViewRetention from './components/trading/Live/LiveTradeViewRetention'
+import { getAuthToken } from './api/api'
+import { traceStartup } from './services/debug/startupTrace'
+import { prefetchRoute, routeModules } from './navigation/routeModules'
 
-// Keep unrelated route trees out of startup, particularly the trading renderer
-// and chart providers previously pulled in by the practice utility pages.
-const Login = lazy(() => import('./components/auth/Login'))
-const Register = lazy(() => import('./components/auth/Register'))
-const VerifyEmail = lazy(() => import('./components/auth/verify_email'))
-const ForgotPassword = lazy(() => import('./components/auth/forgot_password'))
-const ResetPassword = lazy(() => import('./components/auth/reset_password'))
-const Settings = lazy(() => import('./components/settings/account'))
-const PropsSettings = lazy(() => import('./components/settings/prop_firms'))
-const UtilsSettings = lazy(() => import('./components/settings/utils'))
-const KeyboardShortcutsSettings = lazy(() => import('./components/settings/keyboard_shortcuts'))
-const AdminWorkspacePage = lazy(() => import('./pages/admin/AdminWorkspacePage'))
-const PracticeTradePadPage = lazy(() => import('./pages/trading/practice/PadPage'))
-const PracticeStatsPage = lazy(() => import('./pages/trading/practice/StatsPage'))
-const PracticeNewsPage = lazy(() => import('./pages/trading/practice/NewsPage'))
-const SettingsWorkspacePage = lazy(() => import('./pages/settings/SettingsWorkspacePage'))
-const PracticeWorkspacePage = lazy(() => import('./pages/practice/PracticeWorkspacePage'))
-const DashboardPage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.DashboardPage })))
-const AnalyticsPage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.AnalyticsPage })))
-const NewsWorkspacePage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.NewsWorkspacePage })))
-
-const PracticeTradePage = lazy(() => import('./pages/trading/practice/TradePage'))
-const LiveTradePage = lazy(() => import('./pages/trading/live/TradePage'))
-const BacktesterChartView = lazy(() => import('./components/backtester/BacktesterChartView'))
-const BacktesterSessionsList = lazy(() => import('./components/backtester/BacktesterSessionsList'))
-const BacktesterStats = lazy(() => import('./components/backtester/Stats'))
-const BacktesterDataManagement = lazy(() => import('./components/backtester/DataManagement'))
-const JournalPage = lazy(() => import('./pages/journal/JournalPage'))
-const JournalReviewsPage = lazy(() => import('./pages/journal/JournalReviewsPage'))
-const JournalTradeDetailPage = lazy(() => import('./pages/journal/JournalTradeDetailPage'))
-
+const Login = lazy(routeModules.login)
+const Register = lazy(routeModules.register)
+const VerifyEmail = lazy(routeModules.verifyEmail)
+const ForgotPassword = lazy(routeModules.forgotPassword)
+const ResetPassword = lazy(routeModules.resetPassword)
+const Settings = lazy(routeModules.settings)
+const PropsSettings = lazy(routeModules.propsSettings)
+const UtilsSettings = lazy(routeModules.utilsSettings)
+const KeyboardShortcutsSettings = lazy(routeModules.keyboardSettings)
+const AdminWorkspacePage = lazy(routeModules.admin)
+const PracticeTradePadPage = lazy(routeModules.practicePad)
+const PracticeStatsPage = lazy(routeModules.practiceStats)
+const PracticeNewsPage = lazy(routeModules.practiceNews)
+const SettingsWorkspacePage = lazy(routeModules.settingsWorkspace)
+const PracticeTerminalPage = lazy(routeModules.practice)
+const PracticeWorkspacePage = lazy(routeModules.practiceAccounts)
+const DashboardPage = lazy(routeModules.dashboard)
+const AnalyticsPage = lazy(routeModules.analytics)
+const NewsWorkspacePage = lazy(routeModules.news)
+const PracticeTradePage = lazy(routeModules.practiceTrade)
+const LiveTradePage = lazy(routeModules.liveTrade)
+const BacktesterChartView = lazy(routeModules.replayChart)
+const BacktesterSessionsList = lazy(routeModules.replay)
+const BacktesterStats = lazy(routeModules.replayStats)
+const BacktesterDataManagement = lazy(routeModules.replayData)
+const JournalPage = lazy(routeModules.journal)
+const JournalReviewsPage = lazy(routeModules.journalReviews)
+const JournalTradeDetailPage = lazy(routeModules.journalDetail)
 const LegacyRedirect = () => <Navigate to={ROUTES.DASHBOARD} replace />
 
 function RouteSessionSync() {
@@ -113,7 +113,17 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    void prefetchRoute(window.location.pathname)
+    // Public code can load alongside auth checks. Account data and trading
+    // services still wait for ProtectedRoute and server authorization.
+    if (window.location.pathname === ROUTES.TRADE && getAuthToken()) {
+      void routeModules.liveTrade().catch(() => undefined)
+      void import('./services/chart/loadAurenChartBoot')
+        .then(({ loadAurenChartBoot }) => loadAurenChartBoot())
+        .catch(() => undefined)
+    }
     const checkRoles = async () => {
+      traceStartup('roles-start')
       try {
         const response = await authAPI.getRolesStatus()
         setHasRoles(response.hasRoles)
@@ -148,6 +158,7 @@ function App() {
           setHasRoles(null)
         }
       } finally {
+        traceStartup('roles-ready')
         setLoading(false)
       }
     }
@@ -173,7 +184,11 @@ function App() {
       <RouteScrollRestore />
       <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
         <LiveTradeViewRetention>
-          <ProtectedRoute><LiveTradePage /></ProtectedRoute>
+          <ProtectedRoute>
+            <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
+              <LiveTradePage />
+            </Suspense>
+          </ProtectedRoute>
         </LiveTradeViewRetention>
       </Suspense>
       <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
@@ -232,6 +247,14 @@ function App() {
           />
           <Route
             path={ROUTES.PRACTICE}
+            element={
+              <ProtectedRoute>
+                <PracticeTerminalPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path={ROUTES.PRACTICE_ACCOUNTS}
             element={
               <ProtectedRoute>
                 <PracticeWorkspacePage />
@@ -299,7 +322,7 @@ function App() {
             <Route path="props" element={<PropsSettings embedded />} />
             <Route path="utils" element={<UtilsSettings embedded />} />
             <Route path="keyboard-shortcuts" element={<KeyboardShortcutsSettings embedded />} />
-            <Route path="practice" element={<Navigate to={ROUTES.PRACTICE} replace />} />
+            <Route path="practice" element={<Navigate to={ROUTES.PRACTICE_ACCOUNTS} replace />} />
           </Route>
 
           <Route

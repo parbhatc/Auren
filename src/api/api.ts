@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
+import { publishAuthEvent } from '../services/auth/authEvents'
 
 /**
  * Get API base URL
@@ -76,6 +77,15 @@ export const getAuthToken = (): string | null => {
   return localStorage.getItem('token')
 }
 
+/** Notify this tab immediately; native storage events cover other tabs. */
+export const setAuthToken = (token: string | null): void => {
+  if (token) localStorage.setItem('token', token)
+  else localStorage.removeItem('token')
+  publishAuthEvent({ kind: 'token-change' })
+}
+
+export const clearAuthToken = (): void => setAuthToken(null)
+
 /**
  * Create authorization headers
  */
@@ -99,6 +109,23 @@ api.interceptors.request.use(
     return Promise.reject(error)
   }
 )
+
+api.interceptors.response.use(undefined, (error) => {
+  if (error.response?.status === 401) {
+    const authorization = error.config?.headers?.Authorization ?? error.config?.headers?.get?.('Authorization')
+    const token = typeof authorization === 'string' ? /^Bearer\s+(.+)$/i.exec(authorization)?.[1] : undefined
+    if (token) {
+      const payload = error.response?.data
+      const validationEndpoint = /(?:^|\/)auth\/validate(?:[?#]|$)/.test(String(error.config?.url ?? ''))
+      const appAuthCode = ['APP_AUTH_REQUIRED', 'APP_AUTH_INVALID', 'APP_AUTH_USER_NOT_FOUND'].includes(payload?.code)
+      // Older servers used this exact middleware contract before adding codes.
+      const legacyAppAuth = payload?.success === false && !payload?.error
+        && ['No token provided', 'Invalid or expired token', 'User not found'].includes(payload?.message)
+      publishAuthEvent({ kind: validationEndpoint || appAuthCode || legacyAppAuth ? 'unauthorized' : 'verify-current', token })
+    }
+  }
+  return Promise.reject(error)
+})
 
 export default api
 

@@ -56,7 +56,6 @@ const Wrapper = ({ embedded, onBack }: SettingsWrapperProps = {}) => {
         nameForm.reset({ name: response.user.name })
         emailForm.reset({ email: response.user.email })
       } catch (error) {
-        localStorage.removeItem('token')
         navigate(ROUTES.LOGIN)
       } finally {
         setLoading(false)

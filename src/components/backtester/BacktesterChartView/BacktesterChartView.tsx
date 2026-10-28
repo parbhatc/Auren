@@ -1,5 +1,6 @@
 import { Component, createRef } from 'react'
 import { ROUTES } from '../../../constants/routes'
+import { clearAuthToken } from '../../../api/api'
 import { ghostButtonClass, appPageBackground } from '../../../styles/aurenTheme'
 import { practiceTradePageClass } from '../../trading/Practice/practiceTradeTheme'
 import BacktesterChart from '../../../backtester/components/chart/BacktesterChart'
@@ -1180,7 +1181,7 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      localStorage.removeItem('token')
+                      clearAuthToken()
                       navigate(ROUTES.LOGIN)
                     }}
                     className={`p-2 rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:text-red-400 hover:bg-slate-800' : 'text-slate-500 hover:text-red-600 hover:bg-slate-100'}`}

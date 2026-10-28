@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
 import { ROUTES } from '../../../constants/routes'
-import { authAPI } from '../../../api/auth.api'
+import { authAPI, authSession } from '../../../api/auth.api'
 import { backtesterAPI } from '../../../api/backtester.api'
 import { getThemeColors } from '../../../constants/theme'
 import {
@@ -39,6 +39,8 @@ const BacktesterSessionsListWrapper = ({
   const colors = getThemeColors(isDark)
   const [user, setUser] = useState<UserData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [startupError, setStartupError] = useState('')
+  const [startupAttempt, setStartupAttempt] = useState(0)
   const [sessions, setSessions] = useState<BacktestSession[]>([])
   const [showNewSessionForm, setShowNewSessionForm] = useState(false)
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
@@ -52,42 +54,92 @@ const BacktesterSessionsListWrapper = ({
   })
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem('token')
-        if (!token) {
-          navigate(ROUTES.LOGIN)
-          return
-        }
+    let active = true
+    let generation = 0
+    let currentToken: string | null | undefined
 
-        const userResponse = await authAPI.validateToken(token)
-        setUser(userResponse.user)
-
-        // Fetch available symbols
-        try {
-          const symbolsResponse = await backtesterAPI.getAvailableSymbols()
-          setAvailableSymbols(symbolsResponse.symbols)
-          if (symbolsResponse.count === 0) {
-            setSymbolsError(t('backtester.noSymbolsAvailable'))
-          }
-        } catch (err: any) {
-          setSymbolsError(t('backtester.failedToLoadSymbols'))
+    const fetchForCurrentToken = () => {
+      const token = localStorage.getItem('token')
+      // Same-token background auth refreshes do not reload the session list.
+      if (!active || token === currentToken) return
+      currentToken = token
+      const requestGeneration = ++generation
+      const isCurrent = () => {
+        if (!active || requestGeneration !== generation) return false
+        if (localStorage.getItem('token') !== token) {
+          fetchForCurrentToken()
+          return false
         }
-
-        // Load sessions from database
-        await loadSessions()
-      } catch (err: any) {
-        if (err?.response?.status === 401) {
-          localStorage.removeItem('token')
-          navigate(ROUTES.LOGIN)
-        }
-      } finally {
-        setLoading(false)
+        return true
       }
+
+      setLoading(true)
+      setStartupError('')
+      setUser(null)
+      setSessions([])
+      setAvailableSymbols([])
+      setSymbolsError('')
+      setShowNewSessionForm(false)
+      setDeleteConfirmId(null)
+      setResetSessionId(null)
+      setPendingResetSession(null)
+      setShowResetConfirm(false)
+      setEditSessionId(null)
+
+      if (!token) {
+        setLoading(false)
+        setStartupError(t('backtester.signInRequired', {}, 'Please sign in to load your replay sessions.'))
+        navigate(ROUTES.LOGIN)
+        return
+      }
+
+      void (async () => {
+        try {
+          const userResponse = await authAPI.validateToken(token)
+          if (!isCurrent()) return
+          if (!userResponse?.success || !userResponse.user) throw new Error('Replay user unavailable')
+
+          // The catalog may scan large CSV files. Existing sessions are usable
+          // before it finishes; creation remains disabled until symbols arrive.
+          void (async () => {
+            try {
+              const response = await backtesterAPI.getAvailableSymbols()
+              if (!isCurrent()) return
+              if (!response.success || !Array.isArray(response.symbols)) throw new Error('Replay catalog unavailable')
+              setAvailableSymbols(response.symbols)
+              if (response.count === 0 || response.symbols.length === 0) {
+                setSymbolsError(t('backtester.noSymbolsAvailable'))
+              }
+            } catch {
+              if (isCurrent()) setSymbolsError(t('backtester.failedToLoadSymbols'))
+            }
+          })()
+
+          const response = await backtesterAPI.getSessions()
+          if (!isCurrent()) return
+          if (!response.success || !Array.isArray(response.sessions)) throw new Error('Replay sessions unavailable')
+          setUser(userResponse.user)
+          setSessions(response.sessions)
+        } catch (err: any) {
+          if (!isCurrent()) return
+          if (err?.response?.status === 401 || err?.status === 401) {
+            navigate(ROUTES.LOGIN)
+          }
+          setStartupError(t('backtester.failedToLoadSessions', {}, 'Unable to load replay sessions. Please try again.'))
+        } finally {
+          if (isCurrent()) setLoading(false)
+        }
+      })()
     }
 
-    fetchData()
-  }, [navigate])
+    const unsubscribe = authSession.subscribe(fetchForCurrentToken)
+    fetchForCurrentToken()
+    return () => {
+      active = false
+      generation += 1
+      unsubscribe()
+    }
+  }, [navigate, startupAttempt])
 
   const handleCreateSession = async () => {
     setCreateError('')
@@ -270,7 +322,23 @@ const BacktesterSessionsListWrapper = ({
     // This is called before navigation - can be used for any setup
   }
 
-  if (loading || !user) {
+  if (startupError || (!loading && !user)) {
+    return (
+      <div className={embedded ? 'py-8' : `min-h-screen p-6 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+        <div className="mx-auto max-w-lg space-y-4">
+          <ErrorMessage
+            message={startupError || t('backtester.failedToLoadSessions', {}, 'Unable to load replay sessions. Please try again.')}
+            isDark={isDark}
+          />
+          <button type="button" onClick={() => setStartupAttempt((attempt) => attempt + 1)} className={primaryButtonClass()}>
+            {t('common.retry', {}, 'Try again')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
     if (embedded) {
       return (
         <div className="flex justify-center py-16">
@@ -289,7 +357,7 @@ const BacktesterSessionsListWrapper = ({
         toggleTheme={toggleTheme}
         navigate={navigate}
         colors={colors}
-        showAdmin={Boolean(user.isAdmin)}
+        showAdmin={Boolean(user?.isAdmin)}
         sessions={sessions}
         showNewSessionForm={showNewSessionForm}
         availableSymbols={availableSymbols}

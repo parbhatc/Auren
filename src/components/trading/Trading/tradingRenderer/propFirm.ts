@@ -1,4 +1,4 @@
-import { propFirmRegistry } from '../../../../propfirms'
+import { propFirmRegistry } from '../../../../propfirms/registry'
 import { FormattedAccount } from '../../../../utils/marketAccountDisplay'
 import { saveTradeTradeseaAccount } from '../../../../constants/trade'
 import type { MdsStatusClient } from '../../../../services/mds/mdsStatusClient'

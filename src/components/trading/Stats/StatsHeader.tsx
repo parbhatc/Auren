@@ -5,6 +5,7 @@ import ThemeToggle from '../../common/ThemeToggle'
 import { ROUTES } from '../../../constants/routes'
 import { StatsHeaderProps } from '../../../types/common'
 import { getAccountColorClasses, FormattedAccount } from '../../../utils/marketAccountDisplay'
+import { clearAuthToken } from '../../../api/api'
 
 class StatsHeader extends Component<StatsHeaderProps> {
   private accountDropdownRef = createRef<HTMLDivElement>()
@@ -138,7 +139,7 @@ class StatsHeader extends Component<StatsHeaderProps> {
             <div className="flex items-center gap-2 sm:gap-4">
               <button
                 onClick={() => {
-                  localStorage.removeItem('token')
+                  clearAuthToken()
                   navigate(ROUTES.LOGIN)
                 }}
                 className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition-all text-xs sm:text-sm ${

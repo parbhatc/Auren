@@ -628,6 +628,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
     const activeFirm = this.getActiveFirm()
     const mdsClient = this.getMds()
+    const marketDataStreamConnected = mdsClient?.getConnectionState() === 'connected'
     const marketDataLive = !mdsClient || this.state.marketDataLive !== false
     const tradingBlocked = this.props.viewActive === false || Boolean(mdsClient) && !marketDataLive
 
@@ -769,7 +770,11 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         }`}
       >
         {terminalShell ? (
-          <ProductHeader isDark={isDark} toggleTheme={toggleTheme} sidebarOnly />
+          <ProductHeader isDark={isDark} toggleTheme={toggleTheme} sidebarOnly
+            marketDataStatus={mdsClient ? {
+              label: marketDataStreamConnected ? 'Market data stream connected' : 'Market data stream offline',
+              connected: marketDataStreamConnected,
+            } : undefined} />
         ) : null}
         <TradingRendererNav
           showNav={showNav}

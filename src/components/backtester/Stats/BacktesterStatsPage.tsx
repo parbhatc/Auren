@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Play, RefreshCw, TrendingUp } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTheme } from '../../../hooks/useTheme'
@@ -20,11 +20,12 @@ import BacktesterPageShell from '../shared/BacktesterPageShell'
 import DateRangeSelector from '../../trading/Stats/DateRangeSelector'
 import StatsTabs from '../../trading/Stats/StatsTabs'
 import OverviewTab from '../../trading/Stats/OverviewTab'
-import StatsCalendar from '../../trading/Stats/StatsCalendar'
-import TradesTable from '../../trading/Stats/TradesTable'
-import DayStatsDialog from '../../trading/Stats/DayStatsDialog'
-import WeekStatsDialog from '../../trading/Stats/WeekStatsDialog'
 import { t } from '../../../utils/translator'
+
+const StatsCalendar = lazy(() => import('../../trading/Stats/StatsCalendar'))
+const TradesTable = lazy(() => import('../../trading/Stats/TradesTable'))
+const DayStatsDialog = lazy(() => import('../../trading/Stats/DayStatsDialog'))
+const WeekStatsDialog = lazy(() => import('../../trading/Stats/WeekStatsDialog'))
 
 type BacktestTrade = {
   id: string
@@ -190,7 +191,6 @@ export default function BacktesterStatsPage() {
         setError(null)
       } catch (err: any) {
         if (err?.response?.status === 401) {
-          localStorage.removeItem('token')
           navigate(ROUTES.LOGIN)
           return
         }
@@ -628,6 +628,7 @@ export default function BacktesterStatsPage() {
           )}
 
           {activeTab === 'calendar' && (
+            <Suspense fallback={<p role="status" className="py-12 text-center text-sm text-zinc-500">Loading calendar…</p>}>
             <StatsCalendar
               isDark={isDark}
               currentMonth={currentMonth}
@@ -650,9 +651,11 @@ export default function BacktesterStatsPage() {
               }}
               onMonthChange={setCurrentMonth}
             />
+            </Suspense>
           )}
 
           {activeTab === 'trades' && (
+            <Suspense fallback={<p role="status" className="py-12 text-center text-sm text-zinc-500">Loading trades…</p>}>
             <TradesTable
               isDark={isDark}
               loading={loading}
@@ -665,9 +668,11 @@ export default function BacktesterStatsPage() {
               formatDuration={formatDuration}
               calculateTradeR={calculateTradeR}
             />
+            </Suspense>
           )}
 
           {showDayDialog && selectedDayData && (
+            <Suspense fallback={<p role="status" className="text-sm text-zinc-500">Opening day statistics…</p>}>
             <DayStatsDialog
               isDark={isDark}
               selectedDayData={selectedDayData}
@@ -685,9 +690,11 @@ export default function BacktesterStatsPage() {
               parseTradeTimestamp={parseTradeTimestamp}
               formatCurrency={formatCurrency}
             />
+            </Suspense>
           )}
 
           {showWeekDialog && selectedWeekData && (
+            <Suspense fallback={<p role="status" className="text-sm text-zinc-500">Opening week statistics…</p>}>
             <WeekStatsDialog
               isDark={isDark}
               selectedWeekData={selectedWeekData}
@@ -703,6 +710,7 @@ export default function BacktesterStatsPage() {
               calculateTradePnL={calculateTradePnL}
               parseTradeTimestamp={parseTradeTimestamp}
             />
+            </Suspense>
           )}
         </div>
       </main>

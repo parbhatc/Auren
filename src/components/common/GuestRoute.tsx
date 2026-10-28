@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { ROUTES } from '../../constants/routes'
-import { authAPI } from '../../api/auth.api'
-import { useState, useEffect } from 'react'
+import { authAPI, authSession } from '../../api/auth.api'
+import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import Loading from './Loading'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -11,42 +11,24 @@ import { useTheme } from '../../hooks/useTheme'
  */
 const GuestRoute = ({ children }: { children: React.ReactElement }) => {
   const { isDark } = useTheme()
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [loading, setLoading] = useState(true)
+  const snapshot = useSyncExternalStore(authSession.subscribe, authSession.getSnapshot, authSession.getSnapshot)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem('token')
-        if (!token) {
-          setIsAuthenticated(false)
-          setLoading(false)
-          return
-        }
+    const current = authSession.sync()
+    if (current.token) void authAPI.validateToken(current.token).catch(() => undefined)
+  }, [snapshot.token])
 
-        const response = await authAPI.validateToken(token)
-        setIsAuthenticated(response.success && !!response.user)
-      } catch (error) {
-        setIsAuthenticated(false)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkAuth()
-  }, [])
-
-  if (loading) {
+  if (snapshot.phase === 'checking' && !snapshot.value) {
     return <Loading message="Checking authentication..." isDark={isDark} />
   }
 
   // If authenticated, redirect to home
-  if (isAuthenticated) {
+  if (snapshot.value) {
     return <Navigate to={ROUTES.HOME} replace />
   }
 
   // If not authenticated, allow access to auth pages
-  return children
+  return <Suspense fallback={<Loading message="Loading..." isDark={isDark} />}>{children}</Suspense>
 }
 
 export default GuestRoute

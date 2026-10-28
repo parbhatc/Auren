@@ -2,7 +2,7 @@
  * Runtime prop firm adapters (chart, MDS, trade handlers).
  */
 import { PropFirmBase } from './PropFirmBase'
-import { TradeseaPropFirm } from './tradesea'
+import { TradeseaPropFirm } from './tradesea/TradeseaPropFirm'
 
 export const propFirmRegistry: PropFirmBase[] = [
   new TradeseaPropFirm(),
@@ -22,4 +22,4 @@ export function getAllPropFirms() {
 }
 
 export type { PropFirmBase } from './PropFirmBase'
-export { TradeseaPropFirm } from './tradesea'
+export { TradeseaPropFirm } from './tradesea/TradeseaPropFirm'

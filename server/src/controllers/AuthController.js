@@ -164,6 +164,7 @@ class AuthController {
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(HTTP_STATUS.UNAUTHORIZED).json({
           success: false,
+          code: 'APP_AUTH_REQUIRED',
           message: 'No token provided',
         })
       }
@@ -177,7 +178,11 @@ class AuthController {
         error.message === 'Invalid or expired token' ||
         error.message === 'User not found'
       ) {
-        return ErrorHandler.handleAuthError(res, error.message)
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          code: error.message === 'User not found' ? 'APP_AUTH_USER_NOT_FOUND' : 'APP_AUTH_INVALID',
+          message: error.message,
+        })
       }
       return ErrorHandler.handleServerError(res, error)
     }

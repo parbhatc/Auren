@@ -1,5 +1,14 @@
-import api from './api'
+import api, { getAuthToken } from './api'
 import type { JournalAnalytics } from '../../shared/journalAnalytics.js'
+import { createUserMetadataCache } from '../services/cache/userMetadataCache'
+
+const catalogs = createUserMetadataCache({ getOwner: getAuthToken, ttlMs: 30_000, maxEntries: 2 })
+async function changeCatalog<T>(change: () => Promise<T>): Promise<T> {
+  // Detach pre-mutation reads, and also any reads started while the server was
+  // applying the change. A late list response must never restore old metadata.
+  catalogs.invalidate()
+  try { return await change() } finally { catalogs.invalidate() }
+}
 
 export type JournalReview = {
   kind: 'daily' | 'weekly'
@@ -176,12 +185,16 @@ export const journalAPI = {
     await api.delete(`/trading-journal/entries/${encodeURIComponent(id)}`)
   },
   async listStrategies(signal?: AbortSignal): Promise<JournalStrategyRecord[]> {
-    const response = await api.get('/trading-journal/strategies', { signal })
-    return response.data?.strategies ?? []
+    return catalogs.read('strategies', async (sharedSignal) => {
+      const response = await api.get('/trading-journal/strategies', { signal: sharedSignal, timeout: 15_000 })
+      return response.data?.strategies ?? []
+    }, { signal })
   },
   async createStrategy(name: string, conditions: unknown[], description = '', rules: string[] = []): Promise<JournalStrategyRecord> {
-    const response = await api.post('/trading-journal/strategies', payload(name, conditions, description, rules))
-    return response.data.strategy
+    return changeCatalog(async () => {
+      const response = await api.post('/trading-journal/strategies', payload(name, conditions, description, rules))
+      return response.data.strategy
+    })
   },
   async updateStrategy(
     id: string,
@@ -190,32 +203,34 @@ export const journalAPI = {
     description = '',
     rules: string[] = []
   ): Promise<JournalStrategyRecord> {
-    const response = await api.put(
-      `/trading-journal/strategies/${encodeURIComponent(id)}`,
-      payload(name, conditions, description, rules)
-    )
-    return response.data.strategy
+    return changeCatalog(async () => {
+      const response = await api.put(
+        `/trading-journal/strategies/${encodeURIComponent(id)}`,
+        payload(name, conditions, description, rules)
+      )
+      return response.data.strategy
+    })
   },
   async deleteStrategy(id: string): Promise<void> {
-    await api.delete(`/trading-journal/strategies/${encodeURIComponent(id)}`)
+    await changeCatalog(() => api.delete(`/trading-journal/strategies/${encodeURIComponent(id)}`))
   },
   async listBuildingBlocks(signal?: AbortSignal): Promise<JournalBuildingBlockRecord[]> {
-    const response = await api.get('/trading-journal/building-blocks', { signal })
-    return response.data?.blocks ?? []
+    return catalogs.read('blocks', async (sharedSignal) => {
+      const response = await api.get('/trading-journal/building-blocks', { signal: sharedSignal, timeout: 15_000 })
+      return response.data?.blocks ?? []
+    }, { signal })
   },
   async createBuildingBlock(
     name: string,
     type: string,
     description: string
   ): Promise<JournalBuildingBlockRecord> {
-    const response = await api.post('/trading-journal/building-blocks', {
-      name,
-      type,
-      description,
+    return changeCatalog(async () => {
+      const response = await api.post('/trading-journal/building-blocks', { name, type, description })
+      return response.data.block
     })
-    return response.data.block
   },
   async deleteBuildingBlock(id: string): Promise<void> {
-    await api.delete(`/trading-journal/building-blocks/${encodeURIComponent(id)}`)
+    await changeCatalog(() => api.delete(`/trading-journal/building-blocks/${encodeURIComponent(id)}`))
   },
 }

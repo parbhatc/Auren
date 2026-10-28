@@ -1,11 +1,13 @@
 import type { BwcWidget } from '../services/chart/bwcDatafeed'
 import chartAssetVersion from 'virtual:auren-chart-version'
+import { registerBwcDebugHudCleanup } from '../utils/bwcDebugHud'
 
 type BwcSdk = {
   bootChart: (options?: Record<string, unknown>) => Promise<BwcWidget>
   registerIndicator: (def: unknown) => void
   registerTradeContextActions: (handlers: Record<string, unknown>) => void
   clearChartContextActions: () => void
+  destroyDebugHud?: () => void
 }
 
 // The static plugin versions this entire module graph by its contents. Reuse the
@@ -33,7 +35,10 @@ let paperFeedPromise: Promise<{
 
 function getSdk(): Promise<BwcSdk> {
   if (!sdkPromise) {
-    sdkPromise = runtimeImport<BwcSdk>(withAssetVersion('/chart/sdk.js')).catch((error) => {
+    sdkPromise = runtimeImport<BwcSdk>(withAssetVersion('/chart/sdk.js')).then((sdk) => {
+      registerBwcDebugHudCleanup(() => sdk.destroyDebugHud?.())
+      return sdk
+    }).catch((error) => {
       sdkPromise = null
       throw error
     })

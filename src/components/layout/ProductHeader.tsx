@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   BarChart3,
@@ -29,7 +29,6 @@ import {
   getPracticeMarketDataSettings,
   getPracticePropFirmConfig,
   PRACTICE_STORAGE_KEYS,
-  refreshPracticeFromApi,
   type PracticeAccount,
 } from '../../constants/practice'
 import { ROUTES } from '../../constants/routes'
@@ -37,6 +36,14 @@ import { useDisplayUnit, type DisplayUnit } from '../../contexts/DisplayUnitCont
 import Logo from '../common/Logo'
 import { tradeseaAPI, type TradeseaAccount } from '../../api/tradesea.api'
 import { authAPI } from '../../api/auth.api'
+import { clearAuthToken } from '../../api/api'
+import { ValidatedAuthContext } from '../../contexts/ValidatedAuthContext'
+import { LiveTradeViewActive } from '../../contexts/LiveTradeViewContext'
+import { prefetchRouteOnIntent } from '../../navigation/routeModules'
+import { traceStartup } from '../../services/debug/startupTrace'
+import {
+  refreshHeaderPracticeCatalog, loadHeaderProviderStatus, subscribeHeaderWorkspaceData,
+} from '../../services/dashboard/headerWorkspaceData'
 import { saveTradeTradeseaAccount } from '../../constants/trade'
 import {
   DASHBOARD_ACCOUNT_CHANGED_EVENT,
@@ -111,15 +118,20 @@ export default function ProductHeader({
   isDark,
   toggleTheme,
   sidebarOnly = false,
+  marketDataStatus,
 }: {
   isDark: boolean
   toggleTheme: () => void
   /** Render only the desktop navigation rail. Trading terminals supply their own compact utility bar. */
   sidebarOnly?: boolean
+  /** A terminal supplies its real stream state instead of probing linked credentials. */
+  marketDataStatus?: { label: string; connected: boolean }
 }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isDashboard = location.pathname === ROUTES.HOME || location.pathname === ROUTES.DASHBOARD
+  const validatedAuth = useContext(ValidatedAuthContext)
+  const viewActive = useContext(LiveTradeViewActive)
   const { unit, setUnit } = useDisplayUnit()
   const [accounts, setAccounts] = useState(() => getPracticeAccounts())
   const [tradeseaAccounts, setTradeseaAccounts] = useState<TradeseaAccount[]>([])
@@ -144,7 +156,13 @@ export default function ProductHeader({
   )
 
   useEffect(() => {
+    // Terminals render their own account selector; this header only shows the
+    // navigation rail, so it must not start a second account-catalog refresh.
+    if (sidebarOnly) return
+    let active = true
     const sync = () => {
+      if (!active) return
+      if (!localStorage.getItem('token')) { setAccounts([]); return }
       setAccounts(getPracticeAccounts())
       try {
         const savedId = localStorage.getItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID)
@@ -153,18 +171,32 @@ export default function ProductHeader({
         // Storage is optional.
       }
     }
-    void refreshPracticeFromApi().then(sync).catch(sync)
+    const refresh = () => {
+      const owner = localStorage.getItem('token')
+      if (!owner) { if (active) setAccounts([]); return }
+      const current = () => active && owner === localStorage.getItem('token')
+      void refreshHeaderPracticeCatalog().then(() => { if (current()) sync() }).catch((error) => {
+        if (current() && !(error instanceof Error && error.name === 'AbortError')) sync()
+      })
+    }
+    refresh()
+    const unsubscribe = subscribeHeaderWorkspaceData((change) => { if (change === 'all') refresh() })
     window.addEventListener('practiceAccountsChanged', sync)
-    return () => window.removeEventListener('practiceAccountsChanged', sync)
-  }, [])
+    return () => { active = false; unsubscribe(); window.removeEventListener('practiceAccountsChanged', sync) }
+  }, [sidebarOnly])
 
   useEffect(() => {
-    if (!isDashboard) return
+    if (sidebarOnly || !isDashboard) return
     let active = true
+    let requestId = 0
     const loadAccounts = async () => {
+      const request = ++requestId
+      const owner = localStorage.getItem('token')
+      const isCurrent = () => active && request === requestId && owner === localStorage.getItem('token')
+      if (!owner) { setTradeseaAccounts([]); return }
       try {
         const response = await tradeseaAPI.getAccounts()
-        if (!active) return
+        if (!isCurrent()) return
         const liveAccounts = response.connected && Array.isArray(response.accounts)
           ? response.accounts.filter((account) => !account.isArchived)
           : []
@@ -173,7 +205,7 @@ export default function ProductHeader({
         // only reflects it; competing fallback writes restarted that loader.
         setDashboardSelection(getDashboardAccountSelection())
       } catch {
-        if (active) setTradeseaAccounts([])
+        if (isCurrent()) setTradeseaAccounts([])
       }
     }
     const syncSelection = () => setDashboardSelection(getDashboardAccountSelection())
@@ -185,64 +217,66 @@ export default function ProductHeader({
       window.removeEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, syncSelection)
       window.removeEventListener('refreshPropFirms', loadAccounts)
     }
-  }, [isDashboard])
+  }, [isDashboard, sidebarOnly])
 
   useEffect(() => {
     let active = true
     const token = localStorage.getItem('token')
-    if (!token) return
+    if (!token) {
+      setIsAdmin(false)
+      return
+    }
+    if (validatedAuth?.token === token) {
+      setIsAdmin(validatedAuth.isAdmin)
+      return
+    }
     void authAPI.validateToken(token)
       .then((response) => {
-        if (active) setIsAdmin(Boolean(response.user?.isAdmin))
+        if (active && localStorage.getItem('token') === token) setIsAdmin(Boolean(response.user?.isAdmin))
       })
       .catch(() => {
-        if (active) setIsAdmin(false)
+        if (active && localStorage.getItem('token') === token) setIsAdmin(false)
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [validatedAuth])
 
   useEffect(() => {
+    if (marketDataStatus) return
     let active = true
+    let requestId = 0
     const syncProviderStatus = async () => {
+      const request = ++requestId
+      const owner = localStorage.getItem('token')
+      if (!owner) { if (active) setProviderStatus({ label: 'Market data', connected: false }); return }
       const storedId = localStorage.getItem('activePropFirm')
       const firmId = storedId || getPracticeMarketDataSettings().propFirmId
       const config = getPracticePropFirmConfig(firmId)
-      if (config.id === 'tradingview') {
-        if (active) setProviderStatus({ label: 'TradingView connected', connected: true })
-        return
-      }
-      if (config.id === 'tradesea') {
-        try {
-          const status = await tradeseaAPI.getConnectionStatus()
-          if (active) setProviderStatus({
-            label: status.connected ? 'Tradesea connected' : 'Tradesea disconnected',
-            connected: Boolean(status.connected),
-          })
-        } catch {
-          if (active) setProviderStatus({ label: 'Tradesea disconnected', connected: false })
+      const isCurrent = () => active && request === requestId && owner === localStorage.getItem('token')
+      try {
+        const status = await loadHeaderProviderStatus(firmId)
+        if (isCurrent()) setProviderStatus(status)
+      } catch (error) {
+        if (isCurrent() && !(error instanceof Error && error.name === 'AbortError')) {
+          setProviderStatus({ label: `${config.displayName} disconnected`, connected: false })
         }
-        return
       }
-      if (active) setProviderStatus({ label: `${config.displayName} connected`, connected: true })
     }
     void syncProviderStatus()
-    const sync = () => void syncProviderStatus()
-    window.addEventListener('activePropFirmChanged', sync)
-    window.addEventListener('practiceSettingsChanged', sync)
-    window.addEventListener('refreshPropFirms', sync)
+    const unsubscribe = subscribeHeaderWorkspaceData(() => { void syncProviderStatus() })
     return () => {
       active = false
-      window.removeEventListener('activePropFirmChanged', sync)
-      window.removeEventListener('practiceSettingsChanged', sync)
-      window.removeEventListener('refreshPropFirms', sync)
+      unsubscribe()
     }
-  }, [])
+  }, [Boolean(marketDataStatus)])
 
   useEffect(() => {
     setProfileOpen(false)
-  }, [location.pathname])
+    if (viewActive === false) return
+    const route = NAV_GROUPS.flatMap((group) => group.items).find((item) => routeIsActive(location.pathname, item.matches))
+    if (route) traceStartup(`route-shell:${route.id}`)
+  }, [location.pathname, viewActive])
 
   useEffect(() => {
     if (!sidebarOpen) return
@@ -314,17 +348,20 @@ export default function ProductHeader({
   }
 
   const selectRoute = (path: string) => {
+    const route = NAV_GROUPS.flatMap((group) => group.items).find((item) => item.path === path)
+    if (route) traceStartup(`route-start:${route.id}`)
     setSidebarOpen(false)
     setProfileOpen(false)
     navigate(path)
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
+    clearAuthToken()
     setProfileOpen(false)
     navigate(ROUTES.LOGIN, { replace: true })
   }
 
+  const displayedProviderStatus = marketDataStatus ?? providerStatus
   const sidebar = (
     <aside
       aria-label="Primary navigation"
@@ -392,6 +429,9 @@ export default function ProductHeader({
                     type="button"
                     title={collapsed ? item.label : undefined}
                     onClick={() => selectRoute(item.path)}
+                    onPointerEnter={() => prefetchRouteOnIntent(item.path)}
+                    onFocus={() => prefetchRouteOnIntent(item.path)}
+                    onTouchStart={() => prefetchRouteOnIntent(item.path)}
                     className={`group relative flex h-10 w-full items-center overflow-hidden rounded-lg px-3 text-sm font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.98] ${
                       collapsed ? 'lg:justify-center lg:px-0' : ''
                     } ${
@@ -425,14 +465,14 @@ export default function ProductHeader({
           className={`flex h-10 items-center rounded-md px-3 text-sm ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
             isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
           }`}
-          title={providerStatus.label}
+          title={displayedProviderStatus.label}
         >
           <Wifi
-            className={`h-[18px] w-[18px] shrink-0 ${providerStatus.connected ? 'text-emerald-500' : 'text-amber-500'}`}
+            className={`h-[18px] w-[18px] shrink-0 ${displayedProviderStatus.connected ? 'text-emerald-500' : 'text-amber-500'}`}
             strokeWidth={1.75}
             aria-hidden
           />
-          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{providerStatus.label}</span>
+          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{displayedProviderStatus.label}</span>
         </div>
         <button
           type="button"

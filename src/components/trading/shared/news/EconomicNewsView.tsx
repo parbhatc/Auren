@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Calendar, Settings, X } from 'lucide-react'
-import { economicNewsAPI } from '../../../../api/economicNews.api'
+import { economicNewsAPI, type EconomicEvent } from '../../../../api/economicNews.api'
+import { getAuthToken } from '../../../../api/api'
 import Checkbox from '../../../common/Checkbox'
 import { formatNewsTime } from '../../../../utils/newsTime'
 
@@ -56,28 +57,37 @@ type EconomicNewsViewProps = {
 }
 
 export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
-  const [events, setEvents] = useState<any[]>([])
+  const [monthEvents, setMonthEvents] = useState<{ key: string; events: EconomicEvent[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return localStorage.getItem('user_timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone
+    } catch {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone
+    }
+  })
   const [showSettings, setShowSettings] = useState(false)
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('economicNews_filters')
+      return saved ? JSON.parse(saved) as typeof DEFAULT_FILTERS : DEFAULT_FILTERS
+    } catch {
+      return DEFAULT_FILTERS
+    }
+  })
   const settingsRef = useRef<HTMLDivElement>(null)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const owner = getAuthToken()
+  const monthKey = JSON.stringify([owner, year, month])
 
   const shell = isDark
     ? 'bg-[#18181B] border-[#27272A] text-[#FAFAFA]'
     : 'bg-white border-[#E4E4E7] text-[#09090B]'
   const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
   const row = isDark ? 'bg-[#121215] border-[#27272A]' : 'bg-[#FAFAFA] border-[#E4E4E7]'
-
-  const loadFilters = useCallback(() => {
-    try {
-      const saved = localStorage.getItem('economicNews_filters')
-      if (saved) setFilters(JSON.parse(saved))
-    } catch {
-      /* ignore */
-    }
-  }, [])
 
   const saveFilters = useCallback((next: typeof DEFAULT_FILTERS) => {
     try {
@@ -87,59 +97,42 @@ export function EconomicNewsView({ isDark }: EconomicNewsViewProps) {
     }
   }, [])
 
-  const fetchTodayEvents = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
     setLoading(true)
     setError(null)
-    try {
-      const now = new Date()
-      const response = await economicNewsAPI.getEvents(now.getFullYear(), now.getMonth() + 1)
-      if (!response.success || !response.events) {
-        setEvents([])
-        setLoading(false)
-        return
-      }
-
-      const targetDateStr = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(now)
-      const [monthPart, dayPart, yearPart] = targetDateStr.split('/')
-      const formattedTargetDate = `${yearPart}-${monthPart}-${dayPart}`
-
-      let todayEvents = response.events.filter((event: any) => {
-        if (!event.date) return false
-        return event.date.split('T')[0] === formattedTargetDate
-      })
-
-      todayEvents = todayEvents.filter((event: any) => {
-        const currencyMatch =
-          filters.currencies[event.currency as keyof typeof filters.currencies] ||
-          filters.currencies.ALL
-        const impactKey = event.impact?.toLowerCase() || 'low'
-        const impactMatch = filters.impact[impactKey as keyof typeof filters.impact] || false
-        return currencyMatch && impactMatch
-      })
-
-      todayEvents.sort((a: any, b: any) => parseTime(a.time) - parseTime(b.time))
-      setEvents(todayEvents)
-    } catch {
-      setError('Failed to load economic news')
-    } finally {
+    void economicNewsAPI.getEvents(year, month, { signal: controller.signal }).then((response) => {
+      if (cancelled || owner !== getAuthToken()) return
+      setMonthEvents({ key: monthKey, events: response.success ? response.events || [] : [] })
       setLoading(false)
+    }).catch(() => {
+      if (cancelled || owner !== getAuthToken()) return
+      setError('Failed to load economic news')
+      setLoading(false)
+    })
+    return () => {
+      cancelled = true
+      controller.abort()
     }
-  }, [filters, timezone])
+  }, [year, month, owner, monthKey])
 
-  useEffect(() => {
-    const savedTz = localStorage.getItem('user_timezone')
-    if (savedTz) setTimezone(savedTz)
-    loadFilters()
-  }, [loadFilters])
-
-  useEffect(() => {
-    void fetchTodayEvents()
-  }, [fetchTodayEvents])
+  const targetDateStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
+  const [monthPart, dayPart, yearPart] = targetDateStr.split('/')
+  const formattedTargetDate = `${yearPart}-${monthPart}-${dayPart}`
+  // Filters and timezone only change the presentation of this mounted month's
+  // events. They must not turn an expired API cache into another monthly read.
+  const events = useMemo(() => {
+    if (monthEvents?.key !== monthKey) return []
+    return monthEvents.events.filter((event) => {
+      if (event.date?.split('T')[0] !== formattedTargetDate) return false
+      const currencyMatch = filters.currencies[event.currency as keyof typeof filters.currencies] || filters.currencies.ALL
+      const impactKey = event.impact?.toLowerCase() || 'low'
+      return currencyMatch && filters.impact[impactKey as keyof typeof filters.impact]
+    }).sort((a, b) => parseTime(a.time) - parseTime(b.time))
+  }, [monthEvents, monthKey, formattedTargetDate, filters])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {

@@ -1,5 +1,8 @@
-import api, { getAuthHeaders, getAuthToken } from './api'
+import api, { getAuthHeaders, getAuthToken, clearAuthToken } from './api'
 import { createSingleFlight } from '../../shared/singleFlight.js'
+import { createAuthSession } from '../services/auth/authSession'
+import { subscribeAuthEvents } from '../services/auth/authEvents'
+import { traceStartup } from '../services/debug/startupTrace'
 import {
   LoginCredentials,
   RegisterData,
@@ -9,6 +12,53 @@ import {
 } from '../types/auth'
 
 const pendingAuthReads = createSingleFlight()
+
+export type AuthValidationResponse = { success: boolean; user: { id: string; username: string; email: string; name: string; role: string; email_verified: boolean; permissions?: string[]; isAdmin?: boolean } }
+
+export const authSession = createAuthSession<AuthValidationResponse>({
+  readToken: getAuthToken,
+  clearToken: (token) => { if (getAuthToken() === token) clearAuthToken() },
+  validate: async (token) => {
+    const response = await api.get<AuthValidationResponse>('/auth/validate', {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10_000,
+    })
+    return response.data
+  },
+  isVisible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  trace: traceStartup,
+})
+
+const unsubscribeAuthEvents = subscribeAuthEvents((event) => {
+  if (event.kind === 'unauthorized') authSession.rejectToken(event.token)
+  else if (event.kind === 'verify-current') {
+    if (getAuthToken() === event.token) void authSession.ensure(event.token, { force: true }).catch(() => undefined)
+  }
+  else { authSession.sync(); authSession.returned() }
+})
+
+let lifecycleInstalled = false
+export function installAuthSessionLifecycle() {
+  if (lifecycleInstalled || typeof window === 'undefined') return
+  lifecycleInstalled = true
+  const storage = (event: StorageEvent) => {
+    if (event.key === 'token' || event.key === null) { authSession.sync(); authSession.returned() }
+  }
+  const returned = () => authSession.returned()
+  window.addEventListener('storage', storage)
+  window.addEventListener('focus', returned)
+  window.addEventListener('online', returned)
+  document.addEventListener('visibilitychange', returned)
+  authSession.start()
+  import.meta.hot?.dispose(() => {
+    authSession.stop()
+    unsubscribeAuthEvents()
+    window.removeEventListener('storage', storage)
+    window.removeEventListener('focus', returned)
+    window.removeEventListener('online', returned)
+    document.removeEventListener('visibilitychange', returned)
+    lifecycleInstalled = false
+  })
+}
 
 /**
  * Authentication API service
@@ -84,16 +134,7 @@ export const authAPI = {
   /**
    * Validate token and get user information
    */
-  validateToken: async (_token: string): Promise<{ success: boolean; user: { id: string; username: string; email: string; name: string; role: string; email_verified: boolean; permissions?: string[]; isAdmin?: boolean } }> => {
-    const token = getAuthToken()
-    return pendingAuthReads(`validate:${token ?? ''}`, async () => {
-      const response = await api.get('/auth/validate', {
-        headers: getAuthHeaders(),
-        timeout: 10_000,
-      })
-      return response.data
-    })
-  },
+  validateToken: (token: string): Promise<AuthValidationResponse> => authSession.ensure(token),
 
   /**
    * Update user password
@@ -102,6 +143,7 @@ export const authAPI = {
     const response = await api.put<AuthResponse>('/auth/profile/password', data, {
       headers: getAuthHeaders(),
     })
+    await authSession.ensure(getAuthToken(), { force: true }).catch(() => undefined)
     return response.data
   },
 
@@ -112,6 +154,7 @@ export const authAPI = {
     const response = await api.put<AuthResponse>('/auth/profile/name', data, {
       headers: getAuthHeaders(),
     })
+    await authSession.ensure(getAuthToken(), { force: true }).catch(() => undefined)
     return response.data
   },
 
@@ -122,6 +165,7 @@ export const authAPI = {
     const response = await api.put<AuthResponse>('/auth/profile/email', data, {
       headers: getAuthHeaders(),
     })
+    await authSession.ensure(getAuthToken(), { force: true }).catch(() => undefined)
     return response.data
   },
 }

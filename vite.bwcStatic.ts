@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { build as bundleModules, version as esbuildVersion } from 'esbuild'
 import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 
@@ -25,6 +26,39 @@ function safeUnder(root: string, urlPath: string): string | null {
 const VERSION_MODULE = 'virtual:auren-chart-version'
 const RESOLVED_VERSION_MODULE = `\0${VERSION_MODULE}`
 const VERSIONED_EXTENSIONS = /\.(?:js|mjs|json|css)$/
+const BUNDLE_DIRECTORY = '/chart/_bundled'
+const CHART_ENTRYPOINTS = [
+  '/chart/sdk.js',
+  '/testing/js/indicators/fvg/FvgIndicator.js',
+  '/testing/js/indicators/levels/LevelsIndicator.js',
+  '/testing/js/indicators/inputPanels.js',
+  '/testing/js/indicators/presets.js',
+  '/auren-indicators/custom-setups/CustomSetupsPaperIndicator.js',
+  '/auren-indicators/nice-sweep/NiceSweepIndicator.js',
+]
+// Direct SDK/debug imports and raw extension modules must reach the same state
+// as the bundled widget. These original URLs become shared esbuild entrypoints,
+// rather than leaving a second copy of a registry behind the raw fallback.
+const SHARED_ENTRYPOINTS = [
+  '/js/sdk.js',
+  '/js/indicators/catalog.js',
+  '/js/indicators/presets.js',
+  '/js/indicators/ui/customInputPanels.js',
+  '/js/indicators/BaseIndicator.js',
+  '/js/indicators/BarScriptIndicator.js',
+  '/js/indicators/ComputeIndicator.js',
+  '/js/chart/hostHooks.js',
+  '/js/chart/features.js',
+  '/js/chart/orderLine/theme.js',
+  '/js/debug/chart/index.js',
+  '/js/debug/chart/liveControl.js',
+  '/js/ui/chart/hostInteraction.js',
+  '/js/app/bar/resolutionCache.js',
+  '/js/app/bar/htfBarCache.js',
+]
+
+type AssetResponse = { body: Buffer; etag: string }
+type ChartBundle = { version: string; assets: Map<string, AssetResponse> }
 
 /**
  * Use the same content version for root and transitive imports, including Auren's
@@ -81,11 +115,32 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
 
   let outDir = path.resolve('dist')
   let assetVersion: string | null = null
-  const responses = new Map<string, { body: Buffer; etag: string }>()
+  let bundlePromise: Promise<ChartBundle> | null = null
+  const responses = new Map<string, AssetResponse>()
+
+  function fileForUrl(url: string): string | null {
+    const pathname = url.split(/[?#]/)[0]
+    for (const { prefix, root } of roots) {
+      if (!pathname.startsWith(prefix + '/')) continue
+      return safeUnder(root, pathname.slice(prefix.length + 1))
+    }
+    return null
+  }
+
+  function urlForFile(filePath: string): string | null {
+    for (const { prefix, root } of roots) {
+      const relative = path.relative(root, filePath)
+      if (relative && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) {
+        return `${prefix}/${relative.split(path.sep).join('/')}`
+      }
+    }
+    return null
+  }
 
   function getAssetVersion(): string {
     if (assetVersion) return assetVersion
-    const hash = createHash('sha256').update('auren-chart-graph-v1\0')
+    const hash = createHash('sha256').update(`auren-chart-bundle-v1\0${esbuildVersion}\0`)
+    hash.update(JSON.stringify([...CHART_ENTRYPOINTS, ...SHARED_ENTRYPOINTS]))
     const addDirectory = (directory: string, prefix: string) => {
       if (!fs.existsSync(directory)) return
       const entries = fs.readdirSync(directory, { withFileTypes: true })
@@ -109,19 +164,81 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
     return assetVersion
   }
 
-  function serveFile(req: Connect.IncomingMessage, res: ServerResponse, filePath: string): void {
-    const version = getAssetVersion()
-    const ext = path.extname(filePath)
-    let cached = responses.get(filePath)
-    if (!cached) {
-      const raw = fs.readFileSync(filePath)
-      const body = ext === '.js' || ext === '.mjs'
-        ? Buffer.from(versionModuleSpecifiers(raw.toString('utf8'), version))
-        : raw
-      cached = { body, etag: `"${createHash('sha256').update(body).digest('hex')}"` }
-      responses.set(filePath, cached)
+  function assetResponse(body: Buffer): AssetResponse {
+    return { body, etag: `"${createHash('sha256').update(body).digest('hex')}"` }
+  }
+
+  async function createChartBundle(version: string): Promise<ChartBundle> {
+    const entryPoints: Record<string, string> = {}
+    for (const url of [...CHART_ENTRYPOINTS, ...SHARED_ENTRYPOINTS]) {
+      const filePath = fileForUrl(url)
+      // Small fixtures and older BWC packages can omit optional host studies.
+      // Existing files still bundle together; absent URLs retain normal 404s.
+      if (filePath && fs.existsSync(filePath)) entryPoints[url.slice(1, -3)] = filePath
     }
-    res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
+    const assets = new Map<string, AssetResponse>()
+    if (!Object.keys(entryPoints).length) return { version, assets }
+    const bundleOutDir = path.resolve(outDir, '.chart-bundle')
+    const result = await bundleModules({
+      entryPoints,
+      outdir: bundleOutDir,
+      write: false,
+      bundle: true,
+      splitting: true,
+      format: 'esm',
+      platform: 'browser',
+      target: 'es2020',
+      minify: true,
+      entryNames: '[dir]/[name]',
+      chunkNames: 'chart/_bundled/[name]-[hash]',
+      assetNames: 'chart/_bundled/[name]-[hash]',
+      logLevel: 'silent',
+      plugins: [{
+        name: 'auren-chart-public-urls',
+        setup(builder) {
+          builder.onResolve({ filter: /^(?:\.{1,2}\/|\/|prochart$)/ }, (args) => {
+            // Keep the engine on its canonical import-map/raw URLs. A raw
+            // extension and the bundled widget must never load distinct engine
+            // classes or copies of its interaction state.
+            if (args.path === 'prochart') return { path: args.path, external: true }
+            const filePath = args.path.startsWith('/')
+              ? fileForUrl(args.path)
+              : path.resolve(args.resolveDir, args.path)
+            if (!filePath) return undefined
+            const url = urlForFile(filePath)
+            if (url?.startsWith('/vendor/')) return { path: url, external: true }
+            if (args.path.startsWith('/')) return { path: filePath }
+            return undefined
+          })
+        },
+      }],
+    })
+    for (const output of result.outputFiles) {
+      const url = `/${path.relative(bundleOutDir, output.path).split(path.sep).join('/')}`
+      const body = Buffer.from(output.contents)
+      assets.set(url, assetResponse(/\.(?:js|mjs)$/.test(url)
+        ? Buffer.from(versionModuleSpecifiers(body.toString('utf8'), version))
+        : body))
+    }
+    return { version, assets }
+  }
+
+  async function getChartBundle(): Promise<ChartBundle> {
+    if (!bundlePromise) {
+      const pending = createChartBundle(getAssetVersion())
+      bundlePromise = pending
+      pending.catch(() => { if (bundlePromise === pending) bundlePromise = null })
+    }
+    const current = bundlePromise
+    const bundle = await current
+    // An edit during compilation must not publish an old graph under the new
+    // content version, including when several entry requests arrive together.
+    if (current !== bundlePromise) return getChartBundle()
+    return bundle
+  }
+
+  function serveAsset(req: Connect.IncomingMessage, res: ServerResponse, url: string, cached: AssetResponse, version: string): void {
+    res.setHeader('Content-Type', MIME[path.extname(url)] || 'application/octet-stream')
     res.setHeader('ETag', cached.etag)
     const requestVersion = new URL(req.url ?? '/', 'http://chart.local').searchParams.get('bwc')
     res.setHeader('Cache-Control', requestVersion === version
@@ -136,8 +253,31 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
     res.end(req.method === 'HEAD' ? undefined : cached.body)
   }
 
-  function tryServe(req: Connect.IncomingMessage, res: ServerResponse): boolean {
+  function serveFile(req: Connect.IncomingMessage, res: ServerResponse, filePath: string): void {
+    const version = getAssetVersion()
+    const ext = path.extname(filePath)
+    let cached = responses.get(filePath)
+    if (!cached) {
+      const raw = fs.readFileSync(filePath)
+      const body = ext === '.js' || ext === '.mjs'
+        ? Buffer.from(versionModuleSpecifiers(raw.toString('utf8'), version))
+        : raw
+      cached = assetResponse(body)
+      responses.set(filePath, cached)
+    }
+    serveAsset(req, res, filePath, cached, version)
+  }
+
+  async function tryServe(req: Connect.IncomingMessage, res: ServerResponse): Promise<boolean> {
     const url = req.url?.split('?')[0] ?? ''
+    if ([...CHART_ENTRYPOINTS, ...SHARED_ENTRYPOINTS].includes(url) || url.startsWith(BUNDLE_DIRECTORY + '/')) {
+      const bundle = await getChartBundle()
+      const asset = bundle.assets.get(url)
+      if (asset) {
+        serveAsset(req, res, url, asset, bundle.version)
+        return true
+      }
+    }
     for (const { prefix, root } of roots) {
       if (!url.startsWith(prefix + '/') && url !== prefix) continue
       const rel = url.slice(prefix.length).replace(/^\//, '') || 'index.js'
@@ -165,6 +305,22 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
         return `export default ${JSON.stringify(getAssetVersion())}`
       }
     },
+    transformIndexHtml: {
+      order: 'post',
+      handler() {
+        const version = getAssetVersion()
+        const urls = CHART_ENTRYPOINTS.map((url) => `${url}?bwc=${version}`)
+        return [{
+          tag: 'script',
+          attrs: { 'data-auren-chart-preload': '' },
+          injectTo: 'head',
+          // Append after the document's import map, while the Vite application
+          // graph is still loading. Modulepreload fetches public code without
+          // evaluating indicators or starting an authenticated account request.
+          children: `(()=>{try{if(location.pathname!=="/trade"||!localStorage.getItem("token"))return;for(const href of ${JSON.stringify(urls)}){const link=document.createElement("link");link.rel="modulepreload";link.href=href;document.head.appendChild(link)}}catch{}})()`,
+        }]
+      },
+    },
     configureServer(server) {
       const watchedRoots = roots.map(({ root }) => path.resolve(root))
       server.watcher.add(watchedRoots)
@@ -172,6 +328,7 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
         const absolute = path.resolve(filePath)
         if (!watchedRoots.some((root) => absolute.startsWith(root + path.sep))) return
         assetVersion = null
+        bundlePromise = null
         responses.clear()
         const versionModule = server.moduleGraph.getModuleById(RESOLVED_VERSION_MODULE)
         if (versionModule) server.moduleGraph.invalidateModule(versionModule)
@@ -180,22 +337,27 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
       server.httpServer?.once('close', () => server.watcher.off('all', onAssetChange))
       server.middlewares.use((req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next()
-        if (tryServe(req, res)) return
-        next()
+        void tryServe(req, res).then((served) => { if (!served) next() }, next)
       })
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next()
-        if (tryServe(req, res)) return
-        next()
+        void tryServe(req, res).then((served) => { if (!served) next() }, next)
       })
     },
-    closeBundle() {
+    async closeBundle() {
       const version = getAssetVersion()
       for (const { root, distSubdir } of roots) {
         copyDir(root, path.join(outDir, distSubdir), version)
       }
+      const bundle = await getChartBundle()
+      bundle.assets.forEach((asset, url) => {
+        const destination = safeUnder(outDir, url.slice(1))
+        if (!destination) throw new Error(`Invalid chart bundle output: ${url}`)
+        fs.mkdirSync(path.dirname(destination), { recursive: true })
+        fs.writeFileSync(destination, asset.body)
+      })
     },
   }
 }

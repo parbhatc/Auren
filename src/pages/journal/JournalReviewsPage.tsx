@@ -5,7 +5,7 @@ import { WorkspaceShell, PageHeading } from '../../components/layout/WorkspacePr
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { journalLocalDateTime } from '../../../shared/journalRecap.js'
 import { handleApiError } from '../../utils/errorHandler'
-import { journalMoney } from '../../journal/JournalAnalyticsPanel'
+import { journalMoney } from '../../journal/journalFormat'
 import { useTheme } from '../../hooks/useTheme'
 import { journalOutcomeLabel } from '../../journal/journalConditions'
 

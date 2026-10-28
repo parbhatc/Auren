@@ -1,15 +1,23 @@
-import axios from 'axios'
-import { Component } from 'react'
+import { Component, Suspense } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ROUTES } from '../../constants/routes'
-import { authAPI } from '../../api/auth.api'
+import { authAPI, authSession } from '../../api/auth.api'
 import Loading from './Loading'
 import { ProtectedRouteProps, ProtectedRouteState } from '../../types/common'
+import { ValidatedAuthContext, type ValidatedAuth } from '../../contexts/ValidatedAuthContext'
+type SessionSnapshot = ReturnType<typeof authSession.getSnapshot>
 
-function isAuthFailure(error: unknown): boolean {
-  if (!axios.isAxiosError(error)) return false
-  const status = error.response?.status
-  return status === 401 || status === 403
+function routeState(snapshot: SessionSnapshot): ProtectedRouteState {
+  return {
+    isAuthenticated: snapshot.phase === 'anonymous' ? false
+      : snapshot.value || snapshot.phase === 'unavailable' ? true : null,
+    isAdmin: Boolean(snapshot.value?.user.isAdmin),
+  }
+}
+
+function routeContext(snapshot: SessionSnapshot): ValidatedAuth | null {
+  return snapshot.token && snapshot.value
+    ? { token: snapshot.token, isAdmin: Boolean(snapshot.value.user.isAdmin) } : null
 }
 
 /**
@@ -17,13 +25,28 @@ function isAuthFailure(error: unknown): boolean {
  * Validates token with server and redirects to login if user is not authenticated
  */
 class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState> {
-  state: ProtectedRouteState = {
-    isAuthenticated: null,
-    isAdmin: false,
-  }
+  private validatedAuth: ValidatedAuth | null = routeContext(authSession.getSnapshot())
+  private validationGeneration = 0
+  private unmounted = false
+  private unsubscribeAuth: (() => void) | null = null
+
+  state: ProtectedRouteState = routeState(authSession.getSnapshot())
 
   componentDidMount() {
-    this.validateToken()
+    // React's development mount replay reuses the instance after cleanup.
+    this.unmounted = false
+    this.unsubscribeAuth = authSession.subscribe(this.syncAuthState)
+    authSession.sync()
+    this.syncAuthState()
+    void this.validateToken()
+  }
+
+  componentWillUnmount() {
+    this.unmounted = true
+    this.validationGeneration += 1
+    this.unsubscribeAuth?.()
+    this.unsubscribeAuth = null
+    this.validatedAuth = null
   }
 
   /**
@@ -41,28 +64,34 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
     }
   }
 
-  validateToken = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        this.setState({ isAuthenticated: false })
-        return
-      }
+  private syncAuthState = () => {
+    if (this.unmounted) return
+    const snapshot = authSession.getSnapshot()
+    this.validatedAuth = routeContext(snapshot)
+    this.setState(routeState(snapshot))
+  }
 
-      // Validate token with server
-      const response = await authAPI.validateToken(token)
-      this.setState({
-        isAuthenticated: true,
-        isAdmin: Boolean(response.user?.isAdmin),
-      })
+  validateToken = async (): Promise<void> => {
+    if (this.unmounted) return
+    const generation = ++this.validationGeneration
+    const isCurrent = () => !this.unmounted && this.validationGeneration === generation
+    const snapshot = authSession.sync()
+    const token = snapshot.token
+    this.syncAuthState()
+    if (!token) return
+    try {
+      await authAPI.validateToken(token)
+      if (!isCurrent()) return
+      // A login/logout in another surface may replace storage mid-request.
+      // Validate that current identity instead of publishing the old result.
+      if (localStorage.getItem('token') !== token) return this.validateToken()
+      this.syncAuthState()
     } catch (error) {
-      if (isAuthFailure(error)) {
-        localStorage.removeItem('token')
-        this.setState({ isAuthenticated: false })
-        return
-      }
-      // Server down / 5xx — keep session; don't treat as logged out
-      this.setState({ isAuthenticated: true })
+      if (!isCurrent()) return
+      if (localStorage.getItem('token') !== token) return this.validateToken()
+      // The shared controller keeps a current-token transient failure separate
+      // from verified permissions, preserving the existing non-admin fallback.
+      this.syncAuthState()
     }
   }
 
@@ -86,7 +115,9 @@ class ProtectedRoute extends Component<ProtectedRouteProps, ProtectedRouteState>
     }
 
     // Render protected content
-    return <>{children}</>
+    return <ValidatedAuthContext.Provider value={this.validatedAuth}>
+      <Suspense fallback={<Loading fullScreen={true} isDark={isDark} />}>{children}</Suspense>
+    </ValidatedAuthContext.Provider>
   }
 }
 

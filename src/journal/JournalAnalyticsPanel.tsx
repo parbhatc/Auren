@@ -3,11 +3,9 @@ import { Link } from 'react-router-dom'
 import { journalAPI } from '../api/journal.api'
 import type { JournalAnalytics, JournalGroup } from '../../shared/journalAnalytics.js'
 import { handleApiError } from '../utils/errorHandler'
+import { journalMoney } from './journalFormat'
 
-export const journalMoney = (value: number | null) =>
-  value == null
-    ? '—'
-    : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(value)
+export { journalMoney } from './journalFormat'
 export default function JournalAnalyticsPanel() {
   const [data, setData] = useState<JournalAnalytics | null>(null)
   const [source, setSource] = useState('all'),
