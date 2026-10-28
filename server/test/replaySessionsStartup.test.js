@@ -69,6 +69,7 @@ const dependencies = {
   '../../common/Modal': 'export default "modal";',
   '../../../backtester/constants': 'export const DEFAULT_BACKTESTER_SYMBOL = "NQ";',
   '../../../utils/replayPreferences': 'export const clearSavedReplayPositions = () => {};',
+  '../../../services/dashboard/dashboardReplayData': 'export const DASHBOARD_REPLAY_CHANGED_EVENT = "replaySessionsChanged"; export const invalidateDashboardReplaySessions = () => {};',
 }
 const bundled = await build({
   entryPoints: [fileURLToPath(new URL('../../src/components/backtester/BacktesterSessionsList/BacktesterSessionsListWrapper.tsx', import.meta.url))],

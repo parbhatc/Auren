@@ -1,4 +1,4 @@
-export type DashboardAccountSource = 'practice' | 'tradesea'
+export type DashboardAccountSource = 'practice' | 'tradesea' | 'replay'
 
 export interface DashboardAccountSelection {
   source: DashboardAccountSource
@@ -18,7 +18,7 @@ export function parseDashboardAccountValue(value: string | null | undefined): Da
   if (separator <= 0) return null
   const source = raw.slice(0, separator)
   const accountId = raw.slice(separator + 1).trim()
-  if ((source !== 'practice' && source !== 'tradesea') || !accountId) return null
+  if ((source !== 'practice' && source !== 'tradesea' && source !== 'replay') || !accountId) return null
   return { source, accountId }
 }
 

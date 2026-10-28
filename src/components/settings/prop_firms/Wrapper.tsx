@@ -70,7 +70,7 @@ export default function Wrapper({ embedded, onBack }: PropsSettingsWrapperProps 
       )
       setPropFirms(propFirmsList)
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to load prop firm settings')
+      setError(err?.response?.data?.message || err?.message || 'Failed to load platform settings')
     } finally {
       setLoading(false)
     }

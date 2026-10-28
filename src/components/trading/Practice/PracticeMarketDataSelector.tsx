@@ -129,7 +129,7 @@ export default function PracticeMarketDataSelector({
   }
 
   const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
-  const inputClass = `h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 sm:max-w-md ${
+  const inputClass = `h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-zinc-500 focus:ring-2 focus:ring-zinc-500/20 sm:max-w-md ${
     isDark
       ? 'border-[#3F3F46] bg-[#09090B] text-[#FAFAFA]'
       : 'border-[#D4D4D8] bg-white text-[#09090B]'
@@ -146,7 +146,7 @@ export default function PracticeMarketDataSelector({
         </label>
         {loading ? (
           <span className={`inline-flex h-9 items-center gap-2 text-xs ${muted}`}>
-            <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" aria-hidden />
+            <RefreshCw className="h-3.5 w-3.5 animate-spin text-zinc-500" aria-hidden />
             Loading…
           </span>
         ) : serverManaged ? (
@@ -190,7 +190,7 @@ export default function PracticeMarketDataSelector({
             {saving ? (
               <span className={`text-xs ${muted}`}>Saving…</span>
             ) : success ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-zinc-500">
                 <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 {success}
               </span>
@@ -200,7 +200,7 @@ export default function PracticeMarketDataSelector({
           <button
             type="button"
             onClick={onOpenConnectionSettings}
-            className="text-xs font-semibold text-blue-500 hover:text-blue-400"
+            className="text-xs font-semibold text-zinc-500 hover:text-zinc-400"
           >
             Connect Tradesea
           </button>

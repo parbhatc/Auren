@@ -50,7 +50,7 @@ test('route matching selects concrete pages and nested settings without importin
   assert.deepEqual(modulesForRoute('/journal/entry-id'), [routeModules.journalDetail])
   assert.deepEqual(modulesForRoute('/practice/trade/account-id/stats'), [routeModules.practiceStats])
   assert.deepEqual(modulesForRoute('/backtester/chart?sessionId=local-id'), [routeModules.replayChart])
-  assert.deepEqual(modulesForRoute('/backtester/stats'), [routeModules.replayStats])
+  assert.deepEqual(modulesForRoute('/backtester/stats?sessionId=replay-id'), [routeModules.dashboard])
   for (const invalid of ['/unknown', '/journal/one/two', '//external.example/news', 'https://external.example/news']) {
     assert.deepEqual(modulesForRoute(invalid), [])
   }
@@ -71,4 +71,13 @@ test('prefetch evaluates only the requested module and never renders a page', as
   ].sort())
   await prefetchRoute('/unknown')
   assert.equal(globalThis.__routeImports.length, 3)
+})
+
+test('legacy replay statistics warm up Overview without loading the removed page', async (t) => {
+  const previous = globalThis.__routeImports
+  globalThis.__routeImports = []
+  t.after(() => { globalThis.__routeImports = previous })
+  const { prefetchRoute } = await import(`data:text/javascript;base64,${encoded}#legacy-replay`)
+  await prefetchRoute('/backtester/stats?sessionId=replay-id')
+  assert.deepEqual(globalThis.__routeImports, ['../pages/workspace/DashboardPage'])
 })

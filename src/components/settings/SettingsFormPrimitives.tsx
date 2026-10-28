@@ -10,7 +10,7 @@ import {
 } from '../../styles/aurenTheme'
 
 export function SettingsPanel({ isDark, children }: { isDark: boolean; children: ReactNode }) {
-  return <div className={`${panelCardClass(isDark)} !p-0 overflow-hidden`}>{children}</div>
+  return <div className={`auren-settings-panel ${panelCardClass(isDark)} !p-0 overflow-hidden`}>{children}</div>
 }
 
 export function SettingsSection({
@@ -28,20 +28,20 @@ export function SettingsSection({
   children: ReactNode
 }) {
   return (
-    <section className={nested ? 'py-4' : 'px-5 sm:px-6 py-5'}>
+    <section className={`${nested ? 'py-4' : 'px-5 py-6 sm:px-6'} ${title && !nested ? 'auren-settings-section' : ''}`}>
       {title || hint ? (
         <div className={title || hint ? 'mb-4' : ''}>
           {title ? (
-            <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{title}</h3>
+            <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-zinc-900'}`}>{title}</h3>
           ) : null}
           {hint ? (
-            <p className={`text-xs ${title ? 'mt-0.5' : ''} ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <p className={`text-xs ${title ? 'mt-0.5' : ''} ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>
               {hint}
             </p>
           ) : null}
         </div>
       ) : null}
-      {children}
+      <div className="min-w-0">{children}</div>
     </section>
   )
 }
@@ -64,8 +64,8 @@ export function SettingsReadOnlyRow({
   return (
     <div>
       <p className={fieldLabelClass(isDark)}>{label}</p>
-      <p className={`mt-1 text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{value}</p>
-      {note ? <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{note}</p> : null}
+      <p className={`mt-1 text-sm font-medium ${isDark ? 'text-zinc-200' : 'text-zinc-800'}`}>{value}</p>
+      {note ? <p className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-zinc-500'}`}>{note}</p> : null}
     </div>
   )
 }
@@ -101,7 +101,7 @@ export function SettingsField({
         {Icon ? (
           <Icon
             className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${
-              hasError ? 'text-red-400' : isDark ? 'text-slate-500' : 'text-slate-400'
+              hasError ? 'text-red-400' : isDark ? 'text-zinc-500' : 'text-zinc-400'
             }`}
           />
         ) : null}
@@ -172,8 +172,8 @@ export function SettingsStatusPill({
         ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/25'
         : 'bg-emerald-50 text-emerald-800 ring-emerald-200'
       : isDark
-        ? 'bg-slate-800/80 text-slate-300 ring-slate-700'
-        : 'bg-slate-100 text-slate-700 ring-slate-200'
+        ? 'bg-zinc-800/80 text-zinc-300 ring-zinc-700'
+        : 'bg-zinc-100 text-zinc-700 ring-zinc-200'
   return (
     <p className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-xl ring-1 ${styles}`}>
       {children}

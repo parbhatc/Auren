@@ -120,7 +120,7 @@ export default function LiveTradePage() {
     return (
       <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
         <ProductHeader isDark={isDark} toggleTheme={toggleTheme}
-          marketDataStatus={{ label: 'Connecting market data…', connected: false }} />
+          marketDataStatus={{ label: 'Connecting Tradesea…', connected: false }} />
         <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
           <RefreshCw className={`w-8 h-8 animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         </main>
@@ -132,7 +132,7 @@ export default function LiveTradePage() {
     return (
       <div className={`auren-shell-offset min-h-screen ${pageBg}`}>
         <ProductHeader isDark={isDark} toggleTheme={toggleTheme}
-          marketDataStatus={{ label: 'Market data disconnected', connected: false }} />
+          marketDataStatus={{ label: 'Tradesea disconnected', connected: false }} />
         <main className="flex min-h-[calc(100dvh-4rem)] items-center justify-center p-4">
           <div
             className={`max-w-md w-full p-6 rounded-2xl border ${

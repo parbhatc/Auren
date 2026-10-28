@@ -48,7 +48,7 @@ class Renderer extends Component<SettingsProps> {
         isDark={isDark}
         toggleTheme={toggleTheme}
         navigate={navigate}
-        title={embedded ? t('settings.accountTab') : t('settings.title')}
+        title={embedded ? 'Profile & security' : t('settings.title')}
         subtitle={embedded ? t('practice.hub.settings.accountEmbeddedDesc') : t('settings.subtitle')}
         icon={User}
         embedded={embedded}
@@ -135,7 +135,7 @@ class Renderer extends Component<SettingsProps> {
               {user && !user.email_verified && (
                 <p
                   className={`text-xs px-3 py-2 rounded-lg ${
-                    isDark ? 'bg-amber-500/10 text-amber-200/90' : 'bg-amber-50 text-amber-800'
+                    isDark ? 'bg-zinc-500/10 text-zinc-200/90' : 'bg-zinc-50 text-zinc-800'
                   }`}
                 >
                   {t('settings.emailNotVerified')}

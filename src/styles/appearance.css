@@ -1,0 +1,92 @@
+/* Workspace palettes. Trading charts retain their own chart theme settings. */
+:root {
+  --app-bg: #fafafa;
+  --app-panel: #ffffff;
+  --app-inset: #f4f4f5;
+  --app-text: #18181b;
+  --app-muted: #71717a;
+  --app-secondary: #52525b;
+  --app-border: #e4e4e7;
+  --app-accent: #3f3f46;
+  --app-accent-soft: #ededf0;
+  --app-hover: #f0f0f2;
+  --app-button: #18181b;
+  --app-button-text: #ffffff;
+}
+html.dark {
+  --app-bg: #09090b;
+  --app-panel: #18181b;
+  --app-inset: #111113;
+  --app-text: #fafafa;
+  --app-muted: #a1a1aa;
+  --app-secondary: #d4d4d8;
+  --app-border: #2b2b2f;
+  --app-accent: #e4e4e7;
+  --app-accent-soft: #28282d;
+  --app-hover: #242427;
+  --app-button: #f4f4f5;
+  --app-button-text: #18181b;
+}
+:root[data-appearance='graphite'] {
+  --app-bg: #eeeeef;
+  --app-panel: #fafafa;
+  --app-inset: #e5e5e7;
+  --app-border: #d4d4d8;
+  --app-accent-soft: #e0e0e3;
+  --app-hover: #e5e5e7;
+}
+html.dark[data-appearance='graphite'] {
+  --app-bg: #171719;
+  --app-panel: #232326;
+  --app-inset: #1c1c1f;
+  --app-border: #3a3a40;
+  --app-accent-soft: #343439;
+  --app-hover: #303035;
+}
+:root[data-appearance='slate'] {
+  --app-bg: #f4f7fb;
+  --app-panel: #ffffff;
+  --app-inset: #eef3f9;
+  --app-border: #dce5ef;
+  --app-accent: #0369a1;
+  --app-accent-soft: #e0f2fe;
+  --app-hover: #eaf3fc;
+  --app-button: #0369a1;
+  --app-button-text: #ffffff;
+}
+html.dark[data-appearance='slate'] {
+  --app-bg: #0b1220;
+  --app-panel: #142031;
+  --app-inset: #101a29;
+  --app-border: #29394d;
+  --app-accent: #7dd3fc;
+  --app-accent-soft: #102a3e;
+  --app-hover: #1c2a3d;
+  --app-button: #7dd3fc;
+  --app-button-text: #082f49;
+}
+
+:root {
+  --auren-bg: var(--app-bg);
+  --auren-surface: var(--app-panel);
+  --auren-surface-muted: var(--app-inset);
+  --auren-border: var(--app-border);
+  --auren-heading: var(--app-text);
+  --auren-text: var(--app-muted);
+  --auren-accent: var(--app-accent);
+}
+html.dark {
+  --auren-bg: var(--app-bg);
+  --auren-surface: var(--app-panel);
+  --auren-surface-muted: var(--app-inset);
+  --auren-border: var(--app-border);
+  --auren-heading: var(--app-text);
+  --auren-text: var(--app-muted);
+  --auren-accent: var(--app-accent);
+}
+html, html.dark, body, html.dark body { background-color: var(--app-bg); }
+body { color: var(--app-text); }
+.auren-workspace { background: var(--app-bg); color: var(--app-text); }
+.auren-workspace-surface { background: var(--app-panel); border-color: var(--app-border); color: var(--app-text); }
+.auren-workspace :is(.auren-primary-button) { background: var(--app-button); color: var(--app-button-text); }
+.auren-primary-button:hover { filter: brightness(.92); }

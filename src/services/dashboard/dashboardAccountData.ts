@@ -9,6 +9,8 @@ import {
   formatLocalDate, monthDateRangeLocal, type TradeseaTradelensDashboard,
 } from '../tradesea/tradeseaTradelensStats'
 import { getDashboardAccountSelection, type DashboardAccountSelection } from './dashboardAccountSelection'
+import type { BacktestSession } from '../../types/backtester'
+import { loadDashboardReplayData, loadDashboardReplaySessions } from './dashboardReplayData'
 
 export interface DashboardPracticeStats {
   trades?: (PracticeTradeRecord & { id?: string })[]
@@ -21,6 +23,10 @@ export interface DashboardAccountData {
   selection: DashboardAccountSelection | null
   practiceAccount: PracticeAccount | null
   tradeseaAccount: TradeseaAccount | null
+  replaySession: BacktestSession | null
+  replayStats: DashboardPracticeStats
+  replayBalance: number | null
+  replayInitialBalance: number | null
   practiceStats: DashboardPracticeStats
   tradeseaDashboard: TradeseaTradelensDashboard | null
   days: PracticeDayPnL[]
@@ -32,7 +38,8 @@ export interface DashboardAccountData {
 export function emptyDashboardData(): DashboardAccountData {
   return {
     selection: null, practiceAccount: null, tradeseaAccount: null,
-    practiceStats: {}, tradeseaDashboard: null, days: [],
+    practiceStats: {}, tradeseaDashboard: null, replaySession: null,
+    replayStats: {}, replayBalance: null, replayInitialBalance: null, days: [],
     loading: true, refreshing: false, error: '',
   }
 }
@@ -41,7 +48,7 @@ const SNAPSHOT_TTL_MS = 30_000
 const snapshots = new Map<string, { data: DashboardAccountData; fetchedAt: number }>()
 const requests = new Map<string, Promise<unknown>>()
 type SnapshotRevisions = Record<DashboardAccountSelection['source'], number>
-const snapshotRevisions: SnapshotRevisions = { practice: 0, tradesea: 0 }
+const snapshotRevisions: SnapshotRevisions = { practice: 0, tradesea: 0, replay: 0 }
 
 function monthRange(month: Date) {
   const today = new Date()
@@ -79,6 +86,7 @@ export function invalidateDashboardAccountSnapshots(source?: DashboardAccountSel
   else {
     snapshotRevisions.practice += 1
     snapshotRevisions.tradesea += 1
+    snapshotRevisions.replay += 1
   }
   for (const [key, snapshot] of snapshots) {
     if (!source || snapshot.data.selection?.source === source) snapshots.delete(key)
@@ -115,6 +123,13 @@ export async function loadDashboardAccountData(
   const revisions = { ...snapshotRevisions }
   const saved = getDashboardAccountSelection()
   let accounts: TradeseaAccount[] | null = null
+  let replaySessions: BacktestSession[] | null = null
+  const loadReplaySessions = async () => {
+    // Catalog invalidation has its own event/TTL. A forced financial refresh
+    // must not cancel the header's simultaneous read of this shared catalog.
+    if (!replaySessions) replaySessions = await loadDashboardReplaySessions()
+    return replaySessions
+  }
   const loadTradeseaAccounts = async () => {
     if (accounts) return accounts
     try {
@@ -127,6 +142,16 @@ export async function loadDashboardAccountData(
   // A disconnected provider must not sit in front of an available practice
   // account's statistics. Only discover the other provider for a fallback.
   let selection: DashboardAccountSelection | null = null
+  if (saved?.source === 'replay') {
+    try {
+      const sessions = await loadReplaySessions()
+      if (sessions.some((session) => session.id === saved.accountId)) selection = saved
+    } catch {
+      // A failed catalog read is not evidence that the selected session was
+      // removed. Preserve selection rather than silently choosing an account.
+      return { ...emptyDashboardData(), selection: saved, loading: false, error: 'Replay sessions could not be loaded.' }
+    }
+  }
   if (saved?.source === 'tradesea') {
     const live = await loadTradeseaAccounts()
     if (live.some((account) => account.id === saved.accountId && !account.isArchived)) selection = saved
@@ -138,6 +163,14 @@ export async function loadDashboardAccountData(
       const live = (await loadTradeseaAccounts()).find((account) => !account.isArchived)
       if (live) selection = { source: 'tradesea', accountId: live.id }
     }
+    if (!selection) {
+      try {
+        const session = (await loadReplaySessions())[0]
+        if (session) selection = { source: 'replay', accountId: session.id }
+      } catch {
+        return { ...emptyDashboardData(), loading: false, error: 'Replay sessions could not be loaded.' }
+      }
+    }
   }
   if (!selection) return { ...emptyDashboardData(), loading: false, error: 'No account is available.' }
 
@@ -148,6 +181,25 @@ export async function loadDashboardAccountData(
   const cacheMatchesAccount = !practiceAccount || cached?.data.practiceAccount?.updatedAt === practiceAccount.updatedAt
   if (!options.force && cached && Date.now() - cached.fetchedAt < SNAPSHOT_TTL_MS && cacheMatchesAccount) {
     return { ...cached.data, ...(practiceAccount ? { practiceAccount, days: practiceAccount.dayPnL ?? [] } : {}) }
+  }
+
+  if (selection.source === 'replay') {
+    const replaySession = replaySessions?.find((session) => session.id === selection.accountId) ?? null
+    const data = { ...emptyDashboardData(), selection, replaySession, loading: false }
+    if (!replaySession) return { ...data, error: 'The replay session is no longer available.' }
+    try {
+      const replay = await requestOnce(
+        JSON.stringify([owner, 'replay-stats', replaySession.id, revisions.replay]),
+        () => loadDashboardReplayData(replaySession),
+      )
+      const result = {
+        ...data, replayStats: replay.stats, replayBalance: replay.balance,
+        replayInitialBalance: replay.initialBalance, days: replay.days, error: replay.message ?? '',
+      }
+      return owner === getAuthToken() ? remember(month, result, revisions) : data
+    } catch {
+      return { ...data, error: 'Replay statistics could not be loaded.' }
+    }
   }
 
   if (practiceAccount) {

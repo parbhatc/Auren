@@ -11,7 +11,11 @@ import {
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { journalAPI, type JournalEntryRecord } from '../../api/journal.api'
-import { WorkspaceShell, PageHeading, Surface } from '../../components/layout/WorkspacePrimitives'
+import {
+  WorkspaceShell,
+  PageHeading,
+  Surface,
+} from '../../components/layout/WorkspacePrimitives'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { ROUTES } from '../../constants/routes'
 import { useTheme } from '../../hooks/useTheme'
@@ -21,27 +25,41 @@ import {
   playbookFromRecord,
   type Playbook,
 } from '../../journal/journalConditions'
-import { journalLocalDateTime, summarizeJournalEntry } from '../../../shared/journalRecap.js'
+import {
+  journalLocalDateTime,
+  summarizeJournalEntry,
+} from '../../../shared/journalRecap.js'
 import { createJournalDraft } from '../../journal/journalCapture'
 
-const JournalEntryEditor = lazy(() => import('../../journal/JournalEntryEditor'))
+const JournalEntryEditor = lazy(
+  () => import('../../journal/JournalEntryEditor')
+)
 
 const journalPrice = (value?: string) => {
   if (value == null || String(value).trim() === '') return '—'
   const price = Number(value)
   return Number.isFinite(price)
-    ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? price.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
     : '—'
 }
 
 const journalRiskReward = (entry: JournalEntryRecord) => {
   if (entry.riskPlan?.stopLoss?.mode === 'dynamic') return 'Close rule'
   const entryPrice = Number(entry.entryPrice)
-  const stop = Number(entry.riskPlan?.stopLoss?.price || entry.sourceContext?.stopLossPrice)
-  const target = Number(entry.riskPlan?.takeProfit?.price || entry.sourceContext?.takeProfitPrice)
+  const stop = Number(
+    entry.riskPlan?.stopLoss?.price || entry.sourceContext?.stopLossPrice
+  )
+  const target = Number(
+    entry.riskPlan?.takeProfit?.price || entry.sourceContext?.takeProfitPrice
+  )
   const risk = Math.abs(entryPrice - stop)
   const reward = Math.abs(target - entryPrice)
-  return risk > 0 && Number.isFinite(reward) ? `${(reward / risk).toFixed(2)}R` : 'Plan'
+  return risk > 0 && Number.isFinite(reward)
+    ? `${(reward / risk).toFixed(2)}R`
+    : 'Plan'
 }
 
 const journalEntryTime = (value: string) => {
@@ -64,7 +82,9 @@ export default function JournalPage() {
   const [draft, setDraft] = useState<JournalEntryRecord | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<JournalEntryRecord | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<JournalEntryRecord | null>(
+    null
+  )
   const deletingRef = useRef(false)
   const [search, setSearch] = useState('')
   const [month, setMonth] = useState('')
@@ -72,7 +92,7 @@ export default function JournalPage() {
   const [playbook, setPlaybook] = useState('all')
   const [execution, setExecution] = useState('all')
   const [reload, setReload] = useState(0)
-  const inputClass = `h-10 min-w-0 rounded-lg border px-3 text-sm outline-none focus:border-blue-500 ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-[#FAFAFA]' : 'border-[#D4D4D8] bg-white text-[#09090B]'}`
+  const inputClass = `h-10 min-w-0 rounded-lg border px-3 text-sm outline-none focus:border-[var(--workspace-accent)] ${isDark ? 'border-[var(--app-border)] bg-[var(--app-panel)] text-[#FAFAFA]' : 'border-[var(--app-border)] bg-white text-[#09090B]'}`
 
   useEffect(() => {
     const controller = new AbortController()
@@ -85,7 +105,9 @@ export default function JournalPage() {
       })
       .catch((error) => {
         if (!controller.signal.aborted && error?.name !== 'AbortError')
-          setError('Journal entries could not be loaded. Try again when the server is available.')
+          setError(
+            'Journal entries could not be loaded. Try again when the server is available.'
+          )
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false)
@@ -93,7 +115,8 @@ export default function JournalPage() {
     void journalAPI
       .listStrategies(controller.signal)
       .then((records) => {
-        if (!controller.signal.aborted) setPlaybooks(records.map(playbookFromRecord))
+        if (!controller.signal.aborted)
+          setPlaybooks(records.map(playbookFromRecord))
       })
       .catch((error) => {
         if (!controller.signal.aborted && error?.name !== 'AbortError')
@@ -116,7 +139,9 @@ export default function JournalPage() {
       })
       .catch(() => {
         if (!controller.signal.aborted)
-          setError('This entry could not be opened for editing. Your saved data has not changed.')
+          setError(
+            'This entry could not be opened for editing. Your saved data has not changed.'
+          )
       })
       .finally(() => {
         if (!controller.signal.aborted) setEditLoading(false)
@@ -154,7 +179,10 @@ export default function JournalPage() {
       ? await journalAPI.updateEntry(entry)
       : await journalAPI.createEntry(entry)
     const summary = summarizeJournalEntry(saved)
-    setEntries((items) => [summary, ...items.filter((item) => item.id !== saved.id)])
+    setEntries((items) => [
+      summary,
+      ...items.filter((item) => item.id !== saved.id),
+    ])
     closeEditor()
   }
   const deleteEntry = async () => {
@@ -163,7 +191,9 @@ export default function JournalPage() {
     setDeleting(true)
     try {
       await journalAPI.deleteEntry(pendingDelete.id)
-      setEntries((items) => items.filter((item) => item.id !== pendingDelete.id))
+      setEntries((items) =>
+        items.filter((item) => item.id !== pendingDelete.id)
+      )
       setPendingDelete(null)
     } catch {
       setPendingDelete(null)
@@ -178,10 +208,12 @@ export default function JournalPage() {
     return entries
       .filter(
         (entry) =>
-          (!month || journalLocalDateTime(new Date(entry.dateTime)).startsWith(month)) &&
+          (!month ||
+            journalLocalDateTime(new Date(entry.dateTime)).startsWith(month)) &&
           (outcome === 'all' || entry.outcome === outcome) &&
           (playbook === 'all' || entry.playbook === playbook) &&
-          (execution === 'all' || (entry.recap?.execution ?? 'taken') === execution) &&
+          (execution === 'all' ||
+            (entry.recap?.execution ?? 'taken') === execution) &&
           (!query ||
             [
               entry.symbol,
@@ -213,29 +245,31 @@ export default function JournalPage() {
 
   return (
     <WorkspaceShell>
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeading
-            eyebrow="Your trading notebook"
-            title="A clear recap for every setup"
-            description="Save the chart, record your building blocks and evidence, and carry one lesson into the next session."
-          />
-          <Link
-            to="/journal/reviews"
-            className="rounded-lg border border-blue-500/30 px-3 py-2 text-sm text-blue-500"
-          >
-            Daily / weekly reviews
-          </Link>
-          <button
-            type="button"
-            disabled={editLoading}
-            onClick={startNew}
-            className="mb-5 inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />
-            New recap
-          </button>
-        </div>
+      <main className="mx-auto max-w-[1400px] px-4 py-7 sm:px-7 sm:py-9 xl:px-9">
+        <PageHeading
+          eyebrow="Your trading notebook"
+          title="Trading journal"
+          description="Save the setup. Find your patterns. Carry one lesson into the next session."
+          actions={
+            <>
+              <Link
+                to="/journal/reviews"
+                className="inline-flex h-10 items-center rounded-xl border border-[var(--workspace-border)] px-4 text-xs font-medium text-[var(--workspace-accent)]"
+              >
+                Daily / weekly reviews
+              </Link>
+              <button
+                type="button"
+                disabled={editLoading}
+                onClick={startNew}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--app-button)] !text-[var(--app-button-text)] px-4 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                New recap
+              </button>
+            </>
+          }
+        />
         {error && (
           <div
             role="alert"
@@ -256,7 +290,7 @@ export default function JournalPage() {
             Opening complete entry and screenshots…
           </p>
         )}
-        <Surface className="mb-6 p-4">
+        <Surface className="mb-7 p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
             <label className="relative sm:col-span-2 lg:col-span-1">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[#71717A]" />
@@ -313,7 +347,7 @@ export default function JournalPage() {
                 type="button"
                 aria-pressed={execution === value}
                 onClick={() => setExecution(value)}
-                className={`rounded-lg border px-3 py-1.5 text-xs ${execution === value ? 'border-blue-500/40 bg-blue-500/10 text-blue-500' : 'border-zinc-500/20 text-[#71717A]'}`}
+                className={`rounded-lg border px-3 py-1.5 text-xs ${execution === value ? 'border-[var(--workspace-border)] bg-[var(--workspace-accent-soft)] text-[var(--workspace-accent)]' : 'border-zinc-500/20 text-[#71717A]'}`}
               >
                 {label}
               </button>
@@ -330,7 +364,7 @@ export default function JournalPage() {
                 setPlaybook('all')
                 setExecution('all')
               }}
-              className="text-xs text-blue-500"
+              className="text-xs text-[var(--workspace-accent)]"
             >
               Clear filters
             </button>
@@ -342,18 +376,22 @@ export default function JournalPage() {
           </p>
         ) : !filtered.length ? (
           <Surface className="p-10 text-center">
-            <BookOpenCheck className="mx-auto mb-4 h-8 w-8 text-blue-500" />
-            <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-zinc-900'}`}>
-              {entries.length ? 'No recaps match these filters' : 'Start with your next setup'}
+            <BookOpenCheck className="mx-auto mb-4 h-8 w-8 text-[var(--workspace-accent)]" />
+            <h2
+              className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-zinc-900'}`}
+            >
+              {entries.length
+                ? 'No recaps match these filters'
+                : 'Start with your next setup'}
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-[#71717A]">
-              Choose one of your playbooks to review a setup. You can journal a missed setup
-              without entering a trade.
+              Choose one of your playbooks to review a setup. You can journal a
+              missed setup without entering a trade.
             </p>
             <button
               type="button"
               onClick={startNew}
-              className="mt-5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+              className="mt-5 rounded-lg bg-[var(--app-button)] !text-[var(--app-button-text)] px-4 py-2 text-sm font-semibold text-white"
             >
               Write a recap
             </button>
@@ -373,14 +411,17 @@ export default function JournalPage() {
                       year: 'numeric',
                     })}
                   </h2>
-                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs text-blue-500">
+                  <span className="rounded-full bg-[var(--workspace-accent-soft)] px-2 py-0.5 text-xs text-[var(--workspace-accent)]">
                     {dayEntries.length}
                   </span>
                 </div>
                 <div className="grid gap-4">
                   {dayEntries.map((entry) => (
-                    <Surface key={entry.id} className="relative overflow-hidden p-0">
-                      <div className="absolute inset-y-0 left-0 w-1 bg-blue-500" />
+                    <Surface
+                      key={entry.id}
+                      className="relative overflow-hidden p-0"
+                    >
+                      <div className="absolute inset-y-0 left-0 w-1 bg-[var(--workspace-accent)]" />
                       <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_310px]">
                         <div className="min-w-0 p-5 pl-6 sm:p-6 sm:pl-7">
                           <div className="flex items-start justify-between gap-4">
@@ -390,9 +431,7 @@ export default function JournalPage() {
                                 <span>·</span>
                                 <span>{entry.side}</span>
                                 <span>·</span>
-                                <span>
-                                  {journalEntryTime(entry.dateTime)}
-                                </span>
+                                <span>{journalEntryTime(entry.dateTime)}</span>
                                 {entry.recap?.session && (
                                   <>
                                     <span>·</span>
@@ -402,13 +441,14 @@ export default function JournalPage() {
                               </div>
                               <Link
                                 to={`${ROUTES.JOURNAL}/${encodeURIComponent(entry.id)}`}
-                                className={`block break-words text-lg font-semibold leading-tight hover:text-blue-500 ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}
+                                className={`block break-words text-lg font-semibold leading-tight hover:text-[var(--workspace-accent)] ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}
                               >
-                                {entry.recap?.title || `${entry.symbol} · ${entry.playbook}`}
+                                {entry.recap?.title ||
+                                  `${entry.symbol} · ${entry.playbook}`}
                               </Link>
                             </div>
                             <span
-                              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${entry.outcome === 'win' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : entry.outcome === 'loss' ? 'border-red-500/30 bg-red-500/10 text-red-500' : 'border-zinc-500/20 bg-zinc-500/10 text-[#A1A1AA]'}`}
+                              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${entry.outcome === 'win' ? 'border-emerald-500/30 bg-emerald-500/10 text-[var(--workspace-success)]' : entry.outcome === 'loss' ? 'border-red-500/30 bg-red-500/10 text-red-500' : 'border-zinc-500/20 bg-zinc-500/10 text-[#A1A1AA]'}`}
                             >
                               {journalOutcomeLabel(entry)}
                             </span>
@@ -416,45 +456,62 @@ export default function JournalPage() {
 
                           <div className="mt-4 flex flex-wrap items-center gap-2">
                             {journalSetupStages(entry).map((stage, index) => (
-                              <div key={stage} className="flex items-center gap-2">
+                              <div
+                                key={stage}
+                                className="flex items-center gap-2"
+                              >
                                 <span
-                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${index === 1 ? 'border-violet-500/30 bg-violet-500/10 text-violet-400' : index === 2 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-blue-500/30 bg-blue-500/10 text-blue-400'}`}
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${index === 1 ? 'border-[var(--workspace-border)] bg-[var(--workspace-accent-soft)] text-[var(--workspace-accent)]' : index === 2 ? 'border-zinc-500/30 bg-zinc-500/10 text-[var(--workspace-accent)]' : 'border-[var(--workspace-border)] bg-[var(--workspace-accent-soft)] text-[var(--workspace-accent)]'}`}
                                 >
                                   {index + 1}. {stage}
                                 </span>
-                                {index < journalSetupStages(entry).length - 1 && (
+                                {index <
+                                  journalSetupStages(entry).length - 1 && (
                                   <ArrowRight className="h-3.5 w-3.5 text-[#52525B]" />
                                 )}
                               </div>
                             ))}
                           </div>
 
-                          {(entry.recap?.pros?.length || entry.recap?.cons?.length) ? (
+                          {entry.recap?.pros?.length ||
+                          entry.recap?.cons?.length ? (
                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
-                                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-400">
+                              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+                                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--workspace-success)]">
                                   <CheckCircle2 className="h-3.5 w-3.5" /> Pros
                                 </div>
-                                <ul className={`mt-2 space-y-1.5 text-xs leading-5 ${isDark ? 'text-[#D4D4D8]' : 'text-[#3F3F46]'}`}>
-                                  {(entry.recap?.pros ?? []).slice(0, 3).map((item) => (
-                                    <li key={item} className="flex gap-2">
-                                      <span className="text-emerald-400">+</span>
-                                      <span>{item}</span>
-                                    </li>
-                                  ))}
+                                <ul
+                                  className={`mt-2 space-y-1.5 text-xs leading-5 ${isDark ? 'text-[#D4D4D8]' : 'text-[#3F3F46]'}`}
+                                >
+                                  {(entry.recap?.pros ?? [])
+                                    .slice(0, 3)
+                                    .map((item) => (
+                                      <li key={item} className="flex gap-2">
+                                        <span className="text-[var(--workspace-success)]">
+                                          +
+                                        </span>
+                                        <span>{item}</span>
+                                      </li>
+                                    ))}
                                 </ul>
                               </div>
-                              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
-                                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-amber-400">
+                              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3">
+                                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--workspace-warning)]">
                                   <AlertTriangle className="h-3.5 w-3.5" /> Cons
                                 </div>
-                                <ul className={`mt-2 space-y-1.5 text-xs leading-5 ${isDark ? 'text-[#D4D4D8]' : 'text-[#3F3F46]'}`}>
-                                  {(entry.recap?.cons ?? []).slice(0, 4).map((item) => (
-                                    <li key={item} className="flex gap-2">
-                                      <span className="text-amber-400">−</span>
-                                      <span>{item}</span>
-                                    </li>
-                                  ))}
+                                <ul
+                                  className={`mt-2 space-y-1.5 text-xs leading-5 ${isDark ? 'text-[#D4D4D8]' : 'text-[#3F3F46]'}`}
+                                >
+                                  {(entry.recap?.cons ?? [])
+                                    .slice(0, 4)
+                                    .map((item) => (
+                                      <li key={item} className="flex gap-2">
+                                        <span className="text-[var(--workspace-warning)]">
+                                          −
+                                        </span>
+                                        <span>{item}</span>
+                                      </li>
+                                    ))}
                                 </ul>
                               </div>
                             </div>
@@ -478,7 +535,9 @@ export default function JournalPage() {
                               <span className="inline-flex items-center gap-1 rounded-md bg-zinc-500/10 px-2 py-1 text-[11px] font-medium text-[#A1A1AA]">
                                 <Image className="h-3.5 w-3.5" />
                                 {entry.recap?.screenshotCount}{' '}
-                                {entry.recap?.screenshotCount === 1 ? 'chart' : 'charts'}
+                                {entry.recap?.screenshotCount === 1
+                                  ? 'chart'
+                                  : 'charts'}
                               </span>
                             )}
                             {entry.source && entry.source !== 'manual' && (
@@ -487,9 +546,10 @@ export default function JournalPage() {
                               </span>
                             )}
                             <span
-                              className={`ml-auto text-sm font-semibold tabular-nums ${Number(entry.pnl) < 0 ? 'text-red-500' : 'text-emerald-500'}`}
+                              className={`ml-auto text-sm font-semibold tabular-nums ${Number(entry.pnl) < 0 ? 'text-[var(--workspace-danger)]' : Number(entry.pnl) > 0 ? 'text-[var(--workspace-success)]' : 'text-zinc-500'}`}
                             >
-                              {entry.pnl.trim() && Number.isFinite(Number(entry.pnl))
+                              {entry.pnl.trim() &&
+                              Number.isFinite(Number(entry.pnl))
                                 ? `${Number(entry.pnl) < 0 ? '-' : ''}$${Math.abs(Number(entry.pnl)).toLocaleString()}`
                                 : ''}
                             </span>
@@ -497,31 +557,40 @@ export default function JournalPage() {
                         </div>
 
                         <div
-                          className={`flex flex-col border-t p-5 xl:border-l xl:border-t-0 ${isDark ? 'border-[#27272A] bg-[#0E0E11]' : 'border-[#E4E4E7] bg-[#FAFAFA]'}`}
+                          className={`flex flex-col border-t p-5 xl:border-l xl:border-t-0 ${isDark ? 'border-[var(--app-border)] bg-[var(--app-inset)]' : 'border-[var(--app-border)] bg-[var(--app-inset)]'}`}
                         >
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#71717A]">
                               Trade map
                             </p>
-                            <span className="rounded-md bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-400">
+                            <span className="rounded-md bg-[var(--workspace-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--workspace-accent)]">
                               {journalRiskReward(entry)}
                             </span>
                           </div>
                           <div className="mt-4 space-y-2">
-                            <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                              <span className="text-[11px] text-emerald-400">Target</span>
-                              <span className="text-xs font-semibold tabular-nums text-emerald-400">
-                                {journalPrice(entry.riskPlan?.takeProfit?.price || entry.sourceContext?.takeProfitPrice)}
+                            <div className="flex items-center justify-between rounded-lg border border-zinc-500/20 bg-zinc-500/5 px-3 py-2">
+                              <span className="text-[11px] text-[var(--workspace-accent)]">
+                                Target
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums text-[var(--workspace-accent)]">
+                                {journalPrice(
+                                  entry.riskPlan?.takeProfit?.price ||
+                                    entry.sourceContext?.takeProfitPrice
+                                )}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2">
-                              <span className="text-[11px] text-blue-400">Entry</span>
-                              <span className="text-xs font-semibold tabular-nums text-blue-400">
+                            <div className="flex items-center justify-between rounded-lg border border-[var(--workspace-border)] bg-[var(--workspace-accent-soft)] px-3 py-2">
+                              <span className="text-[11px] text-[var(--workspace-accent)]">
+                                Entry
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums text-[var(--workspace-accent)]">
                                 {journalPrice(entry.entryPrice)}
                               </span>
                             </div>
                             <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2">
-                              <span className="text-[11px] text-red-400">Stop</span>
+                              <span className="text-[11px] text-red-400">
+                                Stop
+                              </span>
                               <span className="text-xs font-semibold tabular-nums text-red-400">
                                 {entry.riskPlan?.stopLoss?.mode === 'dynamic'
                                   ? 'Close rule'
@@ -535,15 +604,17 @@ export default function JournalPage() {
                           <div className="mt-auto flex items-center gap-2 pt-4">
                             <Link
                               to={`${ROUTES.JOURNAL}/${encodeURIComponent(entry.id)}`}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--app-button)] !text-[var(--app-button-text)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--workspace-accent)]"
                             >
                               View setup <ArrowRight className="h-3.5 w-3.5" />
                             </Link>
                             <button
                               type="button"
                               disabled={editLoading}
-                              onClick={() => setSearchParams({ edit: entry.id })}
-                              className="rounded-lg border border-zinc-500/20 px-3 py-2 text-xs text-[#A1A1AA] hover:text-blue-400"
+                              onClick={() =>
+                                setSearchParams({ edit: entry.id })
+                              }
+                              className="rounded-lg border border-zinc-500/20 px-3 py-2 text-xs text-[#A1A1AA] hover:text-[var(--workspace-accent)]"
                             >
                               Edit
                             </button>
@@ -566,19 +637,26 @@ export default function JournalPage() {
           </div>
         )}
         {draft && (
-          <Suspense fallback={
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="status">
-              <p className="rounded-lg bg-zinc-900 px-5 py-4 text-sm text-white">Opening journal editor…</p>
-            </div>
-          }>
-          <JournalEntryEditor
-            key={draft.id || 'new'}
-            initialEntry={draft}
-            playbooks={playbooks}
-            isDark={isDark}
-            onSave={saveEntry}
-            onClose={closeEditor}
-          />
+          <Suspense
+            fallback={
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+                role="status"
+              >
+                <p className="rounded-lg bg-zinc-900 px-5 py-4 text-sm text-white">
+                  Opening journal editor…
+                </p>
+              </div>
+            }
+          >
+            <JournalEntryEditor
+              key={draft.id || 'new'}
+              initialEntry={draft}
+              playbooks={playbooks}
+              isDark={isDark}
+              onSave={saveEntry}
+              onClose={closeEditor}
+            />
           </Suspense>
         )}
         <ConfirmDialog

@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { BarChart3, TrendingUp, Home, RotateCcw } from 'lucide-react'
+import { BarChart3, Home, RotateCcw } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import { TradingNavProps } from '../../../types/common'
 
@@ -13,7 +13,6 @@ class BacktesterNav extends Component<TradingNavProps> {
 
     const navItems = [
       { path: ROUTES.BACKTESTER_CHART, label: 'Chart', icon: BarChart3 },
-      { path: ROUTES.BACKTESTER_STATS, label: 'Stats', icon: TrendingUp },
       { path: ROUTES.BACKTESTER, label: 'Sessions', icon: RotateCcw },
       { path: ROUTES.HOME, label: 'Home', icon: Home },
     ]

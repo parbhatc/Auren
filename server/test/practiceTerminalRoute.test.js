@@ -268,6 +268,7 @@ const tradeDependencies = {
   '../../../services/practice/practicePlans': 'export const getPracticePlanFromAccount = () => ({});',
   '../shared/modals/BlownAccountModal': 'export default "blown-modal";',
   '../shared/modals/PassedAccountModal': 'export default "passed-modal";',
+  '../../layout/ProductHeader': 'export default "product-header";',
 }
 const tradeBundle = await build({
   entryPoints: [fileURLToPath(new URL('../../src/components/trading/Practice/TradePage.tsx', import.meta.url))],

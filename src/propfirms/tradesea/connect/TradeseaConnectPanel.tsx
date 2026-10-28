@@ -3,8 +3,6 @@ import axios from 'axios'
 import { tradeseaAPI } from '../../../api/tradesea.api'
 import { t } from '../../../utils/translator'
 import type { TradeseaConnectPanelProps } from '../../types/tradesea'
-import { SettingsDivider, SettingsSection } from '../../../components/settings/SettingsFormPrimitives'
-import BasePropFirm from '../../connect/BasePropFirm'
 import BaseEmailOTPFirm from '../../connect/BaseEmailOTPFirm'
 import { savePropFirmCredentials, savePropFirmToken } from '../../connect/utils/savePropFirmCredentials'
 import TradeseaAdvancedTokens from './TradeseaAdvancedTokens'
@@ -31,10 +29,14 @@ export default function TradeseaConnectPanel({
   const [otp, setOtp] = useState('')
   const [sendingOtp, setSendingOtp] = useState(false)
   const [verifying, setVerifying] = useState(false)
-  const [connectionName, setConnectionName] = useState<string | null>(null)
+  const [connection, setConnection] = useState<{ connected: boolean; name: string | null }>({
+    connected: false,
+    name: null,
+  })
   const [manualAccess, setManualAccess] = useState('')
   const [manualRefresh, setManualRefresh] = useState(propFirm?.sessionId || '')
   const [savingManual, setSavingManual] = useState(false)
+  const [method, setMethod] = useState<'manual' | 'email'>('email')
 
   useEffect(() => {
     setEmail(propFirm?.credentials?.email || '')
@@ -43,21 +45,24 @@ export default function TradeseaConnectPanel({
   }, [propFirm])
 
   useEffect(() => {
+    let active = true
+    setConnection({ connected: false, name: null })
     if (!propFirm?.token) {
-      setConnectionName(null)
-      return
+      return () => { active = false }
     }
-    tradeseaAPI
-      .getConnectionStatus()
+    void tradeseaAPI.getConnectionStatus()
       .then((status) => {
-        if (status.connected) {
-          setConnectionName(status.name || status.email || email || null)
-        } else {
-          setConnectionName(null)
-        }
+        if (!active) return
+        setConnection({
+          connected: Boolean(status.connected),
+          name: status.connected
+            ? status.name || status.email || propFirm.credentials?.email || null
+            : null,
+        })
       })
-      .catch(() => setConnectionName(null))
-  }, [propFirm?.token, email])
+      .catch(() => { if (active) setConnection({ connected: false, name: null }) })
+    return () => { active = false }
+  }, [propFirm?.token, propFirm?.sessionId, propFirm?.credentials?.email])
 
   const persistTokens = async (
     accessToken: string,
@@ -112,7 +117,7 @@ export default function TradeseaConnectPanel({
       await persistTokens(result.accessToken, result.refreshToken || '', {
         email: result.email || email.trim().toLowerCase(),
         deviceId,
-        firstName: result.firstName,
+        ...(result.firstName != null ? { firstName: result.firstName } : {}),
       })
       setOtpStep(false)
       setOtp('')
@@ -146,42 +151,94 @@ export default function TradeseaConnectPanel({
     }
   }
 
-  const connectedAs = connectionName
-    ? t('props.tradesea.connectedAs', { name: connectionName })
+  const connectedAs = connection.connected
+    ? connection.name
+      ? t('props.tradesea.connectedAs', { name: connection.name })
+      : 'Connected'
     : null
 
+  const savingConnection = savingManual || sendingOtp || verifying
+
   return (
-    <BasePropFirm isDark={isDark} connectedAs={connectedAs}>
-      <SettingsSection isDark={isDark} nested title={t('props.tradesea.signInSection')}>
-        <BaseEmailOTPFirm
-          isDark={isDark}
-          idPrefix="tradesea"
-          email={email}
-          otp={otp}
-          otpStep={otpStep}
-          sendingOtp={sendingOtp}
-          verifying={verifying}
-          onEmailChange={setEmail}
-          onOtpChange={setOtp}
-          onSendOtp={() => void handleSendOtp(false)}
-          onVerifyOtp={() => void handleVerifyOtp()}
-          onResendOtp={() => void handleSendOtp(true)}
-          onChangeEmail={() => {
-            setOtpStep(false)
-            setOtp('')
-          }}
-        />
-      </SettingsSection>
-      <SettingsDivider isDark={isDark} />
-      <TradeseaAdvancedTokens
-        isDark={isDark}
-        accessToken={manualAccess}
-        refreshToken={manualRefresh}
-        saving={savingManual}
-        onAccessChange={setManualAccess}
-        onRefreshChange={setManualRefresh}
-        onSave={() => void handleSaveManual()}
-      />
-    </BasePropFirm>
+      <section
+        className="min-w-0 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-5 sm:p-6 lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)] lg:gap-8"
+        aria-labelledby="tradesea-connect-heading"
+      >
+        <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3
+            id="tradesea-connect-heading"
+            className="text-lg font-semibold tracking-tight text-[var(--app-text)]"
+          >
+            Connect Tradesea
+          </h3>
+          <span className={`inline-flex items-center gap-1.5 text-[10px] ${
+            connectedAs ? isDark ? 'text-emerald-400' : 'text-emerald-700' : 'text-[var(--app-muted)]'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              connectedAs ? 'bg-emerald-500' : 'bg-[var(--app-muted)]'
+            }`} aria-hidden />
+            {connectedAs || (propFirm?.token ? 'Session saved' : 'Not connected')}
+          </span>
+        </div>
+        <p className="mb-5 mt-2 text-xs leading-5 text-[var(--app-muted)]">
+          Sign in with your Tradesea email to connect Auren.
+        </p>
+        </div>
+        <div className="min-w-0">
+        <div
+          role="group"
+          aria-label="Tradesea connection method"
+          className="mb-5 flex rounded-lg bg-[var(--app-inset)] p-1"
+        >
+          {(['email', 'manual'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={method === item}
+              disabled={savingConnection}
+              onClick={() => setMethod(item)}
+              className={`min-h-9 flex-1 rounded-md px-2 text-xs font-semibold ${
+                method === item
+                  ? 'bg-[var(--app-accent-soft)] text-[var(--app-accent)]'
+                  : 'text-[var(--app-muted)]'
+              }`}
+            >
+              {item === 'manual' ? 'Advanced' : 'Email sign-in'}
+            </button>
+          ))}
+        </div>
+        {method === 'email' ? (
+          <BaseEmailOTPFirm
+            isDark={isDark}
+            idPrefix="tradesea"
+            email={email}
+            otp={otp}
+            otpStep={otpStep}
+            sendingOtp={sendingOtp}
+            verifying={verifying}
+            onEmailChange={setEmail}
+            onOtpChange={setOtp}
+            onSendOtp={() => void handleSendOtp(false)}
+            onVerifyOtp={() => void handleVerifyOtp()}
+            onResendOtp={() => void handleSendOtp(true)}
+            onChangeEmail={() => {
+              setOtpStep(false)
+              setOtp('')
+            }}
+          />
+        ) : (
+          <TradeseaAdvancedTokens
+            isDark={isDark}
+            accessToken={manualAccess}
+            refreshToken={manualRefresh}
+            saving={savingManual}
+            onAccessChange={setManualAccess}
+            onRefreshChange={setManualRefresh}
+            onSave={() => void handleSaveManual()}
+          />
+        )}
+        </div>
+      </section>
   )
 }

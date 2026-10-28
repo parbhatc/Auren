@@ -27,6 +27,7 @@ import LiveTradeViewRetention from './components/trading/Live/LiveTradeViewReten
 import { getAuthToken } from './api/api'
 import { traceStartup } from './services/debug/startupTrace'
 import { prefetchRoute, routeModules } from './navigation/routeModules'
+import LegacyReplayStatsRedirect from './components/backtester/LegacyReplayStatsRedirect'
 
 const Login = lazy(routeModules.login)
 const Register = lazy(routeModules.register)
@@ -51,7 +52,6 @@ const PracticeTradePage = lazy(routeModules.practiceTrade)
 const LiveTradePage = lazy(routeModules.liveTrade)
 const BacktesterChartView = lazy(routeModules.replayChart)
 const BacktesterSessionsList = lazy(routeModules.replay)
-const BacktesterStats = lazy(routeModules.replayStats)
 const BacktesterDataManagement = lazy(routeModules.replayData)
 const JournalPage = lazy(routeModules.journal)
 const JournalReviewsPage = lazy(routeModules.journalReviews)
@@ -367,10 +367,10 @@ function App() {
             }
           />
           <Route
-            path={`${ROUTES.BACKTESTER_STATS}`}
+            path={ROUTES.BACKTESTER_STATS}
             element={
               <ProtectedRoute>
-                <BacktesterStats />
+                <LegacyReplayStatsRedirect />
               </ProtectedRoute>
             }
           />

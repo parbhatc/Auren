@@ -31,13 +31,13 @@ export default function SettingsPageLayout({
 }) {
   if (embedded) {
     return (
-      <div className="w-full">
+      <div className="auren-settings-page w-full">
         {onBack ? (
           <button
             type="button"
             onClick={onBack}
             className={`mb-5 group flex items-center gap-1 text-sm font-medium transition-colors ${
-              isDark ? 'text-slate-400 hover:text-blue-300' : 'text-slate-600 hover:text-blue-700'
+              isDark ? 'text-zinc-400 hover:text-zinc-300' : 'text-zinc-600 hover:text-zinc-700'
             }`}
           >
             <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
@@ -45,21 +45,15 @@ export default function SettingsPageLayout({
           </button>
         ) : null}
 
-        <header className="mb-4">
+        <header className={`mb-6 border-b pb-5 ${isDark ? 'border-[#2B2B2B]' : 'border-[#DEDEDE]'}`}>
           <div className="flex items-start gap-3">
             {Icon ? (
-              <div
-                className={`p-2 rounded-xl shrink-0 ${
-                  isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-50 text-blue-600'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-              </div>
+              <div className={`mt-0.5 shrink-0 rounded-lg border p-2 ${isDark ? 'border-[#343434] bg-[#222222] text-[#B7B7B7]' : 'border-[#D8D8D8] bg-[#E7E7E7] text-[#696969]'}`}><Icon className="h-[18px] w-[18px]" strokeWidth={1.6} /></div>
             ) : null}
             <div className="min-w-0 flex-1">
-              <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{title}</h2>
+              <h2 className={`text-xl font-semibold tracking-tight ${isDark ? 'text-[#F0F0F0]' : 'text-[#2A2A2A]'}`}>{title}</h2>
               {subtitle ? (
-                <p className={`text-sm mt-1 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-600'}`}>
+                <p className={`mt-1 text-xs leading-5 ${isDark ? 'text-zinc-400' : 'text-[#747474]'}`}>
                   {subtitle}
                 </p>
               ) : null}
@@ -67,7 +61,7 @@ export default function SettingsPageLayout({
           </div>
         </header>
 
-        <div className="space-y-4">{children}</div>
+        <div className="auren-settings-body space-y-5">{children}</div>
       </div>
     )
   }
@@ -82,18 +76,18 @@ export default function SettingsPageLayout({
             {Icon ? (
               <div
                 className={`p-2.5 rounded-xl ${
-                  isDark ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-50 text-blue-600'
+                  isDark ? 'bg-zinc-500/15 text-zinc-400' : 'bg-zinc-50 text-zinc-600'
                 }`}
               >
                 <Icon className="w-5 h-5" />
               </div>
             ) : null}
             <div>
-              <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              <h1 className={`text-2xl sm:text-3xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-zinc-900'}`}>
                 {title}
               </h1>
               {subtitle ? (
-                <p className={`text-sm mt-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{subtitle}</p>
+                <p className={`text-sm mt-1 ${isDark ? 'text-zinc-400' : 'text-zinc-600'}`}>{subtitle}</p>
               ) : null}
             </div>
           </div>

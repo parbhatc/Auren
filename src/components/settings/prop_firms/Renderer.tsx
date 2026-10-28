@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Wifi } from 'lucide-react'
+import { ArrowRight, Cable } from 'lucide-react'
 import { PropsSettingsRendererProps } from '../../../types/props'
 import {
   PRACTICE_PROP_FIRMS,
@@ -14,13 +14,11 @@ import {
   getPropFirmSettingsDescription,
   getPropFirmSettingsPanel,
 } from '../../../propfirms/connect/settingsPanels'
-import { t } from '../../../utils/translator'
-import { fieldLabelClass, selectInputClass } from '../../../styles/aurenTheme'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import SettingsPageLayout from '../../layout/SettingsPageLayout'
 import HubSettingsSkeleton from '../../trading/Practice/hub/HubSettingsSkeleton'
-import { SettingsPanel, SettingsSection } from '../SettingsFormPrimitives'
+import PlatformLogo from '../../common/PlatformLogo'
 
 export default function Renderer({
   isDark,
@@ -56,6 +54,7 @@ export default function Renderer({
 
   const handleFirmChange = async (nextId: string) => {
     const firmId = normalizePracticePropFirmId(nextId)
+    if (firmId === selectedFirm) return
     setSelectedFirm(firmId)
     localStorage.setItem('activePropFirm', firmId)
     window.dispatchEvent(new Event('activePropFirmChanged'))
@@ -75,9 +74,9 @@ export default function Renderer({
     isDark,
     toggleTheme,
     navigate,
-    title: embedded ? t('settings.marketDataTab') : t('props.title'),
-    subtitle: embedded ? t('practice.hub.settings.marketEmbeddedDesc') : t('practice.hub.settings.marketDesc'),
-    icon: Wifi,
+    title: 'Platform connections',
+    subtitle: 'Select Tradesea or TradingView to manage your connection.',
+    icon: Cable,
     embedded,
     onBack,
   }
@@ -85,7 +84,7 @@ export default function Renderer({
   if (loading) {
     return (
       <SettingsPageLayout {...layoutProps}>
-        <HubSettingsSkeleton isDark rows={2} />
+        <HubSettingsSkeleton isDark={isDark} rows={2} />
       </SettingsPageLayout>
     )
   }
@@ -95,25 +94,40 @@ export default function Renderer({
       {error && <ErrorMessage message={error} isDark={isDark} />}
       {success && <SuccessMessage message={success} isDark={isDark} />}
 
-      <SettingsPanel isDark={isDark}>
-        <SettingsSection isDark={isDark} hint={providerHint}>
-          <div className="mb-5">
-            <label className={fieldLabelClass(isDark)} htmlFor="market-data-provider">
-              {t('practice.propFirmLabel')}
-            </label>
-            <select
-              id="market-data-provider"
-              value={selectedFirm}
-              onChange={(e) => void handleFirmChange(e.target.value)}
-              className={selectInputClass(isDark)}
+      <div className="mb-6 grid gap-3 sm:grid-cols-2" role="group" aria-label="Platform">
+        {PRACTICE_PROP_FIRMS.map((firm) => {
+          const selected = selectedFirm === firm.id
+          return (
+            <button
+              key={firm.id}
+              type="button"
+              aria-pressed={selected}
+              aria-label={firm.displayName}
+              onClick={() => void handleFirmChange(firm.id)}
+              className={`flex min-w-0 items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
+                selected
+                  ? 'border-[var(--app-accent)] bg-[var(--app-accent-soft)]'
+                  : 'border-[var(--app-border)] bg-[var(--app-panel)] hover:border-[var(--app-accent)]'
+              }`}
             >
-              {PRACTICE_PROP_FIRMS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
+              <PlatformLogo
+                brand={firm.id === 'tradesea' ? 'tradesea' : 'tradingview'}
+                isDark={isDark}
+                className="h-11 w-32"
+              />
+              <span className="min-w-0 text-[11px] leading-5 text-[var(--app-muted)]">
+                {firm.id === 'tradesea' ? 'Trading & market data' : 'Market data'}
+              </span>
+              {selected ? (
+                <ArrowRight
+                  className="ml-auto h-4 w-4 shrink-0 text-[var(--app-accent)]"
+                  aria-hidden
+                />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
 
           {ConnectPanel ? (
             <ConnectPanel
@@ -124,11 +138,11 @@ export default function Renderer({
               onError={(msg) => onNotifyError?.(msg)}
             />
           ) : (
-            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{providerHint}</p>
+            <p className="text-sm text-[var(--app-muted)]">{providerHint}</p>
           )}
 
           {canClear ? (
-            <div className={`mt-5 pt-4 border-t ${isDark ? 'border-slate-800/80' : 'border-slate-200'}`}>
+            <div className="mt-6 border-t border-[var(--app-border)] pt-4">
               <button
                 type="button"
                 onClick={() => onDelete(selectedFirm)}
@@ -136,12 +150,10 @@ export default function Renderer({
                   isDark ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'
                 }`}
               >
-                {t('props.clear')}
+                Disconnect {selectedFirm === 'tradesea' ? 'Tradesea' : 'TradingView'}
               </button>
             </div>
           ) : null}
-        </SettingsSection>
-      </SettingsPanel>
     </SettingsPageLayout>
   )
 }

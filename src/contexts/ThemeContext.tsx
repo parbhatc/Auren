@@ -1,57 +1,82 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 const THEME_STORAGE_KEY = 'auren-theme'
-const DEFAULT_THEME = true // Default to dark mode
+const APPEARANCE_STORAGE_KEY = 'auren-appearance'
+export type ThemeMode = 'dark' | 'light' | 'system'
+export type AppearancePreset = 'black' | 'graphite' | 'slate'
+
+function readPreference<T extends string>(key: string, values: readonly T[], fallback: T): T {
+  try {
+    const value = localStorage.getItem(key) as T
+    return values.includes(value) ? value : fallback
+  } catch {
+    return fallback
+  }
+}
 
 interface ThemeContextType {
   isDark: boolean
   toggleTheme: () => void
+  themeMode: ThemeMode
+  setThemeMode: (mode: ThemeMode) => void
+  appearancePreset: AppearancePreset
+  setAppearancePreset: (preset: AppearancePreset) => void
 }
 
 export const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window === 'undefined') {
-      return DEFAULT_THEME
-    }
-
-    try {
-      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
-      if (savedTheme !== null) {
-        return savedTheme === 'dark'
-      }
-      return DEFAULT_THEME
-    } catch (error) {
-      console.warn('Failed to read theme from localStorage:', error)
-      return DEFAULT_THEME
-    }
-  })
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() =>
+    readPreference<ThemeMode>(THEME_STORAGE_KEY, ['dark', 'light', 'system'], 'dark'))
+  const [appearancePreset, setAppearancePreset] = useState<AppearancePreset>(() =>
+    readPreference<AppearancePreset>(APPEARANCE_STORAGE_KEY, ['black', 'graphite', 'slate'], 'black'))
+  const [systemDark, setSystemDark] = useState(() =>
+    typeof window === 'undefined' || window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const isDark = themeMode === 'system' ? systemDark : themeMode === 'dark'
 
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const update = () => setSystemDark(media.matches)
+    update()
+    media.addEventListener('change', update)
+    const sync = (event: StorageEvent) => {
+      if (event.key !== THEME_STORAGE_KEY && event.key !== APPEARANCE_STORAGE_KEY && event.key !== null) return
+      // Read one preference snapshot before our persistence effect writes either
+      // key, including when another tab changed both in the same interaction.
+      setThemeMode(readPreference<ThemeMode>(THEME_STORAGE_KEY, ['dark', 'light', 'system'], 'dark'))
+      setAppearancePreset(readPreference<AppearancePreset>(APPEARANCE_STORAGE_KEY, ['black', 'graphite', 'slate'], 'black'))
     }
-    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
-    document.documentElement.style.backgroundColor = isDark ? '#09090B' : '#FAFAFA'
+    window.addEventListener('storage', sync)
+    return () => {
+      media.removeEventListener('change', update)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', isDark)
+    root.dataset.appearance = appearancePreset
+    root.style.colorScheme = isDark ? 'dark' : 'light'
+    const background = getComputedStyle(root).getPropertyValue('--app-bg').trim() || (isDark ? '#09090B' : '#FAFAFA')
+    root.style.backgroundColor = background
     const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    themeColor?.setAttribute('content', isDark ? '#09090B' : '#FAFAFA')
+    themeColor?.setAttribute('content', background)
 
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, isDark ? 'dark' : 'light')
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode)
+      localStorage.setItem(APPEARANCE_STORAGE_KEY, appearancePreset)
     } catch (error) {
       console.warn('Failed to save theme to localStorage:', error)
     }
-  }, [isDark])
+  }, [isDark, themeMode, appearancePreset])
 
   const toggleTheme = () => {
-    setIsDark((prev) => !prev)
+    setThemeMode(isDark ? 'light' : 'dark')
   }
 
   return (
-    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
+    <ThemeContext.Provider value={{ isDark, toggleTheme, themeMode, setThemeMode, appearancePreset, setAppearancePreset }}>
       {children}
     </ThemeContext.Provider>
   )

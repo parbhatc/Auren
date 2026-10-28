@@ -1,13 +1,23 @@
-import { BarChart3, Database, History } from 'lucide-react'
+import { Database, History } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import { prefetchRouteOnIntent } from '../../../navigation/routeModules'
 
-export type BacktesterTab = 'sessions' | 'stats' | 'data'
+export type BacktesterTab = 'sessions' | 'data'
 
 const TABS = [
-  { id: 'sessions' as const, label: 'Replay sessions', route: ROUTES.BACKTESTER, icon: History },
-  { id: 'stats' as const, label: 'Replay statistics', route: ROUTES.BACKTESTER_STATS, icon: BarChart3 },
-  { id: 'data' as const, label: 'CSV data', route: ROUTES.BACKTESTER_DATA_MANAGEMENT, icon: Database, adminOnly: true },
+  {
+    id: 'sessions' as const,
+    label: 'Replay sessions',
+    route: ROUTES.BACKTESTER,
+    icon: History,
+  },
+  {
+    id: 'data' as const,
+    label: 'CSV data',
+    route: ROUTES.BACKTESTER_DATA_MANAGEMENT,
+    icon: Database,
+    adminOnly: true,
+  },
 ]
 
 export default function BacktesterNav({
@@ -26,8 +36,8 @@ export default function BacktesterNav({
   return (
     <nav
       aria-label="Replay sections"
-      className={`mb-6 flex w-full min-w-0 gap-1 overflow-x-auto rounded-xl border p-1 ${
-        isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
+      className={`mb-7 flex w-full min-w-0 gap-1 overflow-x-auto border-b pb-3 ${
+        isDark ? 'border-[var(--app-border)]' : 'border-[var(--app-border)]'
       }`}
     >
       {TABS.filter((tab) => !tab.adminOnly || showAdmin).map((tab) => {
@@ -41,14 +51,14 @@ export default function BacktesterNav({
             onPointerEnter={() => prefetchRouteOnIntent(tab.route)}
             onFocus={() => prefetchRouteOnIntent(tab.route)}
             onTouchStart={() => prefetchRouteOnIntent(tab.route)}
-            className={`inline-flex min-w-max flex-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
+            className={`inline-flex min-w-max flex-none items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
               active
                 ? isDark
-                  ? 'bg-[#FAFAFA] text-[#09090B]'
-                  : 'bg-[#18181B] text-white'
+                  ? 'bg-[var(--app-button)] text-[var(--app-button-text)]'
+                  : 'bg-[var(--app-button)] text-[var(--app-button-text)]'
                 : isDark
-                  ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]'
-                  : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
+                  ? 'text-[#A1A1AA] hover:bg-[var(--app-hover)] hover:text-[#FAFAFA]'
+                  : 'text-[#52525B] hover:bg-[var(--app-inset)] hover:text-[#09090B]'
             }`}
           >
             <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden />

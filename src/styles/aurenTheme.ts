@@ -1,21 +1,15 @@
 /** Shared Auren surface styles — keep hub, settings, and auth visually aligned. */
 
-export function appPageBackground(isDark: boolean): string {
-  return isDark
-    ? 'min-h-screen bg-[#09090B]'
-    : 'min-h-screen bg-[#FAFAFA]'
+export function appPageBackground(_isDark: boolean): string {
+  return 'min-h-screen bg-[var(--app-bg)]'
 }
 
-export function appHeaderShell(isDark: boolean): string {
-  return isDark
-    ? 'border-[#27272A] bg-[#09090B]'
-    : 'border-[#E4E4E7] bg-white'
+export function appHeaderShell(_isDark: boolean): string {
+  return 'border-[var(--app-border)] bg-[var(--app-panel)]'
 }
 
-export function panelCardClass(isDark: boolean): string {
-  return isDark
-    ? 'rounded-xl border p-5 sm:p-6 bg-[#18181B] border-[#27272A]'
-    : 'rounded-xl border p-5 sm:p-6 bg-white border-[#E4E4E7]'
+export function panelCardClass(_isDark: boolean): string {
+  return 'rounded-xl border p-5 sm:p-6 bg-[var(--app-panel)] border-[var(--app-border)]'
 }
 
 export function panelCardTitleClass(isDark: boolean): string {
@@ -47,7 +41,7 @@ export function ghostButtonClass(isDark: boolean): string {
 }
 
 export function primaryButtonClass(): string {
-  return 'px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors'
+  return 'px-4 py-2.5 rounded-lg text-sm font-semibold bg-[var(--app-button)] text-[var(--app-button-text)] hover:opacity-90 disabled:opacity-50 transition-colors'
 }
 
 export function settingsInputClass(isDark: boolean): string {
@@ -75,7 +69,7 @@ export function adminInputClass(isDark: boolean): string {
 }
 
 export function adminSaveButtonClass(): string {
-  return 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
+  return 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-[var(--app-button)] text-[var(--app-button-text)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 }
 
 export function adminPrimaryButtonClass(): string {
@@ -153,7 +147,7 @@ export function adminInsetClass(isDark: boolean): string {
 }
 
 export function settingsSaveButtonClass(): string {
-  return 'shrink-0 px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#18181B] text-white hover:bg-[#27272A] dark:bg-[#FAFAFA] dark:text-[#09090B] dark:hover:bg-[#E4E4E7] disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
+  return 'shrink-0 px-4 py-2.5 rounded-lg text-sm font-semibold bg-[var(--app-button)] text-[var(--app-button-text)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
 }
 
 export function settingsDividerClass(isDark: boolean): string {
@@ -169,8 +163,8 @@ export function settingsInsetClass(isDark: boolean): string {
 export function listCardClass(isDark: boolean): string {
   return `rounded-xl border flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden transition-shadow ${
     isDark
-      ? 'bg-[#18181B] border-[#27272A] hover:border-blue-500/50'
-      : 'bg-white border-[#E4E4E7] hover:border-blue-600/40'
+      ? 'bg-[var(--app-panel)] border-[var(--app-border)] hover:border-blue-500/50'
+      : 'bg-white border-[var(--app-border)] hover:border-blue-600/40'
   }`
 }
 

@@ -1,52 +1,50 @@
 import { Component } from 'react'
 import { ROUTES } from '../../constants/routes'
-import { t } from '../../utils/translator'
+import { Cable, ChevronRight, Keyboard, SlidersHorizontal, UserRound } from 'lucide-react'
 import { SettingsTabsProps } from '../../types/settings'
 import { prefetchRouteOnIntent } from '../../navigation/routeModules'
 
 class SettingsTabs extends Component<SettingsTabsProps> {
   render() {
-    const { isDark, navigate } = this.props
+    const { navigate } = this.props
     const currentPath = window.location.pathname
 
     const tabs = [
-      { path: ROUTES.SETTINGS, label: t('settings.accountTab') },
-      { path: ROUTES.PROPS_SETTINGS, label: t('settings.marketDataTab') },
-      { path: ROUTES.UTILS_SETTINGS, label: t('practice.hub.settings.utilsTitle') },
-      { path: ROUTES.KEYBOARD_SHORTCUTS_SETTINGS, label: t('practice.hub.settings.shortcutsTitle'), desktopOnly: true },
+      { path: ROUTES.SETTINGS, label: 'Profile & security', hint: 'Your personal details', icon: UserRound },
+      { path: ROUTES.PROPS_SETTINGS, label: 'Connections', hint: 'Platforms & market data', icon: Cable },
+      { path: ROUTES.UTILS_SETTINGS, label: 'Preferences', hint: 'Appearance, time & tools', icon: SlidersHorizontal },
+      { path: ROUTES.KEYBOARD_SHORTCUTS_SETTINGS, label: 'Keyboard shortcuts', hint: 'Make every action faster', icon: Keyboard, desktopOnly: true },
     ]
 
     return (
       <nav
-        className="mb-6 overflow-x-auto"
+        className="-mx-1 overflow-x-auto p-1 lg:mx-0 lg:overflow-visible lg:p-0"
         aria-label="Settings"
       >
         <div
-          className={`inline-flex p-1 rounded-xl gap-0.5 min-w-min ${
-            isDark ? 'border border-[#27272A] bg-[#18181B]' : 'border border-[#E4E4E7] bg-[#F4F4F5]'
-          }`}
+          className="flex min-w-min gap-1 lg:flex-col"
         >
           {tabs.map((tab) => {
             const isActive = currentPath === tab.path
+            const Icon = tab.icon
             return (
               <button
                 key={tab.path}
                 type="button"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => navigate(tab.path)}
                 onPointerEnter={() => prefetchRouteOnIntent(tab.path)}
                 onFocus={() => prefetchRouteOnIntent(tab.path)}
                 onTouchStart={() => prefetchRouteOnIntent(tab.path)}
-                className={`${tab.desktopOnly ? 'hidden sm:block' : ''} px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`${tab.desktopOnly ? 'hidden sm:flex' : 'flex'} min-h-11 shrink-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition-colors lg:w-full ${
                   isActive
-                    ? isDark
-                      ? 'bg-[#FAFAFA] text-[#09090B]'
-                      : 'bg-[#18181B] text-white'
-                    : isDark
-                      ? 'text-[#A1A1AA] hover:text-[#FAFAFA]'
-                      : 'text-[#52525B] hover:text-[#09090B]'
+                    ? 'border-[var(--app-border)] bg-[var(--app-accent-soft)] text-[var(--app-accent)]'
+                    : 'border-transparent text-[var(--app-muted)] hover:bg-[var(--app-hover)] hover:text-[var(--app-text)]'
                 }`}
               >
-                {tab.label}
+                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
+                <span className="min-w-0"><span className="block whitespace-nowrap text-[13px] font-semibold">{tab.label}</span><span className="mt-1 hidden text-[11px] font-normal opacity-70 lg:block">{tab.hint}</span></span>
+                {isActive ? <ChevronRight className="ml-auto hidden h-3.5 w-3.5 shrink-0 lg:block" /> : null}
               </button>
             )
           })}

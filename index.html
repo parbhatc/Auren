@@ -10,12 +10,17 @@
       ;(() => {
         try {
           const theme = localStorage.getItem('auren-theme') || 'dark'
-          const isDark = theme === 'dark'
+          const isDark = theme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : theme !== 'light'
+          const savedPreset = localStorage.getItem('auren-appearance')
+          const preset = ['black', 'graphite', 'slate'].includes(savedPreset) ? savedPreset : 'black'
+          document.documentElement.dataset.appearance = preset
+          const backgrounds = { black: ['#FAFAFA', '#09090B'], graphite: ['#EEEEEF', '#171719'], slate: ['#F4F7FB', '#0B1220'] }
+          const background = backgrounds[preset][isDark ? 1 : 0]
           document.documentElement.classList.toggle('dark', isDark)
           document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
-          document.documentElement.style.backgroundColor = isDark ? '#09090B' : '#FAFAFA'
+          document.documentElement.style.backgroundColor = background
           const themeColor = document.querySelector('meta[name="theme-color"]')
-          if (themeColor) themeColor.setAttribute('content', isDark ? '#09090B' : '#FAFAFA')
+          if (themeColor) themeColor.setAttribute('content', background)
         } catch {
           document.documentElement.classList.add('dark')
           document.documentElement.style.colorScheme = 'dark'
@@ -40,7 +45,7 @@
     </script>
     <link rel="stylesheet" href="/css/app.css" />
   </head>
-  <body class="bg-[#FAFAFA] text-[#09090B] dark:bg-[#09090B] dark:text-[#FAFAFA]">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

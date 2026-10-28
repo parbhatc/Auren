@@ -25,6 +25,7 @@ import {
 import { getPracticePlanFromAccount } from '../../../services/practice/practicePlans'
 import BlownAccountModal from '../shared/modals/BlownAccountModal'
 import PassedAccountModal from '../shared/modals/PassedAccountModal'
+import ProductHeader from '../../layout/ProductHeader'
 
 export type PracticeTradePageProps = {
   practiceAccountId?: string
@@ -388,48 +389,51 @@ function TradePageInner({ practiceAccountId: selectedAccountId, accountCatalogRe
 }
 
 export function TerminalBootScreen({ isDark }: { isDark: boolean }) {
-  const surface = isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
-  const muted = isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
+  const { toggleTheme } = useTheme()
+  const surface = 'border-[var(--app-border)] bg-[var(--app-panel)]'
+  const muted = 'text-[var(--app-muted)]'
   const skeleton = isDark ? 'bg-white/[0.055]' : 'bg-black/[0.055]'
 
   return (
     <div
-      className={`flex h-screen h-[100dvh] flex-col overflow-hidden ${isDark ? 'bg-[#09090B]' : 'bg-[#FAFAFA]'}`}
-      role="status"
-      aria-live="polite"
-      aria-label="Preparing trading workspace"
+      className="auren-shell-offset flex h-screen h-[100dvh] flex-col overflow-hidden bg-[var(--app-bg)]"
     >
+      <ProductHeader
+        isDark={isDark}
+        toggleTheme={toggleTheme}
+        sidebarOnly
+        marketDataStatus={{ label: 'Preparing practice…', connected: false }}
+      />
       <div className={`flex h-10 shrink-0 items-center gap-2 border-b px-3 ${surface}`}>
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/15 text-blue-500">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--app-accent-soft)] text-[var(--app-accent)]">
           <BarChart3 className="h-3.5 w-3.5" aria-hidden />
         </div>
-        <span className={`text-xs font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Auren Terminal</span>
+        <span className="text-xs font-semibold text-[var(--app-text)]">Practice</span>
         <div className={`ml-auto h-5 w-20 animate-pulse rounded ${skeleton}`} aria-hidden />
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className={`hidden w-16 shrink-0 border-r lg:block ${surface}`} aria-hidden />
-        <div className="relative min-w-0 flex-1 overflow-hidden">
+        <main className="relative min-w-0 flex-1 overflow-hidden" role="status" aria-live="polite" aria-label="Preparing practice workspace">
           <div className="auren-terminal-boot-grid absolute inset-0 opacity-70" aria-hidden />
           <div className="absolute inset-0 flex items-center justify-center p-5">
             <div className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${surface}`}>
               <div className="flex items-center gap-3">
-                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/12 text-blue-500">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--app-accent-soft)] text-[var(--app-accent)]">
                   <ShieldCheck className="h-5 w-5" aria-hidden />
-                  <RefreshCw className="absolute -bottom-1 -right-1 h-4 w-4 animate-spin rounded-full bg-blue-500 p-0.5 text-white" aria-hidden />
+                  <RefreshCw className="absolute -bottom-1 -right-1 h-4 w-4 animate-spin rounded-full bg-[var(--app-button)] p-0.5 text-[var(--app-button-text)]" aria-hidden />
                 </div>
                 <div className="min-w-0">
-                  <p className={`text-sm font-semibold ${isDark ? 'text-[#FAFAFA]' : 'text-[#09090B]'}`}>Preparing your trading workspace</p>
+                  <p className="text-sm font-semibold text-[var(--app-text)]">Preparing your workspace</p>
                   <p className={`mt-0.5 text-xs ${muted}`}>Verifying account rules and connecting market data...</p>
                 </div>
               </div>
               <div className={`mt-4 h-1 overflow-hidden rounded-full ${skeleton}`} aria-hidden>
-                <span className="auren-terminal-boot-progress block h-full w-1/3 rounded-full bg-blue-500" />
+                <span className="auren-terminal-boot-progress block h-full w-1/3 rounded-full bg-[var(--app-accent)]" />
               </div>
               <p className={`mt-3 text-[10px] font-medium uppercase tracking-[0.14em] ${muted}`}>Secure practice environment</p>
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   )

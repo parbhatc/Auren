@@ -12,6 +12,8 @@ import {
   getDashboardAccountSelection,
   saveDashboardAccountSelection,
 } from '../services/dashboard/dashboardAccountSelection'
+import { DASHBOARD_REPLAY_CHANGED_EVENT, invalidateDashboardReplaySessions } from '../services/dashboard/dashboardReplayData'
+import { subscribeAuthEvents } from '../services/auth/authEvents'
 
 export type { DashboardAccountData, DashboardPracticeStats } from '../services/dashboard/dashboardAccountData'
 
@@ -34,6 +36,10 @@ export function useDashboardAccountData(calendarMonth: Date): DashboardAccountDa
       clearTimeout(refreshTimer)
       const currentRequest = ++requestId
       const owner = getAuthToken()
+      if (!owner) {
+        setData({ ...emptyDashboardData(), loading: false, error: 'Sign in to view account statistics.' })
+        return
+      }
       const isCurrent = () => !cancelled && currentRequest === requestId && owner === getAuthToken()
       const publish = (result: DashboardAccountData) => {
         if (!isCurrent()) return
@@ -73,7 +79,7 @@ export function useDashboardAccountData(calendarMonth: Date): DashboardAccountDa
     }
     const practiceChanged = () => {
       invalidateDashboardAccountSnapshots('practice')
-      if (getDashboardAccountSelection()?.source === 'tradesea') return
+      if (getDashboardAccountSelection()?.source !== 'practice') return
       // The practice cache already contains the changed account. Coalesce bursts
       // of updates instead of refetching the account lists for both providers.
       clearTimeout(refreshTimer)
@@ -84,19 +90,37 @@ export function useDashboardAccountData(calendarMonth: Date): DashboardAccountDa
       invalidateDashboardAccountSnapshots()
       void load(true, true)
     }
+    const replayChanged = () => {
+      invalidateDashboardAccountSnapshots('replay')
+      if (getDashboardAccountSelection()?.source !== 'replay') return
+      requestId += 1
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => { void load(false, true) }, 100)
+    }
     const refreshPractice = !initialized.current
+    const stopAuth = subscribeAuthEvents((event) => {
+      if (event.kind !== 'token-change' && !(event.kind === 'unauthorized' && event.token === getAuthToken())) return
+      requestId += 1
+      invalidateDashboardAccountSnapshots()
+      invalidateDashboardReplaySessions()
+      setData(emptyDashboardData())
+      void load(true, true)
+    })
     // Revalidate a revisit even when a recent snapshot is immediately visible:
     // executions placed in Live may have changed P&L since the last visit.
     void load(refreshPractice, refreshPractice)
     window.addEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, selectionChanged)
     window.addEventListener('practiceAccountsChanged', practiceChanged)
     window.addEventListener('refreshPropFirms', connectionsChanged)
+    window.addEventListener(DASHBOARD_REPLAY_CHANGED_EVENT, replayChanged)
     return () => {
       cancelled = true
       clearTimeout(refreshTimer)
+      stopAuth()
       window.removeEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, selectionChanged)
       window.removeEventListener('practiceAccountsChanged', practiceChanged)
       window.removeEventListener('refreshPropFirms', connectionsChanged)
+      window.removeEventListener(DASHBOARD_REPLAY_CHANGED_EVENT, replayChanged)
     }
   }, [year, month])
 

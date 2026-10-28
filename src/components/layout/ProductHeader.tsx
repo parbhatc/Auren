@@ -5,7 +5,6 @@ import {
   Beaker,
   BookOpen,
   CandlestickChart,
-  ChevronDown,
   Activity,
   LogOut,
   Menu,
@@ -19,6 +18,7 @@ import {
   Sun,
   User,
   Users,
+  Wallet,
   Wifi,
   X,
 } from 'lucide-react'
@@ -33,10 +33,9 @@ import {
 } from '../../constants/practice'
 import { ROUTES } from '../../constants/routes'
 import { useDisplayUnit, type DisplayUnit } from '../../contexts/DisplayUnitContext'
-import Logo from '../common/Logo'
 import { tradeseaAPI, type TradeseaAccount } from '../../api/tradesea.api'
 import { authAPI } from '../../api/auth.api'
-import { clearAuthToken } from '../../api/api'
+import { clearAuthToken, getAuthToken } from '../../api/api'
 import { ValidatedAuthContext } from '../../contexts/ValidatedAuthContext'
 import { LiveTradeViewActive } from '../../contexts/LiveTradeViewContext'
 import { prefetchRouteOnIntent } from '../../navigation/routeModules'
@@ -53,6 +52,13 @@ import {
   saveDashboardAccountSelection,
   type DashboardAccountSelection,
 } from '../../services/dashboard/dashboardAccountSelection'
+import './ProductHeader.css'
+import AccountPicker, { type AccountPickerOption } from './AccountPicker'
+import type { BacktestSession } from '../../types/backtester'
+import {
+  DASHBOARD_REPLAY_CHANGED_EVENT,
+  loadDashboardReplaySessions,
+} from '../../services/dashboard/dashboardReplayData'
 
 type NavItem = {
   id: string
@@ -66,7 +72,8 @@ type NavItem = {
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
-      { id: 'dashboard', label: 'Dashboard', path: ROUTES.DASHBOARD, matches: [ROUTES.HOME, ROUTES.DASHBOARD], icon: BarChart3 },
+      { id: 'dashboard', label: 'Overview', path: ROUTES.DASHBOARD, matches: [ROUTES.HOME, ROUTES.DASHBOARD], icon: BarChart3 },
+      { id: 'accounts', label: 'Account manager', path: ROUTES.PRACTICE_ACCOUNTS, matches: [ROUTES.PRACTICE_ACCOUNTS], icon: Wallet },
     ],
   },
   {
@@ -110,6 +117,7 @@ function accountLabel(account: PracticeAccount): string {
 function routeIsActive(pathname: string, matches: string[]): boolean {
   return matches.some((match) => {
     if (match === ROUTES.HOME) return pathname === ROUTES.HOME
+    if (match === ROUTES.PRACTICE) return pathname === ROUTES.PRACTICE
     return pathname === match || pathname.startsWith(`${match}/`)
   })
 }
@@ -130,6 +138,7 @@ export default function ProductHeader({
   const navigate = useNavigate()
   const location = useLocation()
   const isDashboard = location.pathname === ROUTES.HOME || location.pathname === ROUTES.DASHBOARD
+  const isReplayWorkspace = location.pathname === ROUTES.BACKTESTER || location.pathname.startsWith(`${ROUTES.BACKTESTER}/`)
   const validatedAuth = useContext(ValidatedAuthContext)
   const viewActive = useContext(LiveTradeViewActive)
   const { unit, setUnit } = useDisplayUnit()
@@ -154,6 +163,41 @@ export default function ProductHeader({
   const [dashboardSelection, setDashboardSelection] = useState<DashboardAccountSelection | null>(() =>
     getDashboardAccountSelection()
   )
+  const [replaySessions, setReplaySessions] = useState<BacktestSession[]>([])
+
+  useEffect(() => {
+    if (sidebarOnly) return
+    let active = true
+    let requestId = 0
+    let observedOwner = getAuthToken()
+    const load = async (force = false) => {
+      const owner = getAuthToken()
+      const request = ++requestId
+      if (owner !== observedOwner) {
+        observedOwner = owner
+        setReplaySessions([])
+      }
+      if (!owner) { setReplaySessions([]); return }
+      const isCurrent = () => active && request === requestId && owner === getAuthToken()
+      try {
+        const sessions = await loadDashboardReplaySessions({ force })
+        if (isCurrent()) setReplaySessions(sessions)
+      } catch {
+        if (isCurrent()) setReplaySessions([])
+      }
+    }
+    const replayChanged = () => {
+      void load()
+    }
+    void load()
+    const unsubscribe = subscribeHeaderWorkspaceData((change) => { if (change === 'all') void load() })
+    window.addEventListener(DASHBOARD_REPLAY_CHANGED_EVENT, replayChanged)
+    return () => {
+      active = false
+      unsubscribe()
+      window.removeEventListener(DASHBOARD_REPLAY_CHANGED_EVENT, replayChanged)
+    }
+  }, [sidebarOnly])
 
   useEffect(() => {
     // Terminals render their own account selector; this header only shows the
@@ -304,7 +348,7 @@ export default function ProductHeader({
   }, [sidebarOpen])
 
   useEffect(() => {
-    const width = collapsed ? '64px' : '232px'
+    const width = collapsed ? '72px' : '248px'
     document.documentElement.style.setProperty('--auren-sidebar-width', width)
     localStorage.setItem('auren-sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
@@ -323,12 +367,48 @@ export default function ProductHeader({
     [dashboardSelection, isDashboard, tradeseaAccounts]
   )
 
+  const accountOptions = useMemo<AccountPickerOption[]>(() => [
+    ...(!isReplayWorkspace ? accounts.map((account) => ({
+      value: isDashboard ? dashboardAccountValue({ source: 'practice', accountId: account.id }) : account.id,
+      label: accountLabel(account),
+      group: 'Practice accounts',
+      description: `${account.mode === 'eval' ? 'Evaluation' : 'Funded'} · ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(account.rules.startingBalance)} plan`,
+      status: account.status,
+      platform: 'practice' as const,
+    })) : []),
+    ...(isDashboard ? tradeseaAccounts.map((account) => ({
+      value: dashboardAccountValue({ source: 'tradesea', accountId: account.id }),
+      label: account.name || account.externalAccountId || account.id,
+      group: 'Tradesea accounts',
+      description: account.accountType ? `${account.accountType} account` : 'Trading account',
+      platform: 'tradesea' as const,
+    })) : []),
+    ...replaySessions.map((session) => ({
+      value: dashboardAccountValue({ source: 'replay', accountId: session.id }),
+      label: session.name || 'Replay session',
+      group: 'Replay accounts',
+      description: [session.symbol, session.startDate].filter(Boolean).join(' · '),
+      platform: 'replay' as const,
+    })),
+  ], [accounts, isDashboard, isReplayWorkspace, tradeseaAccounts, replaySessions])
+  const activeReplaySession = replaySessions.find((session) => dashboardSelection?.source === 'replay' && session.id === dashboardSelection.accountId) ?? replaySessions[0]
+  const accountPickerValue = isReplayWorkspace
+    ? activeReplaySession ? dashboardAccountValue({ source: 'replay', accountId: activeReplaySession.id }) : ''
+    : isDashboard
+    ? dashboardSelection ? dashboardAccountValue(dashboardSelection) : ''
+    : activeAccount?.id ?? ''
+
   const selectAccount = (id: string) => {
-    if (isDashboard) {
+    const replaySelection = parseDashboardAccountValue(id)?.source === 'replay'
+    if (isDashboard || replaySelection) {
       const selection = parseDashboardAccountValue(id)
       if (!selection) return
       setDashboardSelection(selection)
       saveDashboardAccountSelection(selection)
+      if (selection.source === 'replay') {
+        if (!isDashboard && !isReplayWorkspace) navigate(ROUTES.DASHBOARD)
+        return
+      }
       if (selection.source === 'tradesea') {
         const tradeseaAccount = tradeseaAccounts.find((account) => account.id === selection.accountId)
         if (tradeseaAccount) {
@@ -362,32 +442,29 @@ export default function ProductHeader({
   }
 
   const displayedProviderStatus = marketDataStatus ?? providerStatus
+  const currentNavItem = NAV_GROUPS.flatMap((group) => group.items)
+    .find((item) => routeIsActive(location.pathname, item.matches))
   const sidebar = (
     <aside
       aria-label="Primary navigation"
-      className={`auren-product-sidebar fixed inset-y-0 left-0 z-[70] flex w-[232px] flex-col border-r transition-[width,transform] duration-200 lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } ${collapsed ? 'lg:w-16' : 'lg:w-[232px]'} ${
-        isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
-      }`}
+      data-theme={isDark ? 'dark' : 'light'}
+      className={`auren-product-sidebar ${sidebarOpen ? 'is-open' : ''} ${collapsed ? 'is-collapsed' : ''}`}
     >
-      <div
-        className={`flex h-16 items-center border-b px-3 ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
-          isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'
-        }`}
-      >
+      <div className="auren-sidebar-top">
         <button
           type="button"
           onClick={() => selectRoute(ROUTES.DASHBOARD)}
-          className={`min-w-0 flex-1 overflow-hidden ${collapsed ? 'lg:hidden' : ''}`}
+          aria-label="Auren dashboard"
+          className="auren-sidebar-brand"
         >
-          <Logo isDark={isDark} compact size="sm" />
+          <span className="auren-sidebar-brand-mark"><BarChart3 strokeWidth={1.8} aria-hidden /></span>
+          <span className="auren-sidebar-wordmark">Auren<span>TRADING WORKSPACE</span></span>
         </button>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
           aria-label="Close navigation"
-          className={`ml-2 rounded-md p-1.5 lg:hidden ${isDark ? 'text-[#A1A1AA] hover:bg-[#18181B]' : 'text-[#52525B] hover:bg-[#F4F4F5]'}`}
+          className="auren-shell-icon-button auren-sidebar-mobile-close"
         >
           <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
         </button>
@@ -395,9 +472,8 @@ export default function ProductHeader({
           type="button"
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={`hidden rounded-md p-1.5 lg:inline-flex ${collapsed ? 'lg:mx-auto' : 'ml-2'} ${
-            isDark ? 'text-[#A1A1AA] hover:bg-[#18181B]' : 'text-[#52525B] hover:bg-[#F4F4F5]'
-          }`}
+          aria-expanded={!collapsed}
+          className="auren-shell-icon-button auren-sidebar-collapse"
         >
           {collapsed ? (
             <PanelLeftOpen className="h-4 w-4" strokeWidth={1.75} aria-hidden />
@@ -407,19 +483,11 @@ export default function ProductHeader({
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2">
-        {NAV_GROUPS.filter((group) => group.items.some((item) => !item.adminOnly || isAdmin)).map((group, groupIndex) => (
-          <div key={group.label ?? 'primary'} className={groupIndex === 0 ? '' : 'mt-4'}>
-            {group.label ? (
-              <p
-                className={`mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                  collapsed ? 'lg:hidden' : ''
-                } ${isDark ? 'text-[#71717A]' : 'text-[#A1A1AA]'}`}
-              >
-                {group.label}
-              </p>
-            ) : null}
-            <div className="space-y-1">
+      <nav className="auren-sidebar-navigation">
+        {NAV_GROUPS.filter((group) => group.items.some((item) => !item.adminOnly || isAdmin)).map((group) => (
+          <div key={group.label ?? 'primary'} className="auren-sidebar-group">
+            {group.label ? <p className="auren-sidebar-group-label">{group.label}</p> : null}
+            <div className="auren-sidebar-items">
               {group.items.filter((item) => !item.adminOnly || isAdmin).map((item) => {
                 const active = routeIsActive(location.pathname, item.matches)
                 const Icon = item.icon
@@ -428,30 +496,16 @@ export default function ProductHeader({
                     key={item.id}
                     type="button"
                     title={collapsed ? item.label : undefined}
+                    aria-current={active ? 'page' : undefined}
                     onClick={() => selectRoute(item.path)}
                     onPointerEnter={() => prefetchRouteOnIntent(item.path)}
                     onFocus={() => prefetchRouteOnIntent(item.path)}
                     onTouchStart={() => prefetchRouteOnIntent(item.path)}
-                    className={`group relative flex h-10 w-full items-center overflow-hidden rounded-lg px-3 text-sm font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.98] ${
-                      collapsed ? 'lg:justify-center lg:px-0' : ''
-                    } ${
-                      active
-                        ? isDark
-                          ? 'bg-blue-500/15 text-blue-400'
-                          : 'bg-blue-50 text-blue-700'
-                        : isDark
-                          ? 'text-[#A1A1AA] hover:bg-[#18181B] hover:text-[#FAFAFA]'
-                          : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
-                    }`}
+                    className={`auren-sidebar-nav-item ${active ? 'is-active' : ''} ${item.id === 'dashboard' ? 'is-dashboard' : ''}`}
                   >
-                    {active ? (
-                      <span
-                        className={`absolute inset-y-2 left-0 w-0.5 rounded-full ${isDark ? 'bg-blue-400' : 'bg-blue-600'}`}
-                        aria-hidden
-                      />
-                    ) : null}
-                    <Icon className="h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-105" strokeWidth={1.75} aria-hidden />
-                    <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
+                    <Icon className="auren-sidebar-nav-icon" strokeWidth={1.65} aria-hidden />
+                    <span className="auren-sidebar-label">{item.label}</span>
+                    {active ? <span className="auren-sidebar-active-dot" aria-hidden /> : null}
                   </button>
                 )
               })}
@@ -460,34 +514,21 @@ export default function ProductHeader({
         ))}
       </nav>
 
-      <div className={`space-y-1 border-t p-2 ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`}>
+      <div className="auren-sidebar-bottom">
         <div
-          className={`flex h-10 items-center rounded-md px-3 text-sm ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
-            isDark ? 'text-[#A1A1AA]' : 'text-[#52525B]'
-          }`}
+          className={`auren-sidebar-connection ${displayedProviderStatus.connected ? 'is-connected' : ''}`}
           title={displayedProviderStatus.label}
         >
-          <Wifi
-            className={`h-[18px] w-[18px] shrink-0 ${displayedProviderStatus.connected ? 'text-emerald-500' : 'text-amber-500'}`}
-            strokeWidth={1.75}
-            aria-hidden
-          />
-          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{displayedProviderStatus.label}</span>
+          <span className="auren-sidebar-connection-icon"><Wifi strokeWidth={1.75} aria-hidden /></span>
+          <span className="auren-sidebar-label auren-sidebar-connection-copy">
+            <span>Market connection</span>
+            <strong>{displayedProviderStatus.label}</strong>
+          </span>
+          <span className="auren-sidebar-connection-dot" aria-hidden />
         </div>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          className={`flex h-10 w-full items-center rounded-md px-3 text-sm font-medium ${collapsed ? 'lg:justify-center lg:px-0' : ''} ${
-            isDark ? 'text-[#A1A1AA] hover:bg-[#18181B] hover:text-[#FAFAFA]' : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
-          }`}
-        >
-          {isDark ? (
-            <Sun className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
-          ) : (
-            <Moon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} aria-hidden />
-          )}
-          <span className={`ml-3 truncate ${collapsed ? 'lg:hidden' : ''}`}>{isDark ? 'Light mode' : 'Dark mode'}</span>
+        <button type="button" onClick={toggleTheme} aria-label="Toggle theme" className="auren-sidebar-theme">
+          {isDark ? <Sun strokeWidth={1.75} aria-hidden /> : <Moon strokeWidth={1.75} aria-hidden />}
+          <span className="auren-sidebar-label">{isDark ? 'Light appearance' : 'Dark appearance'}</span>
         </button>
       </div>
     </aside>
@@ -502,119 +543,55 @@ export default function ProductHeader({
           type="button"
           aria-label="Close navigation overlay"
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-[60] bg-black/55 lg:hidden"
+          className="auren-sidebar-overlay"
         />
       ) : null}
       {sidebar}
 
-      <header
-        className={`sticky top-0 z-50 border-b ${
-          isDark ? 'border-[#27272A] bg-[#09090B]' : 'border-[#E4E4E7] bg-white'
-        }`}
-      >
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-3 sm:gap-3 sm:px-5 lg:px-6">
+      <header className="auren-product-header" data-theme={isDark ? 'dark' : 'light'}>
+        <div className="auren-product-header-inner">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open navigation"
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border lg:hidden ${
-              isDark ? 'border-[#27272A] text-[#A1A1AA]' : 'border-[#E4E4E7] text-[#52525B]'
-            }`}
+            className="auren-shell-icon-button auren-header-mobile-menu"
           >
-            <Menu className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+            <Menu className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
           </button>
 
-          <label className="relative min-w-0 flex-1 sm:max-w-[260px]">
-            <span className="sr-only">Active account</span>
-            <select
-              value={
-                isDashboard
-                  ? dashboardSelection ? dashboardAccountValue(dashboardSelection) : ''
-                  : activeAccount?.id ?? ''
-              }
-              onChange={(event) => selectAccount(event.target.value)}
-              className={`h-9 w-full appearance-none truncate rounded-lg border py-0 pl-3 pr-8 text-xs font-medium outline-none focus:border-blue-500 sm:text-sm ${
-                isDark
-                  ? 'border-[#27272A] bg-[#18181B] text-[#FAFAFA]'
-                  : 'border-[#E4E4E7] bg-white text-[#09090B]'
-              }`}
-            >
-              {isDashboard ? (
-                <>
-                  {accounts.length > 0 ? (
-                    <optgroup label="Auren practice">
-                      {accounts.map((account) => (
-                        <option key={`practice:${account.id}`} value={`practice:${account.id}`}>
-                          {accountLabel(account)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {tradeseaAccounts.length > 0 ? (
-                    <optgroup label="Tradesea">
-                      {tradeseaAccounts.map((account) => (
-                        <option key={`tradesea:${account.id}`} value={`tradesea:${account.id}`}>
-                          {account.name || account.label} · {account.propFirmDisplayName || 'Tradesea'}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  {accounts.length === 0 && tradeseaAccounts.length === 0 ? (
-                    <option value="">No account available</option>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  {accounts.length === 0 ? <option value="">No practice account</option> : null}
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {accountLabel(account)}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-[#A1A1AA]" strokeWidth={1.75} aria-hidden />
-          </label>
+          <div className="auren-header-heading">
+            <span>Workspace</span>
+            <strong>{currentNavItem?.label || 'Auren'}</strong>
+          </div>
 
-          {activeTradeseaAccount ? (
-            <span className="hidden rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-500 sm:inline-flex">
-              {activeTradeseaAccount.propFirmDisplayName || 'Tradesea'}
+          <AccountPicker
+            key={location.pathname}
+            options={accountOptions}
+            value={accountPickerValue}
+            onChange={(id) => { if (id !== accountPickerValue) selectAccount(id) }}
+            emptyLabel={isReplayWorkspace ? 'Select replay account' : isDashboard ? 'Select account' : 'No practice account'}
+          />
+
+          {isReplayWorkspace || isDashboard && dashboardSelection?.source === 'replay' ? (
+            <span className="auren-header-status is-provider">Replay</span>
+          ) : activeTradeseaAccount ? (
+            <span className="auren-header-status is-provider">
+              Tradesea
             </span>
           ) : activeAccount ? (
-            <span
-              className={`hidden rounded-md border px-2 py-1 text-[11px] font-semibold capitalize sm:inline-flex ${
-                activeAccount.status === 'active'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
-                  : activeAccount.status === 'passed'
-                    ? 'border-blue-500/30 bg-blue-500/10 text-blue-500'
-                    : 'border-red-500/30 bg-red-500/10 text-red-500'
-              }`}
-            >
-              {activeAccount.status}
+            <span className={`auren-header-status is-${activeAccount.status}`}>
+              <span aria-hidden />{activeAccount.status}
             </span>
           ) : null}
 
-          <div
-            className={`ml-auto flex shrink-0 items-center rounded-lg border p-0.5 ${
-              isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-[#F4F4F5]'
-            }`}
-            aria-label="Display unit"
-          >
+          <div className="auren-header-units" aria-label="Display unit">
             {UNITS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setUnit(item.id)}
-                className={`h-7 min-w-7 rounded-md px-1.5 text-[10px] font-semibold sm:px-2 ${
-                  unit === item.id
-                    ? isDark
-                      ? 'bg-[#FAFAFA] text-[#09090B]'
-                      : 'bg-[#18181B] text-white'
-                    : isDark
-                      ? 'text-[#A1A1AA] hover:text-[#FAFAFA]'
-                      : 'text-[#52525B] hover:text-[#09090B]'
-                }`}
+                aria-pressed={unit === item.id}
+                className={unit === item.id ? 'is-active' : ''}
                 title={item.label}
               >
                 {item.compact}
@@ -622,62 +599,28 @@ export default function ProductHeader({
             ))}
           </div>
 
-          <div className="relative shrink-0">
+          <div className="auren-header-profile">
             <button
               type="button"
               aria-label="Profile"
               aria-expanded={profileOpen}
               onClick={() => setProfileOpen((value) => !value)}
-              className={`flex h-8 w-8 items-center justify-center rounded-full border ${
-                isDark
-                  ? 'border-[#3F3F46] bg-[#18181B] text-[#A1A1AA]'
-                  : 'border-[#E4E4E7] bg-white text-[#52525B]'
-              }`}
+              className="auren-header-profile-button"
             >
-              <User className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+              <User className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
             </button>
             {profileOpen ? (
-              <div
-                role="menu"
-                className={`absolute right-0 top-10 z-[80] w-52 rounded-lg border p-1 ${
-                  isDark ? 'border-[#27272A] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
-                }`}
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => selectRoute(ROUTES.SETTINGS)}
-                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${
-                    isDark ? 'text-[#FAFAFA] hover:bg-[#27272A]' : 'text-[#09090B] hover:bg-[#F4F4F5]'
-                  }`}
-                >
-                  <User className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                  Account settings
+              <div role="menu" className="auren-header-profile-menu">
+                <p>YOUR WORKSPACE</p>
+                <button type="button" role="menuitem" onClick={() => selectRoute(ROUTES.SETTINGS)}>
+                  <User className="h-4 w-4" strokeWidth={1.75} aria-hidden />Account settings
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => selectRoute(ROUTES.PROPS_SETTINGS)}
-                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${
-                    isDark ? 'text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#FAFAFA]' : 'text-[#52525B] hover:bg-[#F4F4F5] hover:text-[#09090B]'
-                  }`}
-                >
-                  <Wifi className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                  Market data
+                <button type="button" role="menuitem" onClick={() => selectRoute(ROUTES.PROPS_SETTINGS)}>
+                  <Wifi className="h-4 w-4" strokeWidth={1.75} aria-hidden />Connections
                 </button>
-                <div className={`my-1 border-t ${isDark ? 'border-[#27272A]' : 'border-[#E4E4E7]'}`} />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleLogout}
-                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${
-                    isDark
-                      ? 'text-red-400 hover:bg-red-500/10'
-                      : 'text-red-600 hover:bg-red-50'
-                  }`}
-                >
-                  <LogOut className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                  Logout
+                <div className="auren-header-menu-divider" />
+                <button type="button" role="menuitem" onClick={handleLogout} className="is-danger">
+                  <LogOut className="h-4 w-4" strokeWidth={1.75} aria-hidden />Logout
                 </button>
               </div>
             ) : null}

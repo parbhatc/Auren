@@ -29,6 +29,7 @@ export const ROUTES = {
   BACKTESTER: '/backtester',
   /** Backtester chart replay terminal */
   BACKTESTER_CHART: '/backtester/chart',
+  /** Legacy URL — selects the Replay account and redirects to Overview. */
   BACKTESTER_STATS: '/backtester/stats',
   BACKTESTER_DATA_MANAGEMENT: '/backtester/data-management',
   /** @deprecated use ROUTES.TRADE */

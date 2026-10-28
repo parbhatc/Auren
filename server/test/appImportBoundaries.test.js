@@ -100,14 +100,7 @@ test('Provider settings and Practice news do not load trading adapters', () => {
   assert.ok(!live.has('src/propfirms/connect/settingsPanels.tsx'))
 })
 
-test('Replay overview leaves inactive tabs and dialogs outside its initial graph', () => {
-  const stats = graph('src/components/backtester/Stats/index.ts')
-  assert.ok(stats.has('src/components/trading/Stats/OverviewTab.tsx'))
-  assert.ok(!stats.has('src/components/trading/Stats/StatsCalendar.tsx'))
-  assert.ok(!stats.has('src/components/trading/Stats/TradesTable.tsx'))
-  assert.ok(!stats.has('src/components/trading/Stats/DayStatsDialog.tsx'))
-  assert.ok(!stats.has('src/components/trading/Stats/WeekStatsDialog.tsx'))
-  assert.ok(!stats.has('src/components/trading/Stats/TradingTimeline.tsx'))
+test('Replay workspaces leave chart services behind the terminal boundary', () => {
   for (const entry of [
     'src/components/backtester/BacktesterSessionsList/index.tsx',
     'src/components/backtester/DataManagement/index.tsx',
@@ -116,4 +109,8 @@ test('Replay overview leaves inactive tabs and dialogs outside its initial graph
     assert.ok(!page.has('src/backtester/components/chart/BacktesterChart.tsx'))
     assert.ok(!page.has('src/components/backtester/BacktesterChartView/BacktesterChartView.tsx'))
   }
+  const redirect = graph('src/components/backtester/LegacyReplayStatsRedirect.tsx')
+  assert.ok(!redirect.has('src/api/backtester.api.ts'))
+  assert.ok(!redirect.has('src/pages/workspace/DashboardPage.tsx'))
+  assert.ok(!redirect.has('src/components/backtester/BacktesterChartView/BacktesterChartView.tsx'))
 })

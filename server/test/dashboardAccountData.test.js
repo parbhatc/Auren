@@ -13,6 +13,7 @@ globalThis.localStorage = {
 globalThis.window = new EventTarget()
 const mocks = {
   'api/api': 'export const getAuthToken = () => globalThis.__dashboardTest.token',
+  'api/backtester.api': 'export const backtesterAPI = { getSessions: async () => ({ success: true, sessions: [] }) }',
   'api/practice.api': 'export const practiceAPI = { getStats: (...args) => globalThis.__dashboardTest.getStats(...args) }',
   'api/tradesea.api': `export const tradeseaAPI = {
     getAccounts: (...args) => globalThis.__dashboardTest.getAccounts(...args),
@@ -27,7 +28,7 @@ const bundled = await build({
   entryPoints: [fileURLToPath(new URL('../../src/services/dashboard/dashboardAccountData.ts', import.meta.url))],
   bundle: true, format: 'esm', platform: 'node', write: false,
   plugins: [{ name: 'dashboard-test-dependencies', setup(build) {
-    build.onResolve({ filter: /(?:api\/api|api\/practice\.api|api\/tradesea\.api|constants\/practice)$/ }, ({ path }) => {
+    build.onResolve({ filter: /(?:api\/api|api\/(?:practice|tradesea|backtester)\.api|constants\/practice)$/ }, ({ path }) => {
       const key = Object.keys(mocks).find((key) => path.endsWith(key))
       return key ? { path: key, namespace: 'dashboard-test' } : undefined
     })
@@ -289,8 +290,10 @@ const hookBundle = await build({
     build.onResolve({ filter: /^react$/ }, () => ({ path: 'react', namespace: 'dashboard-hook' }))
     build.onResolve({ filter: /api\/api$/ }, () => ({ path: 'auth', namespace: 'dashboard-hook' }))
     build.onResolve({ filter: /services\/dashboard\/dashboardAccountData$/ }, () => ({ path: 'loader', namespace: 'dashboard-hook' }))
+    build.onResolve({ filter: /services\/dashboard\/dashboardReplayData$/ }, () => ({ path: 'replay', namespace: 'dashboard-hook' }))
     build.onLoad({ filter: /.*/, namespace: 'dashboard-hook' }, ({ path }) => ({ contents: path === 'auth'
       ? 'export const getAuthToken = () => globalThis.__dashboardTest.token'
+      : path === 'replay' ? `export const DASHBOARD_REPLAY_CHANGED_EVENT = 'replaySessionsChanged'; export const invalidateDashboardReplaySessions = () => {};`
       : path === 'react' ? `
       export const useState = (initial) => {
         const state = globalThis.__dashboardHookTest;
@@ -379,6 +382,22 @@ test('practice change bursts refresh once without rediscovering provider catalog
   assert.equal(hookState.value.loading, false)
   assert.equal(hookState.value.refreshing, true)
   hookState.loads[1].resolve(hookResult('account-a'))
+  await flush()
+  cleanup()
+})
+
+test('replay catalog mutations coalesce financial reloads without refreshing practice catalogs', async () => {
+  select('replay', 'replay-a')
+  const cleanup = mountHook()
+  const replay = { ...hookResult('replay-a'), selection: { source: 'replay', accountId: 'replay-a' } }
+  hookState.loads[0].resolve(replay)
+  await flush()
+  for (let index = 0; index < 5; index += 1) window.dispatchEvent(new Event('replaySessionsChanged'))
+  await new Promise((resolve) => setTimeout(resolve, 125))
+  assert.equal(hookState.loads.length, 2)
+  assert.equal(hookState.loads[1].options.refreshPractice, false)
+  assert.equal(hookState.loads[1].options.force, true)
+  hookState.loads[1].resolve(replay)
   await flush()
   cleanup()
 })

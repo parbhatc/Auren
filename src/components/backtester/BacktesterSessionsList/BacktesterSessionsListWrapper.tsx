@@ -22,6 +22,12 @@ import { BacktestSession, NewSessionData } from '../../../types/backtester'
 import { DEFAULT_BACKTESTER_SYMBOL } from '../../../backtester/constants'
 import { UserData } from '../../../types/user'
 import { clearSavedReplayPositions } from '../../../utils/replayPreferences'
+import { DASHBOARD_REPLAY_CHANGED_EVENT, invalidateDashboardReplaySessions } from '../../../services/dashboard/dashboardReplayData'
+
+function notifyReplayAccountsChanged() {
+  invalidateDashboardReplaySessions()
+  window.dispatchEvent(new Event(DASHBOARD_REPLAY_CHANGED_EVENT))
+}
 
 /**
  * Replay sessions — standalone `/backtester` or embedded on hub `/?mode=replay`.
@@ -180,6 +186,7 @@ const BacktesterSessionsListWrapper = ({
     try {
       await backtesterAPI.createSession(session)
       setSessions([...sessions, session])
+      notifyReplayAccountsChanged()
       setShowNewSessionForm(false)
       setCreateError('')
       setNewSession({
@@ -218,6 +225,7 @@ const BacktesterSessionsListWrapper = ({
     try {
       await backtesterAPI.deleteSession(deleteConfirmId)
       setSessions(sessions.filter((s) => s.id !== deleteConfirmId))
+      notifyReplayAccountsChanged()
       setDeleteConfirmId(null)
     } catch (err: any) {
       console.error('Failed to delete session:', err)
@@ -251,6 +259,7 @@ const BacktesterSessionsListWrapper = ({
       await backtesterAPI.updateSession(pendingResetSession)
       clearSavedReplayPositions(pendingResetSession.id)
       await loadSessions()
+      notifyReplayAccountsChanged()
       setResetSessionId(null)
       setResetError(null)
       setShowResetConfirm(false)
@@ -312,6 +321,7 @@ const BacktesterSessionsListWrapper = ({
       // Only updating date/time (does NOT reset trades)
       await backtesterAPI.updateSession(updated)
       setSessions(sessions.map((x) => (x.id === updated.id ? updated : x)))
+      notifyReplayAccountsChanged()
       handleEditCancel()
     } catch (err: any) {
       setEditError(err?.response?.data?.message || err?.message || 'Failed to update session')

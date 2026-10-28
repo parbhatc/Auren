@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { journalAPI, type JournalReview, type JournalReviewResponse } from '../../api/journal.api'
-import { WorkspaceShell, PageHeading } from '../../components/layout/WorkspacePrimitives'
+import {
+  journalAPI,
+  type JournalReview,
+  type JournalReviewResponse,
+} from '../../api/journal.api'
+import {
+  WorkspaceShell,
+  PageHeading,
+  Surface,
+} from '../../components/layout/WorkspacePrimitives'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { journalLocalDateTime } from '../../../shared/journalRecap.js'
 import { handleApiError } from '../../utils/errorHandler'
@@ -33,9 +41,11 @@ export default function JournalReviewsPage() {
     [notice, setNotice] = useState(''),
     [reload, setReload] = useState(0)
   const [previousFocus, setPreviousFocus] = useState('')
-  const [pendingChange, setPendingChange] = useState<PendingReviewChange | null>(null)
+  const [pendingChange, setPendingChange] =
+    useState<PendingReviewChange | null>(null)
   const start = periodStart(date, kind === 'weekly')
-  const dirty = draft && data && JSON.stringify(draft) !== JSON.stringify(data.review)
+  const dirty =
+    draft && data && JSON.stringify(draft) !== JSON.stringify(data.review)
   useEffect(() => {
     const controller = new AbortController()
     setData(null)
@@ -58,9 +68,14 @@ export default function JournalReviewsPage() {
     const previous = new Date(`${start}T12:00:00`)
     previous.setDate(previous.getDate() - (kind === 'weekly' ? 7 : 1))
     void journalAPI
-      .getReview(kind, journalLocalDateTime(previous).slice(0, 10), controller.signal)
+      .getReview(
+        kind,
+        journalLocalDateTime(previous).slice(0, 10),
+        controller.signal
+      )
       .then((result) => {
-        if (!controller.signal.aborted) setPreviousFocus(result.review.focusRule || '')
+        if (!controller.signal.aborted)
+          setPreviousFocus(result.review.focusRule || '')
       })
       .catch(() => {})
     return () => controller.abort()
@@ -85,12 +100,12 @@ export default function JournalReviewsPage() {
     if (dirty) setPendingChange(change)
     else applyChange(change)
   }
-  const input = 'w-full rounded-lg border border-zinc-500/30 bg-transparent p-3 text-sm'
+  const input = `mt-2 w-full rounded-xl border p-3 text-sm font-normal outline-none focus:border-zinc-400 ${isDark ? 'border-[var(--app-border)] bg-[var(--app-inset)] text-[#F4F4F5]' : 'border-[var(--app-border)] bg-[var(--app-inset)] text-[#18181B]'}`
   const update = (patch: Partial<JournalReview>) =>
     setDraft((value) => (value ? { ...value, ...patch } : value))
   return (
     <WorkspaceShell>
-      <main className="mx-auto max-w-5xl p-4 sm:p-8">
+      <main className="mx-auto max-w-[1400px] px-4 py-7 sm:px-7 sm:py-9 xl:px-9">
         <PageHeading
           eyebrow="Review your process"
           title="Daily & weekly reviews"
@@ -103,18 +118,21 @@ export default function JournalReviewsPage() {
             e.preventDefault()
             setPendingChange({ type: 'journal' })
           }}
-          className="text-sm text-blue-500"
+          className="text-sm text-[var(--workspace-accent)]"
         >
           ← Journal
         </Link>
-        <div className="my-5 flex flex-wrap gap-3">
+        <Surface className="my-5 flex flex-wrap items-center gap-3 p-4 sm:p-5">
           <select
             aria-label="Review period"
             disabled={busy}
-            className={input + ' !w-auto'}
+            className={input + ' !mt-0 !w-auto'}
             value={kind}
             onChange={(e) => {
-              requestChange({ type: 'kind', value: e.target.value as typeof kind })
+              requestChange({
+                type: 'kind',
+                value: e.target.value as typeof kind,
+              })
             }}
           >
             <option value="daily">Daily</option>
@@ -123,7 +141,7 @@ export default function JournalReviewsPage() {
           <input
             aria-label="Review date"
             disabled={busy}
-            className={input + ' !w-auto'}
+            className={input + ' !mt-0 !w-auto'}
             type="date"
             value={date}
             onChange={(e) => {
@@ -135,11 +153,11 @@ export default function JournalReviewsPage() {
             onClick={() => {
               requestChange({ type: 'reload' })
             }}
-            className="text-blue-500"
+            className="ml-auto rounded-xl border border-[var(--workspace-border)] px-4 py-3 text-xs font-medium text-[var(--workspace-text)]"
           >
             Reload
           </button>
-        </div>
+        </Surface>
         {kind === 'weekly' && (
           <p className="mb-3 text-sm text-zinc-500">
             Week beginning Monday {start}; dates use the recorded journal day.
@@ -151,12 +169,14 @@ export default function JournalReviewsPage() {
           </p>
         )}
         {notice && (
-          <p role="status" className="mb-4 text-blue-500">
+          <p role="status" className="mb-4 text-[var(--workspace-success)]">
             {notice}
           </p>
         )}
         {!data && !error && (
-          <p role="status">{start ? 'Loading review…' : 'Choose a review date.'}</p>
+          <p role="status">
+            {start ? 'Loading review…' : 'Choose a review date.'}
+          </p>
         )}
         {data && draft && (
           <form
@@ -177,68 +197,110 @@ export default function JournalReviewsPage() {
               }
             }}
           >
-            <fieldset disabled={busy} className="space-y-5">
-              <p role="status" className="text-sm text-zinc-500">
+            <fieldset
+              disabled={busy}
+              className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.65fr)]"
+            >
+              <p role="status" className="text-xs text-zinc-500 lg:col-span-2">
                 {dirty
                   ? 'Unsaved review — select Save review before leaving.'
                   : 'Reviews use explicit saving; recap draft autosave is separate.'}
               </p>
-              <p className="rounded-xl border border-zinc-500/20 p-4 text-sm">
-                {data.entries.length} recaps · {data.analytics.count} measured trades ·{' '}
-                {journalMoney(data.analytics.count ? data.analytics.netPnl : null)} ·{' '}
-                {data.analytics.missed} missed · {data.analytics.observations} observations ·{' '}
-                {data.analytics.missingPnl} missing/gross P&L
-              </p>
-              {previousFocus && (
-                <div className="rounded-lg bg-blue-500/10 p-3 text-sm">
-                  <p>
-                    Previous {kind === 'weekly' ? 'week' : 'day'} focus: {previousFocus}
+              <Surface className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-3 sm:p-6 lg:col-span-2 xl:grid-cols-6">
+                {[
+                  ['Recaps', data.entries.length],
+                  ['Measured trades', data.analytics.count],
+                  [
+                    'Net P&L',
+                    journalMoney(
+                      data.analytics.count ? data.analytics.netPnl : null
+                    ),
+                  ],
+                  ['Missed setups', data.analytics.missed],
+                  ['Observations', data.analytics.observations],
+                  ['Missing / gross P&L', data.analytics.missingPnl],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-[10px] text-[var(--workspace-muted)]">
+                      {label}
+                    </p>
+                    <p
+                      className={`mt-2 text-xl font-semibold tabular-nums tracking-tight ${label === 'Net P&L' && data.analytics.netPnl > 0 ? 'text-[var(--workspace-success)]' : label === 'Net P&L' && data.analytics.netPnl < 0 ? 'text-[var(--workspace-danger)]' : 'text-[var(--workspace-text)]'}`}
+                    >
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </Surface>
+              <Surface className="space-y-5 p-5 sm:p-6">
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--workspace-text)]">
+                    Reflect on your process
+                  </h2>
+                  <p className="mt-1.5 text-xs text-[var(--workspace-muted)]">
+                    Use the evidence to choose one clear improvement.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => update({ focusRule: previousFocus })}
-                    className="mt-2 text-blue-500"
-                  >
-                    Carry this focus forward
-                  </button>
                 </div>
-              )}
-              <label className="block text-sm">
-                Did you follow your rules?
-                <select
-                  aria-label="Review rule adherence"
-                  value={draft.followedRules ?? ''}
-                  onChange={(e) => update({ followedRules: e.target.value })}
-                  className={input}
-                >
-                  <option value="">Not reviewed</option>
-                  <option value="yes">Yes</option>
-                  <option value="mixed">Mixed</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-              {(
-                [
-                  ['bestExecution', 'Best execution'],
-                  ['mistake', 'Recurring mistake'],
-                  ['focusRule', 'Next focus rule'],
-                  ['notes', 'Review notes'],
-                ] as const
-              ).map(([field, label]) => (
-                <label key={field} className="block text-sm">
-                  {label}
-                  <textarea
-                    aria-label={label}
-                    maxLength={8000}
-                    rows={3}
+                {previousFocus && (
+                  <div className="rounded-lg bg-[var(--workspace-accent-soft)] p-3 text-sm">
+                    <p>
+                      Previous {kind === 'weekly' ? 'week' : 'day'} focus:{' '}
+                      {previousFocus}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => update({ focusRule: previousFocus })}
+                      className="mt-2 text-[var(--workspace-accent)]"
+                    >
+                      Carry this focus forward
+                    </button>
+                  </div>
+                )}
+                <label className="block text-xs font-medium text-[var(--workspace-text)]">
+                  Did you follow your rules?
+                  <select
+                    aria-label="Review rule adherence"
+                    value={draft.followedRules ?? ''}
+                    onChange={(e) => update({ followedRules: e.target.value })}
                     className={input}
-                    value={draft[field] ?? ''}
-                    onChange={(e) => update({ [field]: e.target.value })}
-                  />
+                  >
+                    <option value="">Not reviewed</option>
+                    <option value="yes">Yes</option>
+                    <option value="mixed">Mixed</option>
+                    <option value="no">No</option>
+                  </select>
                 </label>
-              ))}
-              <div>
-                <h2 className="mb-2 font-semibold">Link evidence from this period</h2>
+                {(
+                  [
+                    ['bestExecution', 'Best execution'],
+                    ['mistake', 'Recurring mistake'],
+                    ['focusRule', 'Next focus rule'],
+                    ['notes', 'Review notes'],
+                  ] as const
+                ).map(([field, label]) => (
+                  <label
+                    key={field}
+                    className="block text-xs font-medium text-[var(--workspace-text)]"
+                  >
+                    {label}
+                    <textarea
+                      aria-label={label}
+                      maxLength={8000}
+                      rows={3}
+                      className={input}
+                      value={draft[field] ?? ''}
+                      onChange={(e) => update({ [field]: e.target.value })}
+                    />
+                  </label>
+                ))}
+              </Surface>
+              <Surface className="p-5 sm:p-6">
+                <h2 className="mb-2 text-sm font-semibold text-[var(--workspace-text)]">
+                  Evidence from this period
+                </h2>
+                <p className="mb-4 text-xs leading-5 text-[var(--workspace-muted)]">
+                  Link the recaps that support your review.
+                </p>
                 {data.entries.length ? (
                   data.entries.map((entry) => (
                     <label
@@ -262,25 +324,29 @@ export default function JournalReviewsPage() {
                           to={`/journal/${encodeURIComponent(entry.id)}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-500"
+                          className="text-[var(--workspace-accent)]"
                         >
-                          {entry.recap?.title || `${entry.symbol} · ${entry.playbook}`}
+                          {entry.recap?.title ||
+                            `${entry.symbol} · ${entry.playbook}`}
                         </Link>
                         <p>
-                          {entry.dateTime} · {entry.recap?.execution || 'taken'} ·{' '}
-                          {journalOutcomeLabel(entry)} ·{' '}
-                          {entry.recap?.lesson}
+                          {entry.dateTime} · {entry.recap?.execution || 'taken'}{' '}
+                          · {journalOutcomeLabel(entry)} · {entry.recap?.lesson}
                         </p>
                       </span>
                     </label>
                   ))
                 ) : (
                   <p className="text-sm text-zinc-500">
-                    No recaps in this period. You can still write a preparation/review note.
+                    No recaps in this period. You can still write a
+                    preparation/review note.
                   </p>
                 )}
-              </div>
-              <button type="submit" className="rounded-lg bg-blue-600 px-5 py-3 text-white">
+              </Surface>
+              <button
+                type="submit"
+                className={`justify-self-start rounded-xl px-5 py-3 text-xs font-semibold ${isDark ? 'bg-[var(--app-button)] text-[var(--app-button-text)]' : 'bg-[var(--app-button)] text-[var(--app-button-text)]'}`}
+              >
                 {busy ? 'Saving…' : 'Save review'}
               </button>
             </fieldset>

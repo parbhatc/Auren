@@ -1,4 +1,3 @@
-import { ChevronDown } from 'lucide-react'
 import { settingsInputClass, settingsSaveButtonClass } from '../../../styles/aurenTheme'
 import { t } from '../../../utils/translator'
 
@@ -24,42 +23,46 @@ export default function TradeseaAdvancedTokens({
   const inputClass = settingsInputClass(isDark)
 
   return (
-    <details className={`group py-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-      <summary
-        className={`flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold ${
-          isDark ? 'text-slate-200' : 'text-slate-800'
-        }`}
-      >
-        <span>{t('props.tradesea.advancedSection')}</span>
-        <ChevronDown className="w-4 h-4 shrink-0 transition-transform group-open:rotate-180 text-slate-500" />
-      </summary>
-      <p className={`text-xs mt-3 mb-3 leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-        {t('props.tradesea.manualDescription')}
+    <div className={isDark ? 'text-zinc-300' : 'text-zinc-700'}>
+      <p className="mb-4 text-xs leading-5 text-zinc-500">
+        Enter your Tradesea session tokens to connect manually.
       </p>
       <div className="space-y-3">
-        <input
-          type="text"
-          value={accessToken}
-          onChange={(e) => onAccessChange(e.target.value)}
-          placeholder={t('props.tradesea.accessTokenPlaceholder')}
-          className={inputClass}
-        />
-        <input
-          type="text"
-          value={refreshToken}
-          onChange={(e) => onRefreshChange(e.target.value)}
-          placeholder={t('props.tradesea.refreshTokenPlaceholder')}
-          className={inputClass}
-        />
+        <label className="block text-xs font-medium" htmlFor="tradesea-access-token">
+          Access token
+          <input
+            id="tradesea-access-token"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={accessToken}
+            onChange={(e) => onAccessChange(e.target.value)}
+            placeholder={t('props.tradesea.accessTokenPlaceholder')}
+            className={`mt-2 ${inputClass}`}
+          />
+        </label>
+        <label className="block text-xs font-medium" htmlFor="tradesea-refresh-token">
+          Refresh token <span className="font-normal text-zinc-500">(optional)</span>
+          <input
+            id="tradesea-refresh-token"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={refreshToken}
+            onChange={(e) => onRefreshChange(e.target.value)}
+            placeholder={t('props.tradesea.refreshTokenPlaceholder')}
+            className={`mt-2 ${inputClass}`}
+          />
+        </label>
         <button
           type="button"
-          disabled={saving}
+          disabled={saving || !accessToken.trim()}
           onClick={onSave}
           className={`${settingsSaveButtonClass()} ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {saving ? t('props.tradesea.savingTokens') : t('props.tradesea.saveTokens')}
         </button>
       </div>
-    </details>
+    </div>
   )
 }

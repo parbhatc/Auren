@@ -10,7 +10,7 @@ import { TradeHeader } from './TradeHeader'
 import { PracticeTradeHandler } from '../../../services/practice/PracticeTradeHandler'
 import type { TradeseaDatafeed } from '../../../services/tradesea/TradeseaDatafeed'
 import type { MdsStatusClient } from '../../../services/mds/mdsStatusClient'
-import { getPracticeAccountById } from '../../../constants/practice'
+import { getPracticeAccountById, getPracticePropFirmConfig } from '../../../constants/practice'
 import { getMaxContractsForSymbol } from '../../../services/practice/practiceLimits'
 import { resolvePracticeProductSymbol } from '../../../services/practice/practiceSymbol'
 import { dismissMdsConnectionToast } from '../../../services/tradesea/mdsConnectionToast'
@@ -772,7 +772,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         {terminalShell ? (
           <ProductHeader isDark={isDark} toggleTheme={toggleTheme} sidebarOnly
             marketDataStatus={mdsClient ? {
-              label: marketDataStreamConnected ? 'Market data stream connected' : 'Market data stream offline',
+              label: `${getPracticePropFirmConfig(activeFirm?.id).displayName} ${marketDataStreamConnected ? 'connected' : 'disconnected'}`,
               connected: marketDataStreamConnected,
             } : undefined} />
         ) : null}

@@ -6,6 +6,7 @@ import { panelCardClass, selectInputClass, settingsInsetClass } from '../../../s
 import { t } from '../../../utils/translator'
 import { SUPPORTED_CHART_TIMEZONES } from '../../../constants/chartTimezones'
 import { isReplayJournalEnabled, setReplayJournalEnabled } from '../../../features/journal/replayJournalPreference'
+import AppearanceSettingsPanel from '../AppearanceSettingsPanel'
 
 /**
  * Utils Settings renderer component
@@ -131,10 +132,10 @@ class Renderer extends Component<UtilsSettingsProps> {
     const { isDark, toggleTheme, navigate, embedded, onBack } = this.props
     const { currentTime, timezone, replayJournalEnabled } = this.state
 
-    const textClass = isDark ? 'text-white' : 'text-slate-900'
-    const textSecondaryClass = isDark ? 'text-slate-400' : 'text-slate-600'
+    const textClass = isDark ? 'text-white' : 'text-zinc-900'
+    const textSecondaryClass = isDark ? 'text-zinc-400' : 'text-zinc-600'
     const selectClass = selectInputClass(isDark)
-    const iconAccent = isDark ? 'text-blue-400' : 'text-blue-600'
+    const iconAccent = isDark ? 'text-zinc-400' : 'text-zinc-600'
     const card = panelCardClass(isDark)
     const inset = settingsInsetClass(isDark)
 
@@ -143,20 +144,21 @@ class Renderer extends Component<UtilsSettingsProps> {
         isDark={isDark}
         toggleTheme={toggleTheme}
         navigate={navigate}
-        title={t('practice.hub.settings.utilsTitle')}
-        subtitle={embedded ? t('practice.hub.settings.utilsEmbeddedDesc') : t('practice.hub.settings.utilsEmbeddedDesc')}
+        title="Preferences"
+        subtitle="Choose your appearance, timezone, and workspace preferences."
         icon={Globe}
         embedded={embedded}
         onBack={onBack}
       >
+        <AppearanceSettingsPanel />
         <div className={card}>
-          <div className="space-y-4">
+          <div className="grid gap-6 sm:grid-cols-2 sm:items-center">
             <div className={inset}>
               <div className="flex items-center gap-2 mb-2">
                 <Clock className={`w-4 h-4 ${iconAccent}`} />
                 <span className={`text-sm font-medium ${textClass}`}>{t('practice.hub.settings.currentTime')}</span>
               </div>
-              <div className={`text-2xl sm:text-3xl font-bold tabular-nums ${iconAccent}`}>
+              <div className={`text-2xl font-semibold tabular-nums tracking-tight ${isDark ? 'text-[#D2D2D2]' : 'text-[#696969]'}`}>
                 {this.formatTime(currentTime, timezone)}
               </div>
               <div className={`text-sm mt-1 ${textSecondaryClass}`}>
@@ -166,7 +168,7 @@ class Renderer extends Component<UtilsSettingsProps> {
             </div>
 
             <div>
-              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-zinc-300' : 'text-zinc-700'}`}>
                 {t('practice.hub.settings.timezoneSelect')}
               </label>
               <div className="relative">
@@ -183,7 +185,7 @@ class Renderer extends Component<UtilsSettingsProps> {
                 </select>
                 <div
                   className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isDark ? 'text-slate-400' : 'text-slate-500'
+                    isDark ? 'text-zinc-400' : 'text-zinc-500'
                   }`}
                 >
                   <ChevronDown className="w-4 h-4" />
@@ -199,7 +201,7 @@ class Renderer extends Component<UtilsSettingsProps> {
         <div className={card}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 gap-3">
-              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isDark ? 'border-[#3F3F46] bg-[#18181B] text-blue-400' : 'border-[#E4E4E7] bg-[#FAFAFA] text-blue-600'}`}>
+              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isDark ? 'border-[#404040] bg-[#181818] text-zinc-400' : 'border-[#E4E4E4] bg-[#FAFAFA] text-zinc-600'}`}>
                 <BookOpenCheck className="h-4 w-4" />
               </div>
               <div>
@@ -215,7 +217,7 @@ class Renderer extends Component<UtilsSettingsProps> {
               aria-checked={replayJournalEnabled}
               aria-label="Replay journaling"
               onClick={this.handleReplayJournalToggle}
-              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isDark ? 'focus-visible:ring-offset-[#09090B]' : 'focus-visible:ring-offset-white'} ${replayJournalEnabled ? 'border-blue-500 bg-blue-500' : isDark ? 'border-[#3F3F46] bg-[#27272A]' : 'border-[#D4D4D8] bg-[#E4E4E7]'}`}
+              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${isDark ? 'focus-visible:ring-offset-[#090909]' : 'focus-visible:ring-offset-white'} ${replayJournalEnabled ? 'border-emerald-600 bg-emerald-600' : isDark ? 'border-[#404040] bg-[#272727]' : 'border-[#D4D4D4] bg-[#E4E4E4]'}`}
             >
               <span
                 aria-hidden="true"
