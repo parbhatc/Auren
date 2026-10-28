@@ -7,19 +7,6 @@ import {
   useParams,
   useLocation,
 } from 'react-router-dom'
-import Login from './components/auth/Login'
-import Register from './components/auth/Register'
-import VerifyEmail from './components/auth/verify_email'
-import ForgotPassword from './components/auth/forgot_password'
-import ResetPassword from './components/auth/reset_password'
-import Settings from './components/settings/account'
-import PropsSettings from './components/settings/prop_firms'
-import UtilsSettings from './components/settings/utils'
-import KeyboardShortcutsSettings from './components/settings/keyboard_shortcuts'
-import AdminWorkspacePage from './pages/admin/AdminWorkspacePage'
-import PracticeTradePadPage from './pages/trading/practice/PadPage'
-import PracticeStatsPage from './pages/trading/practice/StatsPage'
-import PracticeNewsPage from './pages/trading/practice/NewsPage'
 import NotFound from './components/common/NotFound'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import GuestRoute from './components/common/GuestRoute'
@@ -35,9 +22,29 @@ import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
 import { RouteScrollRestore } from './components/common/RouteScrollRestore'
-import { AnalyticsPage, DashboardPage, NewsWorkspacePage } from './pages/workspace/WorkspacePages'
-import SettingsWorkspacePage from './pages/settings/SettingsWorkspacePage'
-import PracticeWorkspacePage from './pages/practice/PracticeWorkspacePage'
+import { syncLiveTradeSession } from './services/trading/liveTradeSession'
+import LiveTradeViewRetention from './components/trading/Live/LiveTradeViewRetention'
+
+// Keep unrelated route trees out of startup, particularly the trading renderer
+// and chart providers previously pulled in by the practice utility pages.
+const Login = lazy(() => import('./components/auth/Login'))
+const Register = lazy(() => import('./components/auth/Register'))
+const VerifyEmail = lazy(() => import('./components/auth/verify_email'))
+const ForgotPassword = lazy(() => import('./components/auth/forgot_password'))
+const ResetPassword = lazy(() => import('./components/auth/reset_password'))
+const Settings = lazy(() => import('./components/settings/account'))
+const PropsSettings = lazy(() => import('./components/settings/prop_firms'))
+const UtilsSettings = lazy(() => import('./components/settings/utils'))
+const KeyboardShortcutsSettings = lazy(() => import('./components/settings/keyboard_shortcuts'))
+const AdminWorkspacePage = lazy(() => import('./pages/admin/AdminWorkspacePage'))
+const PracticeTradePadPage = lazy(() => import('./pages/trading/practice/PadPage'))
+const PracticeStatsPage = lazy(() => import('./pages/trading/practice/StatsPage'))
+const PracticeNewsPage = lazy(() => import('./pages/trading/practice/NewsPage'))
+const SettingsWorkspacePage = lazy(() => import('./pages/settings/SettingsWorkspacePage'))
+const PracticeWorkspacePage = lazy(() => import('./pages/practice/PracticeWorkspacePage'))
+const DashboardPage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.DashboardPage })))
+const AnalyticsPage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.AnalyticsPage })))
+const NewsWorkspacePage = lazy(() => import('./pages/workspace/WorkspacePages').then((page) => ({ default: page.NewsWorkspacePage })))
 
 const PracticeTradePage = lazy(() => import('./pages/trading/practice/TradePage'))
 const LiveTradePage = lazy(() => import('./pages/trading/live/TradePage'))
@@ -50,6 +57,29 @@ const JournalReviewsPage = lazy(() => import('./pages/journal/JournalReviewsPage
 const JournalTradeDetailPage = lazy(() => import('./pages/journal/JournalTradeDetailPage'))
 
 const LegacyRedirect = () => <Navigate to={ROUTES.DASHBOARD} replace />
+
+function RouteSessionSync() {
+  const location = useLocation()
+  // Logout and account/mode changes can happen outside the terminal. Retained
+  // sockets must follow the current session even while Live is unmounted.
+  useEffect(() => { syncLiveTradeSession() }, [location.key])
+  useEffect(() => {
+    const syncRetainedSelection = () => {
+      // Live's own selector writes storage before replacing its streams. Its
+      // provider owns that transition; an idle retained session can end now.
+      if (window.location.pathname !== ROUTES.TRADE) syncLiveTradeSession()
+    }
+    window.addEventListener('storage', syncLiveTradeSession)
+    window.addEventListener('tradeTradeseaAccountChanged', syncRetainedSelection)
+    window.addEventListener('liveTradePropFirmChanged', syncRetainedSelection)
+    return () => {
+      window.removeEventListener('storage', syncLiveTradeSession)
+      window.removeEventListener('tradeTradeseaAccountChanged', syncRetainedSelection)
+      window.removeEventListener('liveTradePropFirmChanged', syncRetainedSelection)
+    }
+  }, [])
+  return null
+}
 
 /** /practice/:id/... → /practice/trade/:id/... (legacy short URLs) */
 const LegacyPracticeRedirect = ({ from }: { from: '/practice' | '/trade' }) => {
@@ -139,7 +169,13 @@ function App() {
 
   return (
     <Router>
+      <RouteSessionSync />
       <RouteScrollRestore />
+      <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
+        <LiveTradeViewRetention>
+          <ProtectedRoute><LiveTradePage /></ProtectedRoute>
+        </LiveTradeViewRetention>
+      </Suspense>
       <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
         <Routes>
           <Route
@@ -206,11 +242,7 @@ function App() {
           <Route path="/backtest/*" element={<Navigate to={ROUTES.BACKTESTER} replace />} />
           <Route
             path={ROUTES.TRADE}
-            element={
-              <ProtectedRoute>
-                <LiveTradePage />
-              </ProtectedRoute>
-            }
+            element={null}
           />
           <Route
             path="/trade/:practiceAccountId/*"

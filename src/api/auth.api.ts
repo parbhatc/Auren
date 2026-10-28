@@ -1,4 +1,5 @@
-import api, { getAuthHeaders } from './api'
+import api, { getAuthHeaders, getAuthToken } from './api'
+import { createSingleFlight } from '../../shared/singleFlight.js'
 import {
   LoginCredentials,
   RegisterData,
@@ -6,6 +7,8 @@ import {
   ResetPasswordData,
   AuthResponse,
 } from '../types/auth'
+
+const pendingAuthReads = createSingleFlight()
 
 /**
  * Authentication API service
@@ -72,18 +75,24 @@ export const authAPI = {
    * Get roles status
    */
   getRolesStatus: async (): Promise<{ success: boolean; hasRoles: boolean; rolesCount: number; roles: Array<{ id: string; name: string }> }> => {
-    const response = await api.get('/roles/status')
-    return response.data
+    return pendingAuthReads('roles', async () => {
+      const response = await api.get('/roles/status', { timeout: 10_000 })
+      return response.data
+    })
   },
 
   /**
    * Validate token and get user information
    */
   validateToken: async (_token: string): Promise<{ success: boolean; user: { id: string; username: string; email: string; name: string; role: string; email_verified: boolean; permissions?: string[]; isAdmin?: boolean } }> => {
-    const response = await api.get('/auth/validate', {
-      headers: getAuthHeaders(),
+    const token = getAuthToken()
+    return pendingAuthReads(`validate:${token ?? ''}`, async () => {
+      const response = await api.get('/auth/validate', {
+        headers: getAuthHeaders(),
+        timeout: 10_000,
+      })
+      return response.data
     })
-    return response.data
   },
 
   /**

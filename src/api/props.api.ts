@@ -24,7 +24,8 @@ export const propsAPI = {
    */
   getPropFirm: async (type: string): Promise<PropsSettingsResponse> => {
     const response = await api.get<{ success: boolean; propFirm?: PropFirm }>(`/props/${type}`, {
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
+      timeout: 15_000,
     })
     return {
       success: response.data.success,

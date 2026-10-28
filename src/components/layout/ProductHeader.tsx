@@ -169,21 +169,9 @@ export default function ProductHeader({
           ? response.accounts.filter((account) => !account.isArchived)
           : []
         setTradeseaAccounts(liveAccounts)
-        const saved = getDashboardAccountSelection()
-        if (saved?.source === 'tradesea' && liveAccounts.some((account) => account.id === saved.accountId)) {
-          setDashboardSelection(saved)
-        } else if (saved?.source === 'practice' && accounts.some((account) => account.id === saved.accountId)) {
-          setDashboardSelection(saved)
-        } else {
-          const practice = accounts.find((account) => account.id === activeId) ?? accounts[0]
-          const fallback = practice
-            ? { source: 'practice' as const, accountId: practice.id }
-            : liveAccounts[0]
-              ? { source: 'tradesea' as const, accountId: liveAccounts[0].id }
-              : null
-          setDashboardSelection(fallback)
-          if (fallback) saveDashboardAccountSelection(fallback)
-        }
+        // The dashboard data loader resolves missing selections. The header
+        // only reflects it; competing fallback writes restarted that loader.
+        setDashboardSelection(getDashboardAccountSelection())
       } catch {
         if (active) setTradeseaAccounts([])
       }
@@ -197,7 +185,7 @@ export default function ProductHeader({
       window.removeEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, syncSelection)
       window.removeEventListener('refreshPropFirms', loadAccounts)
     }
-  }, [accounts, activeId, isDashboard])
+  }, [isDashboard])
 
   useEffect(() => {
     let active = true

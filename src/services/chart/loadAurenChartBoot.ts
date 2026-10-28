@@ -16,12 +16,22 @@ export type AurenChartBootModule = {
   clearChartContextActions: typeof clearChartContextActions
 }
 
-export async function loadAurenChartBoot(): Promise<AurenChartBootModule> {
-  const hooks = await getBwcHostHooks()
-  return {
-    registerAurenChartIndicators,
-    bootChart,
-    registerTradeContextActions: hooks.registerTradeContextActions,
-    clearChartContextActions: hooks.clearChartContextActions,
+let bootModulePromise: Promise<AurenChartBootModule> | null = null
+
+export function loadAurenChartBoot(): Promise<AurenChartBootModule> {
+  if (!bootModulePromise) {
+    bootModulePromise = Promise.all([
+      getBwcHostHooks(),
+      registerAurenChartIndicators(),
+    ]).then(([hooks]) => ({
+      registerAurenChartIndicators,
+      bootChart,
+      registerTradeContextActions: hooks.registerTradeContextActions,
+      clearChartContextActions: hooks.clearChartContextActions,
+    })).catch((error) => {
+      bootModulePromise = null
+      throw error
+    })
   }
+  return bootModulePromise
 }

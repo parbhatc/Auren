@@ -174,6 +174,8 @@ export class BwcPositionBridge {
   private activeSymbol: string | null = null
   private readonly handles = new Map<string, BwcPositionLineHandle>()
   private offLiveBar: (() => void) | null = null
+  private offOverlayEvents: Array<() => void> = []
+  private disposed = false
   private syncRevision = 0
   private syncQueue: Promise<void> = Promise.resolve()
   private suppressedCloseEvents = 0
@@ -185,7 +187,7 @@ export class BwcPositionBridge {
   ) {}
 
   getOverlay(): BwcPositionOverlayApi | null {
-    return this.widget.positionOverlay ?? null
+    return this.disposed ? null : this.widget.positionOverlay ?? null
   }
 
   isActiveSymbol(symbol: string): boolean {
@@ -211,7 +213,7 @@ export class BwcPositionBridge {
     const overlay = this.getOverlay()
     if (!overlay) return
 
-    overlay.onClose(() => {
+    this.offOverlayEvents.push(overlay.onClose(() => {
       if (this.suppressedCloseEvents > 0) {
         this.suppressedCloseEvents -= 1
         return
@@ -229,24 +231,25 @@ export class BwcPositionBridge {
       const exitTime = bar?.time ?? Date.now()
       const qty = Math.abs(Number(position.contracts))
       this.tradeCache.onClosePosition(symbol, qty, price, exitTime, 'onCancel')
-    })
+    }))
 
-    overlay.onStopLossChanged((_old, newPrice) => {
+    this.offOverlayEvents.push(overlay.onStopLossChanged((_old, newPrice) => {
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateStopLoss(symbol, null, 'onCancel')
       else this.tradeCache.updateStopLoss(symbol, newPrice, 'onUpdate')
-    })
+    }))
 
-    overlay.onTakeProfitChanged((_old, newPrice) => {
+    this.offOverlayEvents.push(overlay.onTakeProfitChanged((_old, newPrice) => {
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateTakeProfit(symbol, null, 'onCancel')
       else this.tradeCache.updateTakeProfit(symbol, newPrice, 'onUpdate')
-    })
+    }))
 
     if (!this.offLiveBar && typeof this.widget.onLiveBar === 'function') {
       this.offLiveBar = this.widget.onLiveBar((bar) => {
+        if (this.disposed) return
         if (isBwcChartPanning()) return
         const active = this.tradeCache.getActivePositionForUpl()
         if (!active) return
@@ -271,10 +274,24 @@ export class BwcPositionBridge {
     this.activeSymbol = null
   }
 
+  /** Release rendering/listeners without interpreting detach as a position close. */
+  dispose(): void {
+    if (this.disposed) return
+    const overlay = this.getOverlay()
+    this.disposed = true
+    this.syncRevision += 1
+    this.activeSymbol = null
+    this.offLiveBar?.()
+    this.offLiveBar = null
+    for (const off of this.offOverlayEvents.splice(0)) off?.()
+    this.handles.clear()
+    overlay?.clear()
+  }
+
   private clearOverlayProgrammatically(
     overlay = this.getOverlay()
   ): void {
-    if (!overlay) return
+    if (!overlay || this.disposed) return
     this.suppressedCloseEvents += 1
     overlay.clear()
     // BWC currently emits close synchronously. Expire an unused guard so a
@@ -391,6 +408,7 @@ export class BwcPositionBridge {
     if (desiredStopLoss != null) {
       if (snap?.stopLoss !== desiredStopLoss) {
         await overlay.setStopLoss(desiredStopLoss)
+        if (this.disposed) return
       }
     } else if (snap?.stopLoss != null) {
       overlay.clearStopLoss()

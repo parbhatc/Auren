@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useId, useRef } from 'react'
+import { CSSProperties, useContext, useEffect, useId, useRef } from 'react'
 import type { AurenChartProps, IDatafeedChartApi } from '../../types/chart'
 import { TradeseaMdsClient } from '../tradesea/TradeseaMdsClient'
 import type { TradeseaStreamConfig } from '../../api/tradesea.api'
@@ -9,6 +9,7 @@ import {
   type BwcWidget,
 } from './bwcDatafeed'
 import { loadAurenChartBoot } from './loadAurenChartBoot'
+import { createChartResumeRecovery } from './chartResumeRecovery'
 import {
   bindBwcTradeContextHooks,
   clearChartContextActions,
@@ -22,6 +23,8 @@ import { candleDebug } from '../tradesea/candleDebug'
 import { CHART_ORDER_LINE_THEME } from '../../constants/chartOrderLineTheme'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 import { registerAurenWidget } from '../../chart/aurenWidgetRegistry'
+import { trackHistoryBroker, traceChartResume } from '../debug/historyRequestTrace'
+import { LiveTradeViewActive } from '../../contexts/LiveTradeViewContext'
 
 type ChartTradeHandler = NonNullable<AurenChartProps['tradeseaTradeHandler']>
 export type AurenChartServices = {
@@ -37,10 +40,6 @@ export type AurenChartServices = {
   accountId: string
 }
 
-/** Brief pause after MDS resubscribe before forcing a BWC history reload. */
-const CHART_RELOAD_AFTER_MDS_RESUBSCRIBE_MS = 200
-const CHART_RELOAD_WIDGET_RETRY_MS = 250
-const CHART_RELOAD_WIDGET_RETRY_MAX = 24
 const DEV_CHART_CACHE_CLEARED_KEY = 'auren.dev.chart.cache.cleared.v1'
 
 function isLocalDevPracticeTradeRoute(): boolean {
@@ -92,8 +91,9 @@ function clearLocalDevChartCachesOnce(): boolean {
   return true
 }
 
-function purgeOrphanedBwcFloatingToolbars(): void {
+function purgeOrphanedBwcFloatingToolbars(compactShell?: HTMLElement): void {
   if (typeof document === 'undefined') return
+  const compactOwner = compactShell?.querySelector('.tv-app')?.getAttribute('data-bwc-chart-host')
   const selectors = [
     '.tv-floating-toolbar',
     '.tv-drawing-edit-toolbar',
@@ -102,6 +102,10 @@ function purgeOrphanedBwcFloatingToolbars(): void {
   for (const selector of selectors) {
     document.querySelectorAll(selector).forEach((el) => {
       if (el instanceof HTMLElement) {
+        // Another chart may be retained behind the current route. Its owned
+        // toolbars follow that widget's lifecycle, including hidden/visible.
+        if (el.hasAttribute('data-bwc-portal-owned') &&
+          (!compactOwner || el.getAttribute('data-bwc-portal-owned') !== compactOwner)) return
         el.remove()
       }
     })
@@ -203,6 +207,8 @@ function wireTradeContextActions(handler: ChartTradeHandler, accountId?: string)
 }
 
 export default function AurenChart(props: AurenChartProps) {
+  const viewActive = useContext(LiveTradeViewActive)
+  const recoveryRef = useRef<ReturnType<typeof createChartResumeRecovery> | null>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const widgetRef = useRef<BwcWidget | null>(null)
   const propsRef = useRef(props)
@@ -213,10 +219,6 @@ export default function AurenChart(props: AurenChartProps) {
 
   const datafeedSource = (props.tradeseaServices as AurenChartServices | null | undefined)?.datafeed
   const mds = (props.tradeseaServices as AurenChartServices | null | undefined)?.mds
-  const mdsNeedsHistoryReloadRef = useRef(false)
-  const chartReloadPendingRef = useRef(false)
-  const chartReloadInFlightRef = useRef(false)
-  const chartReloadQueuedRef = useRef(false)
   const runChartReloadRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
@@ -229,115 +231,27 @@ export default function AurenChart(props: AurenChartProps) {
 
   useEffect(() => {
     if (!mds || !datafeedSource) return
-
-    let reloadTimer: ReturnType<typeof setTimeout> | null = null
-    let widgetRetryTimer: ReturnType<typeof setTimeout> | null = null
-    let widgetRetryCount = 0
-
-    const clearWidgetRetry = () => {
-      if (widgetRetryTimer) clearTimeout(widgetRetryTimer)
-      widgetRetryTimer = null
-      widgetRetryCount = 0
-    }
-
-    const scheduleChartReload = () => {
-      if (reloadTimer) clearTimeout(reloadTimer)
-      reloadTimer = setTimeout(() => {
-        reloadTimer = null
-        void runChartReloadRef.current?.()
-      }, CHART_RELOAD_AFTER_MDS_RESUBSCRIBE_MS)
-    }
-
-    const scheduleWidgetRetry = () => {
-      if (widgetRetryTimer || widgetRetryCount >= CHART_RELOAD_WIDGET_RETRY_MAX) return
-      widgetRetryTimer = setTimeout(() => {
-        widgetRetryTimer = null
-        widgetRetryCount += 1
-        void runChartReloadRef.current?.()
-      }, CHART_RELOAD_WIDGET_RETRY_MS)
-    }
-
-    const runChartReload = async () => {
-      const widget = widgetRef.current
-      if (!widget?.reset) {
-        chartReloadPendingRef.current = true
-        scheduleWidgetRetry()
-        return
-      }
-      if (mds.getConnectionState() !== 'connected') {
-        chartReloadPendingRef.current = true
-        return
-      }
-
-      chartReloadPendingRef.current = false
-      clearWidgetRetry()
-
-      if (chartReloadInFlightRef.current) {
-        chartReloadQueuedRef.current = true
-        return
-      }
-      chartReloadInFlightRef.current = true
-      try {
-        datafeedSource.refreshMdsSubscriptions?.()
-        datafeedSource.clearHistoryCache?.()
-        candleDebug.chartReload()
-        await widget.reset({ data: true })
-        candleDebug.chartReloadDone()
-        mdsNeedsHistoryReloadRef.current = false
-        // widget.reset replaces the candle listener after the reconnect's
-        // first resubscribe burst. Reassert the resulting final registry so a
-        // foreground resume cannot restore history but leave live data silent.
-        mds.resendAllSubscriptions()
-      } catch (err) {
-        console.warn('[AurenChart] MDS reconnect chart reload failed:', err)
-        chartReloadPendingRef.current = true
-        scheduleWidgetRetry()
-      } finally {
-        chartReloadInFlightRef.current = false
-        if (chartReloadQueuedRef.current) {
-          chartReloadQueuedRef.current = false
-          void runChartReload()
-        }
-      }
-    }
-
-    runChartReloadRef.current = runChartReload
-
-    const offClose = mds.on('close', () => {
-      mdsNeedsHistoryReloadRef.current = true
-      if (reloadTimer) clearTimeout(reloadTimer)
-      reloadTimer = null
+    const recovery = createChartResumeRecovery({
+      connection: mds,
+      datafeed: datafeedSource,
+      getWidget: () => widgetRef.current,
+      viewActive,
+      onReloadStart: () => candleDebug.chartReload(),
+      onReloadDone: () => candleDebug.chartReloadDone(),
+      onError: (error) => console.warn('[AurenChart] incremental history recovery failed:', error),
+      onTrace: (phase, detail) => traceChartResume(phase, detail,
+        import.meta.env.DEV && phase === 'complete' ? widgetRef.current?.getAllChartPanes?.() : undefined),
     })
-
-    // A forced foreground reconnect detaches its old socket deliberately and
-    // therefore may not produce a native close event. The connection state
-    // transition still marks the chart for a data reset on the new socket.
-    let hasConnected = mds.getConnectionState() === 'connected'
-    const offConnection = mds.on('connection', (state) => {
-      if (state === 'connected') {
-        hasConnected = true
-        return
-      }
-      if (!hasConnected) return
-      mdsNeedsHistoryReloadRef.current = true
-      if (reloadTimer) clearTimeout(reloadTimer)
-      reloadTimer = null
-    })
-
-    const offResubscribed = mds.on('resubscribed', () => {
-      if (!mdsNeedsHistoryReloadRef.current) return
-      scheduleChartReload()
-    })
-
+    runChartReloadRef.current = recovery.reloadPending
+    recoveryRef.current = recovery
     return () => {
-      offClose()
-      offConnection()
-      offResubscribed()
       runChartReloadRef.current = null
-      if (reloadTimer) clearTimeout(reloadTimer)
-      clearWidgetRetry()
+      recovery.dispose()
+      if (recoveryRef.current === recovery) recoveryRef.current = null
     }
   }, [mds, datafeedSource])
+
+  useEffect(() => { recoveryRef.current?.setViewActive(viewActive) }, [viewActive])
 
   useEffect(() => {
     const shell = shellRef.current
@@ -350,7 +264,10 @@ export default function AurenChart(props: AurenChartProps) {
     if (!mount) return
 
     let cancelled = false
+    let chartDatafeed: ReturnType<typeof createBwcDatafeed> | null = null
+    let chartHandler: ChartTradeHandler | undefined
     let unregisterWidget: (() => void) | null = null
+    let stopHistoryStats: (() => void) | null = null
     let compactToolbarObserver: MutationObserver | null = null
 
     if (!datafeedSource) return
@@ -365,8 +282,8 @@ export default function AurenChart(props: AurenChartProps) {
       shell.querySelector('.tv-workspace')?.classList.add('tv-workspace--no-draw')
       shell.querySelector('.tv-chart-bottom-bar')?.setAttribute('hidden', '')
       shell.querySelector('.status-line')?.setAttribute('hidden', '')
-      purgeOrphanedBwcFloatingToolbars()
-      compactToolbarObserver = new MutationObserver(purgeOrphanedBwcFloatingToolbars)
+      purgeOrphanedBwcFloatingToolbars(shell)
+      compactToolbarObserver = new MutationObserver(() => purgeOrphanedBwcFloatingToolbars(shell))
       compactToolbarObserver.observe(document.body, { childList: true, subtree: true })
     }
 
@@ -390,6 +307,7 @@ export default function AurenChart(props: AurenChartProps) {
         if (cancelled) return
 
         const handler = propsRef.current.tradeseaTradeHandler
+        chartHandler = handler
 
         const notifySymbolChange = (sym: string) => {
           if (cancelled) return
@@ -398,6 +316,7 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         const datafeed = createBwcDatafeed(datafeedSource)
+        chartDatafeed = datafeed
         const widget = (await bootChart({
           mount,
           symbol: initialSymbol,
@@ -421,12 +340,12 @@ export default function AurenChart(props: AurenChartProps) {
         }
 
         widgetRef.current = widget
+        stopHistoryStats = trackHistoryBroker(widget.datafeed?.historyCache)
         unregisterWidget = registerAurenWidget(widget)
         await propsRef.current.onWidgetReady?.(widget)
+        if (cancelled) return
 
-        if (chartReloadPendingRef.current || mdsNeedsHistoryReloadRef.current) {
-          void runChartReloadRef.current?.()
-        }
+        void runChartReloadRef.current?.()
 
         if (!bwcHasOrderLines(widget)) {
           console.warn(
@@ -458,6 +377,7 @@ export default function AurenChart(props: AurenChartProps) {
 
         await propsRef.current.onChartReady?.()
       } catch (err) {
+        chartDatafeed?.dispose()
         console.error('[AurenChart] boot failed:', err)
       }
     })()
@@ -472,10 +392,15 @@ export default function AurenChart(props: AurenChartProps) {
       })
       unregisterWidget?.()
       unregisterWidget = null
+      if (widgetRef.current) chartHandler?.detachChart?.(widgetRef.current)
       widgetRef.current?.destroy?.()
+      stopHistoryStats?.()
+      stopHistoryStats = null
       widgetRef.current = null
       purgeOrphanedBwcFloatingToolbars()
-      datafeedSource.teardownCandleStreams?.()
+      // The session retains history/symbol caches and live connections while
+      // navigating away. Release only this widget's bar and quote listeners.
+      chartDatafeed?.dispose()
       datafeedSource.setChartSymbolChangeRequest?.(null)
       schedulePageScrollReset()
     }

@@ -31,8 +31,16 @@ export async function prepareTradeseaChartServices(
     bootstrapSymbol?: string
     bootstrapResolution?: string
   } | null,
-  options?: { connectTrades?: boolean; usePracticeMarketData?: boolean }
+  options?: { connectTrades?: boolean; usePracticeMarketData?: boolean; isCurrent?: () => boolean }
 ): Promise<TradeseaChartServices> {
+  const assertCurrent = () => {
+    if (options?.isCurrent && !options.isCurrent()) {
+      const error = new Error('Chart service preparation was superseded')
+      error.name = 'AbortError'
+      throw error
+    }
+  }
+  assertCurrent()
   const connectTrades = options?.connectTrades !== false
   if (options?.usePracticeMarketData) {
     const mds = existing?.mds ?? new TradeseaMdsClient()
@@ -53,11 +61,13 @@ export async function prepareTradeseaChartServices(
   }
 
   const streamConfig = await tradeseaAPI.getStreamConfig(accountId)
+  assertCurrent()
   if (!streamConfig.success || !streamConfig.userId) {
     throw new Error(streamConfig.error || 'Failed to load market data stream config')
   }
 
   const connectionGroupId = await getTradeseaConnectionGroupId(streamConfig.userId)
+  assertCurrent()
 
   const mds = existing?.mds ?? new TradeseaMdsClient()
   mds.configureMarketDepth(shouldSubscribeMdsDepth(streamConfig))

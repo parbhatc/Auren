@@ -1,5 +1,4 @@
-import JournalAnalyticsPanel from '../../journal/JournalAnalyticsPanel'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   BarChart3,
   Blocks,
@@ -31,7 +30,6 @@ import {
   MetricCard,
   ProgressRow,
 } from '../../components/layout/WorkspacePrimitives'
-import { EconomicNewsView } from '../../components/trading/shared/news/EconomicNewsView'
 import {
   conditionTypeLabel,
   BUILDING_BLOCK_DEFINITIONS,
@@ -39,6 +37,13 @@ import {
   type Playbook,
   type PlaybookCondition,
 } from '../../journal/journalConditions'
+
+const JournalAnalyticsPanel = lazy(() => import('../../journal/JournalAnalyticsPanel'))
+const EconomicNewsView = lazy(() =>
+  import('../../components/trading/shared/news/EconomicNewsView').then((module) => ({
+    default: module.EconomicNewsView,
+  }))
+)
 
 export function DashboardPage() {
   const { isDark } = useTheme()
@@ -54,6 +59,7 @@ export function DashboardPage() {
     tradeseaDashboard,
     days,
     loading,
+    refreshing,
     error,
   } = useDashboardAccountData(calendarMonth)
   const { format } = useDisplayUnit()
@@ -169,6 +175,8 @@ export function DashboardPage() {
             ? 'TradeLens statistics for the connected Tradesea account, including net results, consistency, and daily performance.'
             : 'A high-density view of account performance, drawdown exposure, consistency, and daily execution discipline.'}
         />
+
+        {refreshing ? <p role="status" className="mb-3 text-xs text-zinc-500">Updating account statistics…</p> : null}
 
         {error ? (
           <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
@@ -875,7 +883,9 @@ export function AnalyticsPage() {
           </Surface>
           )}
         </div>
-        <JournalAnalyticsPanel />
+        <Suspense fallback={<p role="status">Loading analytics…</p>}>
+          <JournalAnalyticsPanel />
+        </Suspense>
         <div className="mt-4">
           <Surface className="p-4 sm:p-5">
             <div className="flex items-center gap-2">
@@ -919,7 +929,9 @@ export function NewsWorkspacePage() {
           description="Filter low, medium, and high-impact releases. High-impact events use a restrained amber treatment for fast risk recognition."
         />
         <Surface className="overflow-hidden p-2 sm:p-4">
-          <EconomicNewsView isDark={isDark} />
+          <Suspense fallback={<p role="status">Loading news…</p>}>
+            <EconomicNewsView isDark={isDark} />
+          </Suspense>
         </Surface>
       </main>
     </WorkspaceShell>

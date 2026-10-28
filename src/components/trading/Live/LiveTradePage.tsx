@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { useTheme } from '../../../hooks/useTheme'
@@ -9,14 +9,22 @@ import TradingRenderer from '../Trading/TradingRenderer'
 import { t } from '../../../utils/translator'
 import { getLiveTradePropFirmId } from '../../../utils/liveTrade'
 import ProductHeader from '../../layout/ProductHeader'
+import { getAuthToken } from '../../../api/api'
+import { getTradeTradeseaAccount } from '../../../constants/trade'
+import { acquireLiveTradeSession, invalidateLiveTradeSession } from '../../../services/trading/liveTradeSession'
+import { LiveTradeViewActive } from '../../../contexts/LiveTradeViewContext'
 
 export default function LiveTradePage() {
+  const viewActive = useContext(LiveTradeViewActive)
   const navigate = useNavigate()
   const { isDark, toggleTheme } = useTheme()
   const colors = getThemeColors(isDark)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const sessionLease = useRef<ReturnType<typeof acquireLiveTradeSession> | null>(null)
+  const requestGeneration = useRef(0)
+  const validated = useRef(false)
 
   const firmId = getLiveTradePropFirmId()
   const tradeseaFirm = propFirmRegistry.find((f) => f.id === 'tradesea') as TradeseaPropFirm | undefined
@@ -25,60 +33,79 @@ export default function LiveTradePage() {
     ? 'bg-[#09090B]'
     : 'bg-[#FAFAFA]'
 
-  const runValidation = useCallback(async () => {
+  const acquireSession = useCallback(() => {
     if (firmId !== 'tradesea' || !tradeseaFirm) {
-      setValidationError(t('live.trade.firmNotSupported'))
-      return
+      throw new Error(t('live.trade.firmNotSupported'))
     }
-
-    try {
-      localStorage.setItem('activePropFirm', firmId)
-      tradeseaFirm.setPracticeMode(false)
-
-      const validationResult = await tradeseaFirm.validate()
-      if (!validationResult.success) {
-        setValidationError(validationResult.message || t('practice.page.loadFailed'))
-        return
-      }
-
-      tradeseaFirm.accountsFetched = false
-      await tradeseaFirm.onValidateSuccess()
-      setValidationError(null)
-    } catch (error: unknown) {
-      setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
-    }
+    localStorage.setItem('activePropFirm', firmId)
+    tradeseaFirm.setPracticeMode(false)
+    return acquireLiveTradeSession({
+      owner: tradeseaFirm,
+      getIdentity: () => ({
+        token: getAuthToken(), firmId: getLiveTradePropFirmId(),
+        accountId: getTradeTradeseaAccount().accountId,
+        mode: tradeseaFirm.practiceMode ? 'practice' : 'live',
+      }),
+      isReusable: () => !tradeseaFirm.practiceMode && tradeseaFirm.streamsReady
+        && !tradeseaFirm.streamsError && Boolean(tradeseaFirm.selectedAccountId)
+        && tradeseaFirm.selectedAccountId === getTradeTradeseaAccount().accountId
+        && tradeseaFirm.chartServices?.accountId === tradeseaFirm.selectedAccountId,
+      load: async (assertCurrent) => {
+        const validationResult = await tradeseaFirm.validate()
+        assertCurrent()
+        if (!validationResult.success) throw new Error(validationResult.message || t('practice.page.loadFailed'))
+        tradeseaFirm.accountsFetched = false
+        await tradeseaFirm.onValidateSuccess()
+        assertCurrent()
+        if (!tradeseaFirm.streamsReady) {
+          throw new Error(tradeseaFirm.streamsError || t('practice.page.loadFailed'))
+        }
+      },
+    })
   }, [firmId, tradeseaFirm])
 
-  useEffect(() => {
-    let cancelled = false
-
-    const bootstrap = async () => {
-      setIsValidating(true)
-      await runValidation()
-      if (!cancelled) {
+  const runValidation = useCallback(async (force = false, preserveView = false) => {
+    const generation = ++requestGeneration.current
+    if (!preserveView) setIsValidating(true)
+    try {
+      if (force) invalidateLiveTradeSession(tradeseaFirm)
+      sessionLease.current?.release()
+      const lease = acquireSession()
+      sessionLease.current = lease
+      await lease.ready
+      if (requestGeneration.current === generation) { validated.current = true; setValidationError(null) }
+    } catch (error) {
+      if (requestGeneration.current === generation) {
+        setValidationError(error instanceof Error ? error.message : t('practice.page.loadFailed'))
+      }
+    } finally {
+      if (requestGeneration.current === generation) {
         setIsValidating(false)
         setRefreshing(false)
       }
     }
+  }, [acquireSession, tradeseaFirm])
 
-    void bootstrap()
-
-    return () => {
-      cancelled = true
-      tradeseaFirm?.cleanup()
+  useEffect(() => {
+    if (viewActive) void runValidation(false, validated.current)
+    else {
+      sessionLease.current?.release()
+      sessionLease.current = null
     }
-  }, [runValidation, tradeseaFirm])
+  }, [viewActive, runValidation])
+
+  useEffect(() => {
+    return () => {
+      requestGeneration.current += 1
+      sessionLease.current?.release()
+      sessionLease.current = null
+    }
+  }, [])
 
   const handleRefresh = () => {
     if (!tradeseaFirm) return
     setRefreshing(true)
-    tradeseaFirm.accountsFetched = false
-    void (async () => {
-      setIsValidating(true)
-      await runValidation()
-      setIsValidating(false)
-      setRefreshing(false)
-    })()
+    void runValidation(true)
   }
 
   if (isValidating && !refreshing) {
@@ -127,6 +154,7 @@ export default function LiveTradePage() {
       navigate={(path: string) => navigate(path)}
       colors={colors}
       liveMode
+      viewActive={viewActive}
       practiceRefreshing={refreshing}
       onRefreshPracticeAccount={handleRefresh}
     />

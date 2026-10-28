@@ -9,6 +9,8 @@ export interface TradingProps {
   practiceMode?: boolean
   /** Live `/trade` — same terminal shell as practice, real prop-firm execution */
   liveMode?: boolean
+  /** A retained Live terminal cannot submit actions or display body portals. */
+  viewActive?: boolean
   practiceAccountId?: string
   practiceAccountStatus?: 'blown' | 'passed'
   onRefreshPracticeAccount?: () => void

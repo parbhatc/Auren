@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
 import { usePracticeLockout } from '../../../../hooks/usePracticeLockout'
@@ -7,6 +7,7 @@ import { TradingLimitsSettingsPanel } from './TradingLimitsSettingsPanel'
 import PositionPnlDisplaySetting from './PositionPnlDisplaySetting'
 import RiskPositionSizeSetting from './RiskPositionSizeSetting'
 import ReplaySettingsPanel from './ReplaySettingsPanel'
+import { LiveTradeViewActive } from '../../../../contexts/LiveTradeViewContext'
 
 /**
  * Header settings gear. Always offers the global trade-panel settings
@@ -22,7 +23,9 @@ export default function HeaderTradingSettings({
   isDark: boolean
   showReplaySettings?: boolean
 }) {
+  const viewActive = useContext(LiveTradeViewActive)
   const [open, setOpen] = useState(false)
+  useLayoutEffect(() => { if (!viewActive) setOpen(false) }, [viewActive])
   const [activeTab, setActiveTab] = useState<'display' | 'risk' | 'replay' | 'limits'>('display')
   const rootRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)

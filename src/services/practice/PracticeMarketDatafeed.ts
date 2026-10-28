@@ -7,6 +7,7 @@ import type {
   SubscribeBarsCallback,
 } from '../../types/chart'
 import type { MdsConnectionState } from '../tradesea/TradeseaMdsClient'
+import { tradeseaResolutionToSeconds } from '../tradesea/tradeseaResolutions'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 import {
   resolvePracticeInstrumentTicks,
@@ -57,6 +58,17 @@ type PendingRequest = {
 }
 
 type WireSubscribers = Map<string, SubscribeBarsCallback>
+type HistoryResult = { bars?: Bar[]; historyExhausted?: boolean; cached?: boolean }
+type HistoryWindow = { series: string; from: number; to: number }
+type HistoryInflight = HistoryWindow & { promise: Promise<HistoryResult>; fresh: boolean; invalidated: boolean }
+
+function historyWindowsOverlap(a: HistoryWindow, b: HistoryWindow): boolean {
+  return a.series === b.series &&
+    (![a.from, a.to, b.from, b.to].every(Number.isFinite) || (a.from <= b.to && b.from <= a.to))
+}
+
+const HISTORY_CACHE_TTL_MS = 15_000
+const HISTORY_CACHE_MAX_ENTRIES = 64
 
 type ProviderConfig = {
   streamPath: string
@@ -112,6 +124,11 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
   private wireByListener = new Map<string, string>()
   private bookSubscriptions = new Map<string, string>()
   private latestBySymbol = new Map<string, Bar>()
+  private historyCache = new Map<string, HistoryWindow & { expires: number; data: HistoryResult }>()
+  private historyInflight = new Map<string, HistoryInflight>()
+  private historyGeneration = 0
+  private resolvingSymbols = new Map<string, Promise<LibrarySymbolInfo>>()
+  private disposed = false
   private providerConfigPromise: Promise<ProviderConfig> | null = null
   private connectionState: MdsConnectionState = 'disconnected'
   private autoReconnect = true
@@ -213,36 +230,52 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
       queueMicrotask(() => onResolve(cached))
       return
     }
-    this.searchSymbols(key.split(':').pop() || key, '', '', (rows) => {
-      const results = rows as SearchResult[]
-      const exact = results.find((row) => row.ticker === key)
-        || results.find((row) => row.symbol === key)
-        || results[0]
-      if (!exact) {
-        onError(`Unable to resolve symbol: ${symbolName}`)
-        return
-      }
-      onResolve(this.cacheSearchResult(exact))
-    })
+    let pending = this.resolvingSymbols.get(key)
+    if (!pending) {
+      pending = new Promise<LibrarySymbolInfo>((resolve, reject) => {
+        this.searchSymbols(key.split(':').pop() || key, '', '', (rows) => {
+          const results = rows as SearchResult[]
+          const exact = results.find((row) => row.ticker === key)
+            || results.find((row) => row.symbol === key)
+            || results[0]
+          if (!exact) {
+            reject(new Error(`Unable to resolve symbol: ${symbolName}`))
+            return
+          }
+          resolve(this.cacheSearchResult(exact))
+        })
+      })
+      this.resolvingSymbols.set(key, pending)
+      void pending.finally(() => {
+        if (this.resolvingSymbols.get(key) === pending) this.resolvingSymbols.delete(key)
+      }).catch(() => undefined)
+    }
+    void pending.then(onResolve).catch((error) => onError(error instanceof Error ? error.message : String(error)))
   }
 
   getBars(
     symbolInfo: LibrarySymbolInfo,
     resolution: ResolutionString,
-    periodParams: { from: number; to: number; firstDataRequest?: boolean; countBack?: number },
+    periodParams: { from: number; to: number; firstDataRequest?: boolean; countBack?: number; refresh?: boolean },
     onResult: (bars: Bar[], meta: { noData: boolean }) => void,
     onError: (reason: string) => void,
   ): void {
     const symbol = String(symbolInfo.ticker || symbolInfo.name).toUpperCase()
-    void this.request('history', {
+    const historySeed = new Map(this.latestBarKeys(symbol).map((key) => [key, this.latestBySymbol.get(key)] as const))
+    const historyGeneration = this.historyGeneration
+    void this.loadHistory({
       symbol,
       resolution: String(resolution).toUpperCase(),
       bars: Math.min(5000, Math.max(1, periodParams.countBack || 500)),
       ...(periodParams.to == null ? {} : { to: periodParams.to }),
-    }).then((data) => {
-      const history = data as { bars?: Bar[]; historyExhausted?: boolean }
+    }, { refresh: periodParams.refresh }).then((data) => {
+      const history = data
       const bars = (history.bars || []).map((bar) => this.normalizeBar(symbol, bar))
-      if (bars.length) this.rememberLatest(symbol, bars[bars.length - 1])
+      // A warm interval snapshot must not roll execution/DOM marks back to
+      // its old close while the current socket has a newer live price.
+      if (bars.length && !history.cached && historyGeneration === this.historyGeneration) {
+        this.rememberLatest(symbol, bars[bars.length - 1], historySeed)
+      }
       onResult(bars, { noData: bars.length === 0 && Boolean(history.historyExhausted) })
     }).catch((error) => onError(error instanceof Error ? error.message : String(error)))
   }
@@ -314,7 +347,11 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
     return this.latestBySymbol.get(ticker) || this.latestBySymbol.get(raw) || null
   }
 
-  clearHistoryCache(): void {}
+  clearHistoryCache(): void {
+    this.historyGeneration += 1
+    this.historyCache.clear()
+    this.historyInflight.clear()
+  }
 
   teardownCandleStreams(): void {
     for (const subscriptionId of this.wireSubscribers.keys()) {
@@ -329,10 +366,14 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
   }
 
   dispose(): void {
+    this.autoReconnect = false
+    this.disposed = true
     this.teardownCandleStreams()
     this.ws?.close(1000, 'practice datafeed disposed')
     this.ws = null
     this.connectPromise = null
+    this.rejectPending(new Error('Practice market data disposed'))
+    this.clearHistoryCache()
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
     this.setConnectionState('disconnected')
@@ -377,10 +418,18 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
     }
   }
 
-  private rememberLatest(symbol: string, bar: Bar): void {
-    this.latestBySymbol.set(symbol.toUpperCase(), bar)
+  private latestBarKeys(symbol: string): string[] {
     const root = symbol.split(':').pop()
-    if (root) this.latestBySymbol.set(root.toUpperCase(), bar)
+    return [...new Set([symbol.toUpperCase(), root?.toUpperCase()].filter((key): key is string => Boolean(key)))]
+  }
+
+  private rememberLatest(symbol: string, bar: Bar, historySeed?: Map<string, Bar | undefined>): void {
+    const keys = this.latestBarKeys(symbol)
+    if (historySeed && keys.some((key) => {
+      const current = this.latestBySymbol.get(key)
+      return current && (current.time > bar.time || (current.time === bar.time && current !== historySeed.get(key)))
+    })) return
+    for (const key of keys) this.latestBySymbol.set(key, bar)
     const applyExternalMarketBar = this.fallback.applyExternalMarketBar
     if (typeof applyExternalMarketBar === 'function') {
       const labels = new Set([symbol, chartSymbolToProductRoot(symbol)].filter(Boolean))
@@ -406,11 +455,13 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
   }
 
   private connect(): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error('Practice market data disposed'))
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve()
     if (this.connectPromise) return this.connectPromise
     this.setConnectionState('connecting')
     this.connectPromise = new Promise<void>((resolve, reject) => {
       void this.getProviderConfig().then(({ streamPath }) => {
+        if (this.disposed) throw new Error('Practice market data disposed')
         const token = getAuthToken()
         const url = new URL(getWebSocketUrl(streamPath))
         if (token) url.searchParams.set('token', token)
@@ -419,8 +470,10 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
         const timeout = window.setTimeout(() => {
           this.setConnectionState('disconnected')
           reject(new Error('Practice market-data connection timed out'))
+          ws.close()
         }, 15_000)
         ws.onmessage = (event) => {
+        if (this.ws !== ws || this.disposed) return
         const message = JSON.parse(String(event.data)) as Record<string, unknown>
         if (message.type === 'connected') {
           window.clearTimeout(timeout)
@@ -470,6 +523,7 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
         }
         ws.onclose = () => {
           window.clearTimeout(timeout)
+          reject(new Error('Practice market data disconnected before connecting'))
           if (this.ws !== ws) return
           this.ws = null
           this.connectPromise = null
@@ -563,8 +617,58 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
     return this.providerConfigPromise
   }
 
+  private loadHistory(payload: Record<string, unknown>, options?: { refresh?: boolean }): Promise<HistoryResult> {
+    const key = JSON.stringify([payload.symbol, payload.resolution, payload.bars, payload.to ?? null])
+    const fresh = options?.refresh === true
+    const to = payload.to == null ? NaN : Number(payload.to)
+    const requestWindow = {
+      series: `${payload.symbol}|${payload.resolution}`,
+      to,
+      from: to - Number(payload.bars) * tradeseaResolutionToSeconds(String(payload.resolution)),
+    }
+    const previous = this.historyInflight.get(key)
+    if (fresh && previous?.fresh) return previous.promise
+    if (fresh) {
+      for (const [cacheKey, entry] of this.historyCache) {
+        if (historyWindowsOverlap(requestWindow, entry)) this.historyCache.delete(cacheKey)
+      }
+      for (const [cacheKey, entry] of this.historyInflight) {
+        if (!entry.fresh && historyWindowsOverlap(requestWindow, entry)) {
+          entry.invalidated = true
+          this.historyInflight.delete(cacheKey)
+        }
+      }
+    }
+    const cached = this.historyCache.get(key)
+    if (!options?.refresh && cached && cached.expires > Date.now()) return Promise.resolve({ ...cached.data, cached: true })
+    const existing = this.historyInflight.get(key)
+    if (existing) return existing.promise
+    const generation = this.historyGeneration
+    let entry: HistoryInflight
+    const pending = this.request('history', payload).then((data) => {
+      const history = data as HistoryResult
+      if (generation !== this.historyGeneration || this.disposed || entry.invalidated) return history
+      for (const [cacheKey, entry] of this.historyCache) {
+        if (entry.expires <= Date.now()) this.historyCache.delete(cacheKey)
+      }
+      if (!this.historyCache.has(key) && this.historyCache.size >= HISTORY_CACHE_MAX_ENTRIES) {
+        this.historyCache.delete(this.historyCache.keys().next().value!)
+      }
+      this.historyCache.set(key, { ...requestWindow, data: history, expires: Date.now() + HISTORY_CACHE_TTL_MS })
+      return history
+    })
+    entry = { ...requestWindow, promise: pending, fresh, invalidated: false }
+    this.historyInflight.set(key, entry)
+    void pending.finally(() => {
+      if (this.historyInflight.get(key) === entry) this.historyInflight.delete(key)
+    }).catch(() => undefined)
+    return pending
+  }
+
   private async request(type: string, payload: Record<string, unknown>): Promise<unknown> {
     await this.connect()
+    const ws = this.ws
+    if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error('Practice market data disconnected')
     const id = String(++this.sequence)
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -572,7 +676,13 @@ class PracticeMarketDatafeed implements IDatafeedChartApi {
         reject(new Error(`${type} request timed out`))
       }, 30_000)
       this.pending.set(id, { resolve, reject, timer })
-      this.ws!.send(JSON.stringify({ id, type, ...payload }))
+      try {
+        ws.send(JSON.stringify({ id, type, ...payload }))
+      } catch (error) {
+        window.clearTimeout(timer)
+        this.pending.delete(id)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 }

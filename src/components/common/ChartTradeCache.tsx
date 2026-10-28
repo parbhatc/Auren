@@ -43,6 +43,42 @@ class ChartTradeCache {
     return this.widget ?? this.handler?.widget ?? null
   }
 
+  /** Rebind a retained position/stop cache to a newly mounted chart view. */
+  attachChartView(widget: any): void {
+    if (this.widget === widget) return
+    this.detachChartView()
+    this.widget = widget
+    this.chart = widget?.chart?.() ?? null
+  }
+
+  /** Drop view objects while retaining positions and subclass risk state. */
+  detachChartView(): void {
+    let symbol = ''
+    let resolution = ''
+    try {
+      symbol = String(this.chart?.symbol?.() || '')
+      resolution = String(this.chart?.resolution?.() || '')
+    } catch {
+      // Chart disposal can race a pending account snapshot.
+    }
+    this.bwcPositionBridge?.dispose()
+    this.bwcPositionBridge = null
+    this.pendingRealtimeWhilePan = null
+    for (const position of this.cache.values()) {
+      const line = position?.line
+      if (position) position.line = null
+      try {
+        line?.removeAll?.()
+      } catch {
+        // The widget may already have removed these visual objects.
+      }
+    }
+    this.widget = null
+    // Only immutable metadata survives; account snapshots can still update the
+    // retained cache without holding or painting the detached chart.
+    this.chart = symbol ? { symbol: () => symbol, resolution: () => resolution } : null
+  }
+
   /** Chart position pill UPL — driven by BWC onLiveBar, not trade-handler bars. */
   protected onPositionUplChange(_pnl: number): void {}
 

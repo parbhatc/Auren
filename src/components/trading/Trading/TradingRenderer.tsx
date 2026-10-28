@@ -152,6 +152,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   componentDidUpdate(prevProps: TradingProps) {
+    if (prevProps.viewActive !== false && this.props.viewActive === false) {
+      this.setState({ showAccountDropdown: false, practiceMobileOrderOpen: false, practiceMobileSettingsOpen: false })
+    }
     const activeFirm = this.getActiveFirm()
     if (
       activeFirm?.id === 'tradesea' &&
@@ -240,9 +243,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         activeFirm.id === 'tradesea' &&
         typeof (activeFirm as any).setOnDataReady === 'function'
       ) {
-        ;(activeFirm as any).setOnDataReady(() => {
-          this.refreshTerminal()
-        })
+        this.detachDataReady = (activeFirm as any).setOnDataReady(this.refreshTerminal)
       }
 
       if (typeof activeFirm.setOnChartSymbolChange === 'function') {
@@ -282,8 +283,12 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       if (activeFirm.id === 'tradesea') {
         const handler = (activeFirm as any).getHandler?.()
         if (handler) {
-          handler.onUnrealizedPnLUpdate = () => {
-            this.publishAccountStats()
+          const onUnrealizedPnLUpdate = () => this.publishAccountStats()
+          handler.onUnrealizedPnLUpdate = onUnrealizedPnLUpdate
+          this.detachUnrealizedPnL = () => {
+            if (handler.onUnrealizedPnLUpdate === onUnrealizedPnLUpdate) {
+              handler.onUnrealizedPnLUpdate = undefined
+            }
           }
         }
         import('../../../services/tradesea/tradeseaDebug').then(({ isTradeseaUplDebug }) => {
@@ -354,6 +359,10 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   }
 
   componentWillUnmount() {
+    this.detachDataReady?.()
+    this.detachDataReady = undefined
+    this.detachUnrealizedPnL?.()
+    this.detachUnrealizedPnL = undefined
     this.unbindMdsConnectionState()
     dismissMdsConnectionToast()
     document.removeEventListener('mousedown', this.handleClickOutside)
@@ -376,6 +385,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
   private layoutCheckInterval?: NodeJS.Timeout
   private accountUpdateInterval?: NodeJS.Timeout
+  private detachDataReady?: () => void
+  private detachUnrealizedPnL?: () => void
 
   // Push live BAL/RP&L/UP&L into the external accountStatsStore so only the
   // small <LiveAccountStats> readout re-renders — NOT the whole terminal. A
@@ -618,7 +629,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     const activeFirm = this.getActiveFirm()
     const mdsClient = this.getMds()
     const marketDataLive = !mdsClient || this.state.marketDataLive !== false
-    const tradingBlocked = Boolean(mdsClient) && !marketDataLive
+    const tradingBlocked = this.props.viewActive === false || Boolean(mdsClient) && !marketDataLive
 
     const accounts = resolveAccountsList(accountsProp, activeFirm)
     const formattedAccounts = resolveFormattedAccounts(accounts)
@@ -651,7 +662,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       />
     )
 
-    const runTrade = createRunTrade({
+    const dispatchTrade = createRunTrade({
       tradingBlocked,
       contractQuantity,
       practiceMode,
@@ -659,6 +670,12 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
       getTradeHandler: () => this.getHandler(),
       getTradePadRoot: () => this.getTradePadRoot(),
     })
+    // An armed asynchronous picker may hold an older callback after navigation.
+    // Consult current props before dispatching, even if that closure was active.
+    const runTrade: typeof dispatchTrade = (...args) => {
+      if (this.props.viewActive === false) return
+      dispatchTrade(...args)
+    }
 
     const renderMainContent = () => {
       if (terminalShell && padSessionId) {
@@ -793,11 +810,11 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             <TradeHeader
               isDark={isDark}
               headerConnectionAccessory={
-                <InSessionJournalCapture
+                this.props.viewActive !== false ? <InSessionJournalCapture
                   key={`${this.props.liveMode ? 'live' : 'practice'}:${padSessionId}`}
                   isDark={isDark}
                   getSnapshot={this.captureJournalSnapshot}
-                />
+                /> : undefined
               }
               navigate={navigate}
               toggleTheme={toggleTheme}

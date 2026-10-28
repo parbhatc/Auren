@@ -33,7 +33,7 @@ export interface PracticeTradeRecord {
 
 export const practiceAPI = {
   getMarketData: async (): Promise<{ success: boolean; settings: PracticeMarketDataSettings }> => {
-    const res = await api.get('/practice/market-data', { headers: getAuthHeaders() })
+    const res = await api.get('/practice/market-data', { headers: getAuthHeaders(), timeout: 15_000 })
     return res.data
   },
 
@@ -45,7 +45,7 @@ export const practiceAPI = {
   },
 
   listAccounts: async (): Promise<{ success: boolean; accounts: PracticeAccount[] }> => {
-    const res = await api.get('/practice/accounts', { headers: getAuthHeaders() })
+    const res = await api.get('/practice/accounts', { headers: getAuthHeaders(), timeout: 15_000 })
     return res.data
   },
 
@@ -161,6 +161,7 @@ export const practiceAPI = {
   getStats: async (accountId: string) => {
     const res = await api.get(`/practice/accounts/${accountId}/stats`, {
       headers: getAuthHeaders(),
+      timeout: 15_000,
     })
     const data = res.data as {
       success?: boolean

@@ -12,6 +12,7 @@ import { debugTradeseaUpl } from './tradeseaDebug'
 import { debugPracticeChartSymbol } from './practiceChartSymbolDebug'
 import { saveLoadedCandlesChunk } from '../debug/candleDebugCapture'
 import { candleDebug } from './candleDebug'
+import { traceHistoryRequest } from '../debug/historyRequestTrace'
 import { tradeseaDollarsPerPoint, tradeseaDollarsPerTick } from './tradeseaPnL'
 import {
   tradeseaInstrumentsAllSymbolsUrl,
@@ -47,6 +48,8 @@ import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 export type { TradeseaMarketBook } from './tradeseaMarketBook'
 
 const HISTORY_CACHE_TTL_MS = 90_000
+const HISTORY_CACHE_MAX_ENTRIES = 128
+const REQUEST_TIMEOUT_MS = 15_000
 const HISTORY_MAX_RETRIES = 4
 const HISTORY_RETRY_BASE_MS = 1_200
 /**
@@ -83,6 +86,15 @@ type QuoteSubscription = {
   callback: (quotes: TvQuote[]) => void
 }
 
+type HistoryWindow = { series: string; from: number; to: number }
+type HistoryRequestState = { fresh: boolean; invalidated: boolean }
+type HistoryInflight = HistoryWindow & { promise: Promise<UdfHistoryResponse>; state: HistoryRequestState }
+
+function historyWindowsOverlap(a: HistoryWindow, b: HistoryWindow): boolean {
+  return a.series === b.series &&
+    (![a.from, a.to, b.from, b.to].every(Number.isFinite) || (a.from <= b.to && b.from <= a.to))
+}
+
 export class TradeseaDatafeed implements IDatafeedChartApi {
   private mds: TradeseaMdsClient
   private accountId: string
@@ -98,13 +110,16 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private resKeyToChartSymbol = new Map<string, string>()
   private instrumentIndex = new Map<string, TradeseaInstrumentRow>()
   private symbolsLoadPromise: Promise<void> | null = null
+  private resolvedSymbols = new Map<string, LibrarySymbolInfo>()
+  private resolvingSymbols = new Map<string, Promise<LibrarySymbolInfo>>()
   private readonly marketBook = new TradeseaMarketBookStore()
   private marketBookWired = false
   private offMarketBook: Array<() => void> = []
   private bookSubIdsByStream = new Map<string, number[]>()
   private historyFetchChains = new Map<string, Promise<unknown>>()
-  private historyInflight = new Map<string, Promise<UdfHistoryResponse>>()
-  private historyCache = new Map<string, { expires: number; data: UdfHistoryResponse }>()
+  private historyInflight = new Map<string, HistoryInflight>()
+  private historyCache = new Map<string, HistoryWindow & { expires: number; data: UdfHistoryResponse }>()
+  private historyGeneration = 0
   private chartResetCallback: (() => void) | null = null
   private chartSymbolChangeRequest: ((symbol: string) => void) | null = null
   private quoteSubs = new Map<string, QuoteSubscription>()
@@ -491,7 +506,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   clearHistoryCache(): void {
+    this.historyGeneration += 1
     this.historyCache.clear()
+    this.historyInflight.clear()
   }
 
   /** Release every MDS listener when an account switch replaces this datafeed. */
@@ -510,6 +527,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.lastDispatchedQuote.clear()
     this.bookSubIdsByStream.clear()
     this.tradeHandler = null
+    this.clearHistoryCache()
+    this.resolvedSymbols.clear()
+    this.resolvingSymbols.clear()
     this.chartResetCallback = null
     this.chartSymbolChangeRequest = null
   }
@@ -845,18 +865,34 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     return { ...bar, time: this.alignBarTimeMs(bar.time, resolution) }
   }
 
-  private rememberLastBar(symbolInfo: LibrarySymbolInfo, resolution: string, bar: Bar): void {
+  private lastBarKeys(symbolInfo: LibrarySymbolInfo, resolution: string): Set<string> {
     const res = String(resolution)
     const stream = this.streamSymbol(librarySymbolStreamTicker(symbolInfo))
     const chartName = librarySymbolDisplayName(symbolInfo)
-    const keys = new Set<string>([
+    return new Set<string>([
       this.keyFor(stream, res),
       this.keyFor(chartName, res),
       this.keyFor(this.streamSymbol(chartName), res),
     ])
-    for (const key of keys) {
+  }
+
+  private rememberLastBar(
+    symbolInfo: LibrarySymbolInfo,
+    resolution: string,
+    bar: Bar,
+    historySeed: Map<string, Bar | undefined>
+  ): void {
+    const res = String(resolution)
+    const aligned = this.alignBarTimeMs(bar.time, res)
+    for (const key of this.lastBarKeys(symbolInfo, res)) {
       if (!key) continue
-      const aligned = this.alignBarTimeMs(bar.time, res)
+      const current = this.lastBarByKey.get(key)
+      if (current) {
+        const currentTime = this.alignBarTimeMs(current.time, res)
+        // Scrollback cannot roll marks backwards; same-bucket history cannot
+        // replace a live tick or repair received after this request started.
+        if (currentTime > aligned || (currentTime === aligned && current !== historySeed.get(key))) continue
+      }
       const alignedBar = { ...bar, time: aligned }
       this.lastBarByKey.set(key, alignedBar)
       this.lastBarTimeByKey.set(key, aligned)
@@ -924,6 +960,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   private async fetchJson<T>(url: string, auth = true): Promise<T> {
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         ...(auth ? getAuthHeaders() : {}),
         Accept: 'application/json',
@@ -1002,49 +1039,92 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   private async fetchHistoryUdf(
     params: URLSearchParams,
-    options?: { skipCache?: boolean }
+    options?: { skipCache?: boolean; requestReason?: string }
   ): Promise<UdfHistoryResponse> {
     const cacheKey = this.historyCacheKey(params)
     const now = Date.now()
+    const requestWindow = {
+      series: `${params.get('symbol') || ''}|${params.get('resolution') || '1'}`,
+      from: Number(params.get('from')),
+      to: Number(params.get('to')),
+    }
+    const fresh = options?.skipCache === true
+    const previous = this.historyInflight.get(cacheKey)
+    if (fresh && previous?.state.fresh) {
+      traceHistoryRequest({ kind: 'joined', symbol: params.get('symbol') || '', resolution: params.get('resolution') || '1', reason: options?.requestReason })()
+      return previous.promise
+    }
+    if (fresh) {
+      // A tail repair must neither reuse old overlapping work nor let its late
+      // completion overwrite the newly repaired window. Keep older scrollback.
+      for (const [key, entry] of this.historyCache) {
+        if (historyWindowsOverlap(requestWindow, entry)) this.historyCache.delete(key)
+      }
+      for (const [key, entry] of this.historyInflight) {
+        if (!entry.state.fresh && historyWindowsOverlap(requestWindow, entry)) {
+          entry.state.invalidated = true
+          this.historyInflight.delete(key)
+        }
+      }
+      // Do not queue recovery behind an ordinary request stalled before the
+      // browser slept. Its completion remains guarded by the state above.
+      this.historyFetchChains.delete(requestWindow.series)
+    }
     if (!options?.skipCache) {
       const cached = this.historyCache.get(cacheKey)
       if (cached && cached.expires > now) {
         const sym = params.get('symbol') || ''
         const res = params.get('resolution') || '1'
         candleDebug.cacheHit(sym, res)
+        traceHistoryRequest({ kind: 'cache', symbol: sym, resolution: res, reason: options?.requestReason })({ bars: cached.data.t?.length ?? 0 })
         return cached.data
       }
     }
 
     const inflight = this.historyInflight.get(cacheKey)
-    if (inflight) return inflight
+    if (inflight) {
+      traceHistoryRequest({ kind: 'joined', symbol: params.get('symbol') || '', resolution: params.get('resolution') || '1', reason: options?.requestReason })()
+      return inflight.promise
+    }
 
     const queueKey = [
       params.get('symbol') || '',
       params.get('resolution') || '1',
     ].join('|')
+    const generation = this.historyGeneration
+    const state = { fresh, invalidated: false }
     const promise = this.enqueueHistoryFetch(queueKey, () =>
-      this.fetchHistoryUdfOnce(params, cacheKey)
+      this.fetchHistoryUdfOnce(params, cacheKey, generation, state, 0, options?.requestReason)
     )
-    this.historyInflight.set(cacheKey, promise)
+    const entry = { ...requestWindow, promise, state }
+    this.historyInflight.set(cacheKey, entry)
     try {
       return await promise
     } finally {
-      this.historyInflight.delete(cacheKey)
+      if (this.historyInflight.get(cacheKey) === entry) this.historyInflight.delete(cacheKey)
     }
   }
 
   private async fetchHistoryUdfOnce(
     params: URLSearchParams,
     cacheKey: string,
-    attempt = 0
+    generation: number,
+    state: HistoryRequestState,
+    attempt = 0,
+    requestReason?: string
   ): Promise<UdfHistoryResponse> {
-    const stale = this.historyCache.get(cacheKey)?.data
+    const stale = state.fresh ? undefined : this.historyCache.get(cacheKey)?.data
     const url = this.proxyUdfUrl('history', new URLSearchParams(params))
     let res: Response
     let text: string
+    const finishTrace = traceHistoryRequest({
+      kind: 'wire', symbol: params.get('symbol') || '', resolution: params.get('resolution') || '1',
+      from: Number(params.get('from')), to: Number(params.get('to')), countBack: Number(params.get('countback')),
+      reason: requestReason, attempt,
+    })
     try {
       res = await fetch(url, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
           ...getAuthHeaders(),
           Accept: 'application/json',
@@ -1052,7 +1132,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       })
       text = await res.text()
     } catch (err) {
-      if (stale) return stale
+      finishTrace({ error: true })
+      if (stale && !state.invalidated) return stale
       throw err
     }
     let data: UdfHistoryResponse | null = null
@@ -1060,10 +1141,12 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       data = text ? (JSON.parse(text) as UdfHistoryResponse) : null
     } catch {
       if (res.status === 429 && attempt < HISTORY_MAX_RETRIES) {
+        finishTrace({ error: true })
         await this.sleep(this.historyRetryDelayMs(res, attempt))
-        return this.fetchHistoryUdfOnce(params, cacheKey, attempt + 1)
+        return this.fetchHistoryUdfOnce(params, cacheKey, generation, state, attempt + 1, requestReason)
       }
       const snippet = text.trim().slice(0, 120)
+      finishTrace({ error: true })
       throw new Error(
         res.ok
           ? 'Invalid JSON from Tradesea history'
@@ -1072,22 +1155,35 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     }
 
     if (res.status === 429) {
+      finishTrace({ error: true })
       if (attempt < HISTORY_MAX_RETRIES) {
         await this.sleep(this.historyRetryDelayMs(res, attempt))
-        return this.fetchHistoryUdfOnce(params, cacheKey, attempt + 1)
+        return this.fetchHistoryUdfOnce(params, cacheKey, generation, state, attempt + 1, requestReason)
       }
-      if (stale) return stale
+      if (stale && !state.invalidated) return stale
       throw new Error('History rate limited (429). Please wait a moment and refresh.')
     }
 
     if (!res.ok) {
+      finishTrace({ error: true })
       throw new Error(
         data?.message || data?.errmsg || `History request failed (${res.status})`
       )
     }
 
     const out = data ?? { s: 'no_data' }
+    finishTrace({ bars: out.t?.length ?? 0, error: out.s !== 'ok' && out.s !== 'no_data' })
+    if (generation !== this.historyGeneration || state.invalidated) return out
+    for (const [key, entry] of this.historyCache) {
+      if (entry.expires <= Date.now()) this.historyCache.delete(key)
+    }
+    if (!this.historyCache.has(cacheKey) && this.historyCache.size >= HISTORY_CACHE_MAX_ENTRIES) {
+      this.historyCache.delete(this.historyCache.keys().next().value!)
+    }
     this.historyCache.set(cacheKey, {
+      series: `${params.get('symbol') || ''}|${params.get('resolution') || '1'}`,
+      from: Number(params.get('from')),
+      to: Number(params.get('to')),
       data: out,
       expires: Date.now() + HISTORY_CACHE_TTL_MS,
     })
@@ -1110,6 +1206,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       .catch((err) => {
         console.error('[TradeseaDatafeed] Failed to load instruments:', err)
         this.instrumentIndex = new Map()
+        this.symbolsLoadPromise = null
       })
 
     return this.symbolsLoadPromise
@@ -1213,8 +1310,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   ): void {
     const q = userInput.trim()
 
-    void this.ensureSymbolsLoaded()
-      .then(() => this.instrumentsSearch(q || 'NQ'))
+    void this.instrumentsSearch(q || 'NQ')
       .then((rows) => rows.map((row) => instrumentToSearchSymbolResult(row, this.delayed)))
       .then(onResult)
       .catch((err) => {
@@ -1236,12 +1332,27 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
     this.logSymbol('resolveSymbol:start', { symbolName: name }, { force: true })
 
-    void this.ensureSymbolsLoaded()
-      .then(async () => {
+    const key = this.streamSymbol(name).toUpperCase()
+    const cached = this.resolvedSymbols.get(key)
+    if (cached) {
+      queueMicrotask(() => onResolve(cached))
+      return
+    }
+    let pending = this.resolvingSymbols.get(key)
+    if (!pending) {
+      // The authoritative UDF metadata can resolve standard tickers without
+      // waiting for the much larger all-symbol catalog. Keep that catalog as
+      // a fallback and share metadata across panes, indicators and intervals.
+      const catalogReady = this.ensureSymbolsLoaded()
+      const udfReady = this.resolveUdfSymbol(key)
+      pending = (async () => {
+        const initialInfo = await udfReady
+        if (initialInfo) return initialInfo
+        await catalogReady
         const instrument = findInstrument(this.instrumentIndex, name)
         const ticker = this.streamSymbol(instrument?.ticker || name)
 
-        const udfInfo = await this.resolveUdfSymbol(ticker)
+        const udfInfo = ticker.toUpperCase() === key ? null : await this.resolveUdfSymbol(ticker)
         if (udfInfo) {
           this.logSymbol(
             'resolveSymbol:udf',
@@ -1253,8 +1364,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             },
             { force: true }
           )
-          onResolve(udfInfo)
-          return
+          return udfInfo
         }
 
         if (instrument) {
@@ -1269,8 +1379,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             },
             { force: true }
           )
-          onResolve(info)
-          return
+          return info
         }
 
         const query = name.includes(':') ? name.split(':').pop()! : name
@@ -1298,8 +1407,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
             },
             { force: true }
           )
-          onResolve(udfFromSearch)
-          return
+          return udfFromSearch
         }
 
         const info = instrumentToLibrarySymbolInfo(exact, this.delayed)
@@ -1312,8 +1420,18 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           },
           { force: true }
         )
-        onResolve(info)
+        return info
+      })().then((info) => {
+        this.resolvedSymbols.set(key, info)
+        this.resolvedSymbols.set(this.streamSymbol(librarySymbolStreamTicker(info)).toUpperCase(), info)
+        return info
       })
+      this.resolvingSymbols.set(key, pending)
+      void pending.finally(() => {
+        if (this.resolvingSymbols.get(key) === pending) this.resolvingSymbols.delete(key)
+      }).catch(() => undefined)
+    }
+    void pending.then(onResolve)
       .catch((err) => {
         this.logSymbol('resolveSymbol:error', { symbolName: name, error: String(err) }, { force: true })
         console.error('[TradeseaDatafeed] resolveSymbol failed:', err)
@@ -1324,7 +1442,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   getBars(
     symbolInfo: LibrarySymbolInfo | null | undefined,
     resolution: ResolutionString,
-    periodParams: { from: number; to: number; firstDataRequest?: boolean; countBack?: number },
+    periodParams: { from: number; to: number; firstDataRequest?: boolean; countBack?: number; requestReason?: string; refresh?: boolean },
     onResult: (bars: Bar[], meta: { noData: boolean }) => void,
     onError: (reason: string) => void
   ): void {
@@ -1332,6 +1450,9 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       onResult([], { noData: true })
       return
     }
+    const historySeed = new Map([...this.lastBarKeys(symbolInfo, String(resolution))]
+      .map((key) => [key, this.lastBarByKey.get(key)] as const))
+    const historyGeneration = this.historyGeneration
     const chartSymbol = librarySymbolDisplayName(symbolInfo)
     const symbol = this.streamSymbol(librarySymbolStreamTicker(symbolInfo))
     if (periodParams.firstDataRequest) {
@@ -1363,7 +1484,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
     const params = this.buildHistoryParams(symbol, sourceResolution, from, to, countback)
 
-    this.fetchHistoryUdf(params)
+    this.fetchHistoryUdf(params, { requestReason: periodParams.requestReason, skipCache: periodParams.refresh })
       .then((data) => {
         if (data.s === 'no_data' || !data.t?.length) {
           candleDebug.history({
@@ -1389,8 +1510,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           lastTimeMs: bars[bars.length - 1]?.time,
           firstLoad: Boolean(periodParams.firstDataRequest),
         })
-        if (bars.length > 0) {
-          this.rememberLastBar(symbolInfo, String(resolution), bars[bars.length - 1])
+        if (bars.length > 0 && historyGeneration === this.historyGeneration) {
+          this.rememberLastBar(symbolInfo, String(resolution), bars[bars.length - 1], historySeed)
         }
         if (periodParams.firstDataRequest) {
           void saveLoadedCandlesChunk({

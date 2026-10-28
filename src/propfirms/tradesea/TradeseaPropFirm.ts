@@ -11,6 +11,7 @@ import { PropFirmBase } from '../PropFirmBase'
 import { propsAPI } from '../../api/props.api'
 
 import { tradeseaAPI, TradeseaAccount } from '../../api/tradesea.api'
+import { invalidateLiveTradeSession } from '../../services/trading/liveTradeSession'
 
 import {
   getPracticeSettings,
@@ -217,6 +218,7 @@ export class TradeseaPropFirm extends PropFirmBase {
   private tradeHandler: TradeseaTradeHandler | null = null
 
   private connectStreamsPromise: Promise<void> | null = null
+  private lifecycleGeneration = 0
 
   private lastBootstrapKey = ''
 
@@ -263,6 +265,10 @@ export class TradeseaPropFirm extends PropFirmBase {
     marketLabel?: string,
     simAccountId?: string
   ): void {
+    if (enabled !== this.practiceMode || (enabled && (
+      this.practiceAccountId !== (String(marketAccountId || '').trim() || null)
+      || this.practiceSimAccountId !== (String(simAccountId || '').trim() || null)
+    ))) this.cleanup()
     this.practiceMode = enabled
     this.practiceAccountId = enabled ? String(marketAccountId || '').trim() || null : null
     this.practiceAccountLabel = enabled ? String(marketLabel || '').trim() || null : null
@@ -285,19 +291,24 @@ export class TradeseaPropFirm extends PropFirmBase {
     }
   }
 
-  setOnDataReady(callback: () => void): void {
+  setOnDataReady(callback: () => void): () => void {
 
     this.onDataReady = callback
+    return () => {
+      if (this.onDataReady === callback) this.onDataReady = undefined
+    }
 
   }
 
 
 
   async validate(): Promise<{ success: boolean; type?: string; message?: string }> {
+    const generation = this.lifecycleGeneration
 
     if (this.serverManagedPracticeData) return { success: true }
 
     const response = await propsAPI.getPropFirm('tradesea')
+    if (generation !== this.lifecycleGeneration) throw new DOMException('Session changed', 'AbortError')
 
     const propFirm = response.propFirm
 
@@ -330,6 +341,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     try {
 
       const status = await tradeseaAPI.getConnectionStatus()
+      if (generation !== this.lifecycleGeneration) throw new DOMException('Session changed', 'AbortError')
 
       if (status.connected) {
 
@@ -347,7 +359,10 @@ export class TradeseaPropFirm extends PropFirmBase {
 
       }
 
-    } catch {
+    } catch (error) {
+      if (generation !== this.lifecycleGeneration || (error instanceof Error && error.name === 'AbortError')) {
+        throw new DOMException('Session changed', 'AbortError')
+      }
 
       return {
 
@@ -366,6 +381,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
 
   async onValidateSuccess(options?: { skipStreams?: boolean }): Promise<void> {
+    const generation = this.lifecycleGeneration
     if (this.practiceMode) {
       if (this.practiceSimAccountId) {
         await this.loadPracticeSimTradeAccount(options)
@@ -380,6 +396,7 @@ export class TradeseaPropFirm extends PropFirmBase {
       if (!options?.skipStreams) {
         await this.connectStreamsForSelectedAccount()
       }
+      if (generation !== this.lifecycleGeneration) return
 
       this.onDataReady?.()
 
@@ -396,6 +413,7 @@ export class TradeseaPropFirm extends PropFirmBase {
       while (this.accountsLoading && waitCount < 50) {
 
         await new Promise((resolve) => setTimeout(resolve, 100))
+        if (generation !== this.lifecycleGeneration) return
 
         waitCount++
 
@@ -406,6 +424,7 @@ export class TradeseaPropFirm extends PropFirmBase {
         if (!options?.skipStreams) {
           await this.connectStreamsForSelectedAccount()
         }
+        if (generation !== this.lifecycleGeneration) return
 
         this.onDataReady?.()
 
@@ -422,6 +441,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     try {
 
       const result = await tradeseaAPI.getAccounts()
+      if (generation !== this.lifecycleGeneration) return
 
       if (!result.connected || !result.accounts?.length) {
 
@@ -534,18 +554,19 @@ export class TradeseaPropFirm extends PropFirmBase {
       this.accountsFetched = true
 
       await this.onSelectedAccountChanged(options)
+      if (generation !== this.lifecycleGeneration) return
 
       this.onDataReady?.()
 
     } finally {
-
-      this.accountsLoading = false
+      if (generation === this.lifecycleGeneration) this.accountsLoading = false
 
     }
 
   }
 
   private async loadPracticeSimTradeAccount(options?: { skipStreams?: boolean }): Promise<void> {
+    const generation = this.lifecycleGeneration
     const simId = this.practiceSimAccountId
     if (!simId) {
       await this.loadPracticeAccount(options)
@@ -598,11 +619,13 @@ export class TradeseaPropFirm extends PropFirmBase {
         this.practiceTradeHandler =
           sim.status === 'active' ? new PracticeTradeHandler(this, sim.id) : null
         await this.onSelectedAccountChanged(options)
+        if (generation !== this.lifecycleGeneration) return
         this.onDataReady?.()
         return
       }
 
       const result = await tradeseaAPI.getAccounts()
+      if (generation !== this.lifecycleGeneration) return
       if (!result.connected || !result.accounts?.length) {
         throw new Error(
           result.message ||
@@ -629,6 +652,7 @@ export class TradeseaPropFirm extends PropFirmBase {
           accountLabel: market.label || market.id,
         })
         await savePracticeMarketDataSettings(nextSettings)
+        if (generation !== this.lifecycleGeneration) return
       }
 
       this.practiceAccountId = market.id
@@ -652,13 +676,15 @@ export class TradeseaPropFirm extends PropFirmBase {
       this.practiceTradeHandler =
         sim.status === 'active' ? new PracticeTradeHandler(this, sim.id) : null
       await this.onSelectedAccountChanged(options)
+      if (generation !== this.lifecycleGeneration) return
       this.onDataReady?.()
     } finally {
-      this.accountsLoading = false
+      if (generation === this.lifecycleGeneration) this.accountsLoading = false
     }
   }
 
   private async loadPracticeAccount(options?: { skipStreams?: boolean }): Promise<void> {
+    const generation = this.lifecycleGeneration
     const settings = getPracticeSettings()
     const targetId = this.practiceAccountId || settings.accountId
     const targetLabel = this.practiceAccountLabel || settings.accountLabel
@@ -674,6 +700,7 @@ export class TradeseaPropFirm extends PropFirmBase {
     this.accountsLoading = true
     try {
       const result = await tradeseaAPI.getAccounts()
+      if (generation !== this.lifecycleGeneration) return
       if (!result.connected || !result.accounts?.length) {
         const error: Error & { type?: string } = new Error(
           result.message || 'Market data is not connected. Connect in Settings → Market data.'
@@ -715,14 +742,17 @@ export class TradeseaPropFirm extends PropFirmBase {
       this.selectedAccountId = account.id
       this.accountsFetched = true
       await this.onSelectedAccountChanged(options)
+      if (generation !== this.lifecycleGeneration) return
       this.onDataReady?.()
     } finally {
-      this.accountsLoading = false
+      if (generation === this.lifecycleGeneration) this.accountsLoading = false
     }
   }
 
   async connectStreamsForSelectedAccount(): Promise<void> {
+    const generation = this.lifecycleGeneration
     while (this.selectedAccountId) {
+      if (generation !== this.lifecycleGeneration) return
       const accountId = this.selectedAccountId
       const activeConnect = this.connectStreamsPromise
       if (activeConnect) {
@@ -750,6 +780,7 @@ export class TradeseaPropFirm extends PropFirmBase {
   }
 
   private async runConnectStreamsForSelectedAccount(accountId: string): Promise<void> {
+    const generation = this.lifecycleGeneration
     this.streamsLoading = true
     this.streamsError = null
     this.streamsReady = false
@@ -760,6 +791,13 @@ export class TradeseaPropFirm extends PropFirmBase {
         this.chartServices && this.chartServices.accountId !== accountId
 
       if (switchingAccount) {
+        this.tradeHandler?.disposeSession()
+        this.orders = []
+        this.positions = []
+        this.executions = []
+        this.balance = 0
+        this.rpl = 0
+        this.upl = 0
         if (this.chartServices?.mds) {
           teardownTradeseaChartServices(this.chartServices)
         }
@@ -789,8 +827,13 @@ export class TradeseaPropFirm extends PropFirmBase {
             // Tradesea/Lucid UDF + MDS connection; wrapping every practice
             // chart here silently routed Tradesea charts through TradingView.
             usePracticeMarketData: this.practiceMode && this.serverManagedPracticeData,
+            isCurrent: () => generation === this.lifecycleGeneration && this.selectedAccountId === accountId,
           }
         )
+      if (generation !== this.lifecycleGeneration) {
+        nextServices.datafeed.dispose()
+        return
+      }
       if (this.selectedAccountId !== accountId) {
         teardownTradeseaChartServices(nextServices)
         return
@@ -844,8 +887,9 @@ export class TradeseaPropFirm extends PropFirmBase {
       }
 
     } catch (err: unknown) {
+      if (generation !== this.lifecycleGeneration) return
 
-      if (this.selectedAccountId === accountId) {
+      if (generation === this.lifecycleGeneration && this.selectedAccountId === accountId) {
         this.streamsError =
           err instanceof Error ? err.message : 'Failed to connect market data'
       }
@@ -854,7 +898,7 @@ export class TradeseaPropFirm extends PropFirmBase {
 
     } finally {
 
-      if (this.selectedAccountId === accountId) {
+      if (generation === this.lifecycleGeneration && this.selectedAccountId === accountId) {
         this.streamsLoading = false
         this.onDataReady?.()
       }
@@ -1501,6 +1545,22 @@ export class TradeseaPropFirm extends PropFirmBase {
   }
 
   cleanup(): void {
+    invalidateLiveTradeSession(this, false)
+    this.lifecycleGeneration += 1
+    this.tradeHandler?.disposeSession()
+    this.connectStreamsPromise = null
+    this.accountsLoading = false
+    this.accountsFetched = false
+    this.selectedAccountId = null
+    this.onDataReady = undefined
+    this.accounts = []
+    this.formattedAccounts = []
+    this.orders = []
+    this.positions = []
+    this.executions = []
+    this.balance = 0
+    this.rpl = 0
+    this.upl = 0
     if (this.tradesMessageUnsub) {
       this.tradesMessageUnsub()
       this.tradesMessageUnsub = null

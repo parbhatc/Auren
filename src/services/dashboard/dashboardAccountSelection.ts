@@ -31,6 +31,8 @@ export function getDashboardAccountSelection(): DashboardAccountSelection | null
 }
 
 export function saveDashboardAccountSelection(selection: DashboardAccountSelection): void {
+  const saved = getDashboardAccountSelection()
+  if (saved?.source === selection.source && saved.accountId === selection.accountId) return
   try {
     localStorage.setItem(DASHBOARD_ACCOUNT_STORAGE_KEY, dashboardAccountValue(selection))
   } catch {

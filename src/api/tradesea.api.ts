@@ -1,4 +1,19 @@
-import api, { getAuthHeaders } from './api'
+import api, { getAuthHeaders, getAuthToken } from './api'
+import { createSingleFlight } from '../../shared/singleFlight.js'
+
+const pendingReads = createSingleFlight()
+
+function readBootstrap<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const token = getAuthToken()
+  return pendingReads(`${token ?? ''}:${path}:${JSON.stringify(params ?? {})}`, async () => {
+    const response = await api.get<T>(path, {
+      headers: getAuthHeaders(),
+      params,
+      timeout: 15_000,
+    })
+    return response.data
+  })
+}
 
 export interface TradeseaOtpSendResponse {
   success: boolean
@@ -179,10 +194,7 @@ export const tradeseaAPI = {
   },
 
   getConnectionStatus: async (): Promise<TradeseaConnectionResponse> => {
-    const response = await api.get<TradeseaConnectionResponse>('/tradesea/connection', {
-      headers: getAuthHeaders(),
-    })
-    return response.data
+    return readBootstrap<TradeseaConnectionResponse>('/tradesea/connection')
   },
 
   refreshSession: async (): Promise<TradeseaRefreshSessionResponse> => {
@@ -195,18 +207,11 @@ export const tradeseaAPI = {
   },
 
   getAccounts: async (): Promise<TradeseaAccountsResponse> => {
-    const response = await api.get<TradeseaAccountsResponse>('/tradesea/accounts', {
-      headers: getAuthHeaders(),
-    })
-    return response.data
+    return readBootstrap<TradeseaAccountsResponse>('/tradesea/accounts')
   },
 
   getStreamConfig: async (accountId: string): Promise<TradeseaStreamConfig> => {
-    const response = await api.get<TradeseaStreamConfig>('/tradesea/stream-config', {
-      headers: getAuthHeaders(),
-      params: { accountId },
-    })
-    return response.data
+    return readBootstrap<TradeseaStreamConfig>('/tradesea/stream-config', { accountId })
   },
 
   placeOrder: async (order: TradeseaPlaceOrderRequest): Promise<TradeseaPlaceOrderResponse> => {
@@ -298,7 +303,7 @@ export const tradeseaAPI = {
         ...body,
         timezoneOffset: body.timezoneOffset ?? new Date().getTimezoneOffset(),
       },
-      { headers: getAuthHeaders() }
+      { headers: getAuthHeaders(), timeout: 15_000 }
     )
     return response.data
   },
@@ -321,7 +326,7 @@ export const tradeseaAPI = {
         ...body,
         timezoneOffset: body.timezoneOffset ?? new Date().getTimezoneOffset(),
       },
-      { headers: getAuthHeaders() }
+      { headers: getAuthHeaders(), timeout: 15_000 }
     )
     return response.data
   },

@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
 
+declare module 'virtual:auren-chart-version' {
+  const version: string
+  export default version
+}
+
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string
 }

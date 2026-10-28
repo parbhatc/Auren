@@ -43,6 +43,58 @@ export class TradeseaTradesClient {
   private connectGeneration = 0
   private keepaliveAbort: AbortController | null = null
   private pongWaiter: ((ok: boolean) => void) | null = null
+  private static readonly activeClients = new Set<TradeseaTradesClient>()
+  private static pageLifecycleBound = false
+  private pageHiddenAt: number | null = null
+  private lastWireActivityAt = 0
+  private connectionStartedAt = 0
+  private pageVisibleTimer: ReturnType<typeof setTimeout> | null = null
+
+  private registerPageLifecycle(): void {
+    TradeseaTradesClient.activeClients.add(this)
+    if (TradeseaTradesClient.pageLifecycleBound || typeof document === 'undefined') return
+    TradeseaTradesClient.pageLifecycleBound = true
+    const hidden = () => {
+      for (const client of TradeseaTradesClient.activeClients) client.pageHiddenAt = Date.now()
+    }
+    const visible = () => {
+      if (document.visibilityState === 'hidden') return
+      for (const client of TradeseaTradesClient.activeClients) {
+        if (client.pageVisibleTimer) clearTimeout(client.pageVisibleTimer)
+        client.pageVisibleTimer = setTimeout(() => {
+          client.pageVisibleTimer = null
+          client.handleForegroundResume()
+        }, 150)
+      }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') hidden()
+      else visible()
+    })
+    window.addEventListener('pagehide', hidden)
+    window.addEventListener('pageshow', visible)
+    window.addEventListener('focus', visible)
+  }
+
+  private handleForegroundResume(): void {
+    if (!this.shouldReconnect || !this.accountId || !getAuthToken()) return
+    const now = Date.now()
+    const hiddenMs = this.pageHiddenAt == null ? 0 : now - this.pageHiddenAt
+    this.pageHiddenAt = null
+    const longBackground = hiddenMs >= 30_000
+    const staleWire = this.lastWireActivityAt > 0 && now - this.lastWireActivityAt >= 25_000
+    const staleConnect = this.ws?.readyState === WebSocket.CONNECTING && now - this.connectionStartedAt >= 30_000
+    if (!longBackground && !staleWire && !staleConnect && this.ws
+      && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return
+    const accountId = this.accountId
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+    // Safari can leave a dead socket OPEN after suspension. Retire it even
+    // when readyState would otherwise make connect(accountId) a no-op.
+    this.connectGeneration += 1
+    this.detachSocket()
+    this.connect(accountId)
+  }
 
   onMessage(listener: TradeseaTradesListener): () => void {
     this.listeners.add(listener)
@@ -66,6 +118,8 @@ export class TradeseaTradesClient {
     this.detachSocket()
     this.shouldReconnect = true
     this.accountId = accountId
+    this.connectionStartedAt = Date.now()
+    this.registerPageLifecycle()
 
     const url = `${getWebSocketUrl('/tradesea-trades-ws')}?accountId=${encodeURIComponent(accountId)}&token=${encodeURIComponent(token)}`
     const generation = ++this.connectGeneration
@@ -77,12 +131,14 @@ export class TradeseaTradesClient {
 
     ws.onopen = () => {
       if (this.ws !== ws || generation !== this.connectGeneration) return
+      this.lastWireActivityAt = Date.now()
       console.info('[Tradesea Trades WS] Connected')
       this.startKeepalive(ws, generation)
     }
 
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return
+      this.lastWireActivityAt = Date.now()
       const text = typeof ev.data === 'string' ? ev.data.trim() : ''
       if (!text) return
 
@@ -226,6 +282,11 @@ export class TradeseaTradesClient {
   }
 
   disconnect(clearReconnect = true): void {
+    TradeseaTradesClient.activeClients.delete(this)
+    if (this.pageVisibleTimer) clearTimeout(this.pageVisibleTimer)
+    this.pageVisibleTimer = null
+    this.pageHiddenAt = null
+    this.lastWireActivityAt = 0
     if (clearReconnect) {
       this.shouldReconnect = false
     }

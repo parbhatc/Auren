@@ -1,5 +1,6 @@
 import { aurenToast } from '../../utils/aurenToast'
 import { tradeseaAPI } from '../../api/tradesea.api'
+import { getAuthToken } from '../../api/api'
 import { TradeseaPropFirm } from '../../propfirms/tradesea'
 import {
   formatTradeseaExecutionTooltip,
@@ -34,14 +35,26 @@ export class TradeseaTradeHandler {
   private streamSyncTimer: ReturnType<typeof setTimeout> | null = null
   private marketBookUnsub: (() => void) | null = null
   private cancelChartPricePick: (() => void) | null = null
+  private attachedDatafeed: TradeseaDatafeed | null = null
+  private cacheSessionKey: string | null = null
+  private executionRefreshTimer: ReturnType<typeof setTimeout> | null = null
   /** Fired when candle-driven UP&L changes (account bar). */
   onUnrealizedPnLUpdate?: (upl: number) => void
 
   constructor(readonly propFirm: TradeseaPropFirm) {}
 
+  private sessionKey(): string {
+    return JSON.stringify([getAuthToken(), this.propFirm.token, this.propFirm.selectedAccountId])
+  }
+
   onReady(widget: any, chartDatafeed?: TradeseaDatafeed | null): void {
+    const sessionKey = this.sessionKey()
+    if (this.cacheSessionKey !== sessionKey) this.disposeSession()
+    else if (this.widget && this.widget !== widget) this.detachChart(this.widget)
     this.widget = widget
-    this.tradeCache = new TradeseaTradeCache(this, widget)
+    if (this.tradeCache) this.tradeCache.attachChartView(widget)
+    else this.tradeCache = new TradeseaTradeCache(this, widget)
+    this.cacheSessionKey = sessionKey
     this.attachToDatafeed(chartDatafeed)
     if (this.propFirm.positions.some((p) => Math.abs(p.qty ?? 0) > 0)) {
       this.scheduleStreamSync()
@@ -49,6 +62,38 @@ export class TradeseaTradeHandler {
       void this.syncFromStream()
     }
     void this.refreshExecutionsForChart()
+  }
+
+  /** Detach just the view; keep account marks and browser stop state warm. */
+  detachChart(widget: unknown): void {
+    if (this.widget !== widget) return
+    if (this.streamSyncTimer) clearTimeout(this.streamSyncTimer)
+    this.streamSyncTimer = null
+    if (this.executionRefreshTimer) clearTimeout(this.executionRefreshTimer)
+    this.executionRefreshTimer = null
+    this.cancelChartPricePick?.()
+    this.cancelChartPricePick = null
+    this.executionsPaintGeneration += 1
+    this.clearExecutionShapes()
+    this.tradeCache?.detachChartView()
+    this.widget = null
+  }
+
+  /** End account/auth ownership before another feed can publish new ticks. */
+  disposeSession(): void {
+    if (this.widget) this.detachChart(this.widget)
+    if (this.streamSyncTimer) clearTimeout(this.streamSyncTimer)
+    this.streamSyncTimer = null
+    if (this.executionRefreshTimer) clearTimeout(this.executionRefreshTimer)
+    this.executionRefreshTimer = null
+    this.executionsPaintGeneration += 1
+    this.marketBookUnsub?.()
+    this.marketBookUnsub = null
+    this.attachedDatafeed?.setTradeHandler(null)
+    this.attachedDatafeed = null
+    this.tradeCache?.detachChartView()
+    this.tradeCache = null
+    this.cacheSessionKey = null
   }
 
   /** Bind candle → UP&L on the datafeed the chart actually uses. */
@@ -59,9 +104,11 @@ export class TradeseaTradeHandler {
       null
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
+    this.attachedDatafeed = df
     df?.setTradeHandler(this)
     if (df?.subscribeMarketBook) {
       this.marketBookUnsub = df.subscribeMarketBook((streamId, kind) => {
+        if (this.cacheSessionKey !== this.sessionKey()) return
         if (kind !== 'ltp' && kind !== 'bbo') return
         const book = df.getMarketBookForStream(streamId)
         const mark =
@@ -83,6 +130,7 @@ export class TradeseaTradeHandler {
   }
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number }): void {
+    if (this.cacheSessionKey !== this.sessionKey()) return
     if (!this.tradeCache || !bar) return
     if (isBwcChartPanning()) return
     this.tradeCache.onRealTimeBar(symbol, bar)
@@ -241,6 +289,10 @@ export class TradeseaTradeHandler {
       clearTimeout(this.streamSyncTimer)
       this.streamSyncTimer = null
     }
+    if (!this.widget) {
+      this.syncFromStream()
+      return
+    }
 
     const delays = [0, 1000]
     let step = 0
@@ -257,11 +309,17 @@ export class TradeseaTradeHandler {
   }
 
   syncFromStream(): void {
-    if (!this.tradeCache || !this.widget?.chart) return
+    if (!this.tradeCache || this.cacheSessionKey !== this.sessionKey()) return
+    const widget = this.widget
+    const cache = this.tradeCache
+    const chart = widget?.chart?.() ?? cache.getChart()
+    if (!chart) return
+    const sessionKey = this.cacheSessionKey
 
     const run = () => {
+      if (this.widget !== widget || this.tradeCache !== cache || this.sessionKey() !== sessionKey) return
       try {
-        const chartSymbol = String(this.widget.chart().symbol() || this.propFirm.chartSymbol)
+        const chartSymbol = String(chart.symbol() || this.propFirm.chartSymbol)
         this.tradeCache?.syncAllOpenPositions(chartSymbol)
         this.refreshUnrealizedFromLastBar()
       } catch {
@@ -279,9 +337,11 @@ export class TradeseaTradeHandler {
 
   /** Bracket-only refresh when `orderUpdates` moves SL/TP (position size unchanged). */
   syncBracketsFromOrders(): void {
-    if (!this.tradeCache || !this.widget?.chart) return
+    if (!this.tradeCache || this.cacheSessionKey !== this.sessionKey()) return
     try {
-      const chartSymbol = String(this.widget.chart().symbol() || this.propFirm.chartSymbol)
+      const chart = this.widget?.chart?.() ?? this.tradeCache.getChart()
+      if (!chart) return
+      const chartSymbol = String(chart.symbol() || this.propFirm.chartSymbol)
       this.tradeCache.syncPositionForChartSymbol(chartSymbol)
     } catch {
       /* chart not ready */
@@ -290,7 +350,7 @@ export class TradeseaTradeHandler {
 
   refreshUnrealizedFromLastBar(): void {
     try {
-      const chart = this.widget?.chart?.()
+      const chart = this.widget?.chart?.() ?? this.tradeCache?.getChart()
       const datafeed = this.propFirm.chartServices?.datafeed
       const lastBar = chart && datafeed?.getLastBarForChart?.(chart)
       const chartSymbol = chart ? String(chart.symbol?.() || '') : undefined
@@ -385,7 +445,9 @@ export class TradeseaTradeHandler {
   }
 
   private scheduleRefresh(chartSymbol: string): void {
-    setTimeout(() => {
+    if (this.executionRefreshTimer) clearTimeout(this.executionRefreshTimer)
+    this.executionRefreshTimer = setTimeout(() => {
+      this.executionRefreshTimer = null
       void this.refreshExecutionsForChart(chartSymbol)
     }, 800)
   }
@@ -394,17 +456,21 @@ export class TradeseaTradeHandler {
   async refreshExecutionsForChart(symbol?: string): Promise<void> {
     const accountId = this.propFirm.selectedAccountId
     if (!accountId || !this.widget?.chart) return
+    const widget = this.widget
+    const sessionKey = this.cacheSessionKey
 
     const datafeed = this.propFirm.chartServices?.datafeed
     if (datafeed?.whenSymbolsReady) {
       await datafeed.whenSymbolsReady()
     }
+    if (this.widget !== widget || this.sessionKey() !== sessionKey) return
 
     const instrument = this.resolveInstrument(this.getChartSymbol(symbol))
 
     try {
       const res = await tradeseaAPI.getExecutions(accountId, instrument, 100)
       if (!res.success || res.s !== 'ok') return
+      if (this.widget !== widget || this.sessionKey() !== sessionKey) return
 
       const executions = parseTradeseaExecutions(res)
       this.propFirm.executions = executions
@@ -448,6 +514,10 @@ export class TradeseaTradeHandler {
         const tooltip = formatTradeseaExecutionTooltip(ex)
         const time = toChartExecutionTimeSeconds(ex.time)
         const line = await chart.createExecutionShape()
+        if (generation !== this.executionsPaintGeneration) {
+          line?.remove?.()
+          return
+        }
 
         if (!line || typeof line.setTime !== 'function') continue
 

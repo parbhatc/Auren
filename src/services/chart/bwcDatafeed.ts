@@ -2,6 +2,7 @@ import type { Bar, IDatafeedChartApi, LibrarySymbolInfo, ResolutionString } from
 import { tradeseaResolutionToSeconds } from '../tradesea/tradeseaResolutions'
 import { candleDebug } from '../tradesea/candleDebug'
 import { librarySymbolDisplayName } from '../tradesea/tradeseaSymbolInfo'
+import { traceHistoryRequest } from '../debug/historyRequestTrace'
 
 type BwcResolution = { id: string; label: string; sec: number }
 
@@ -50,8 +51,19 @@ function normalizeBarForBwc(bar: Bar): Bar {
   return { ...bar, time: barTimeToSec(bar.time) }
 }
 
+let chartDatafeedSequence = 0
+
 /** Bridge a TradingView-style datafeed to BetterweightChartPro createCustomDatafeed. */
 export function createBwcDatafeed(source: IDatafeedChartApi) {
+  // The source belongs to the account session and can outlive several chart
+  // mounts. Keep the subscriptions owned by this view separate from its cache
+  // and from subscriptions belonging to other chart panes/views.
+  const barListeners = new Set<string>()
+  const quoteListeners = new Set<string>()
+  // BWC uses pane-local IDs such as "pane-0" in every widget.
+  const listenerPrefix = `auren-chart-${++chartDatafeedSequence}:`
+  const sourceListener = (listenerGuid: string) => `${listenerPrefix}${listenerGuid}`
+  let disposed = false
   let cachedConfig: {
     resolutions: BwcResolution[]
     supported_resolutions: string[]
@@ -99,6 +111,8 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
         to?: number
         countBack?: number
         firstDataRequest?: boolean
+        requestReason?: string
+        refresh?: boolean
       } = {}
     ) {
       if (!symbolInfo) {
@@ -120,6 +134,10 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
         fromSec: from,
         toSec: to,
       })
+      const finishTrace = traceHistoryRequest({
+        kind: 'logical', symbol: chartSymbol, resolution, from, to,
+        countBack: requestBars, reason: periodParams.requestReason ?? (periodParams.firstDataRequest ? 'chart.initial' : 'chart.history'),
+      })
       return new Promise<{ bars: Bar[]; noData?: boolean }>((resolve, reject) => {
         source.getBars(
           symbolInfo,
@@ -129,9 +147,12 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
             to,
             countBack: periodParams.countBack,
             firstDataRequest: periodParams.firstDataRequest,
+            requestReason: periodParams.requestReason ?? (periodParams.firstDataRequest ? 'chart.initial' : 'chart.history'),
+            refresh: periodParams.refresh,
           },
           (bars, meta) => {
             const normalized = bars.map(normalizeBarForBwc)
+            finishTrace({ bars: normalized.length })
             candleDebug.bwcGetBarsResult({
               chartSymbol,
               resolution,
@@ -145,7 +166,10 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
               noData: meta.noData,
             })
           },
-          reject
+          (error) => {
+            finishTrace({ error: true })
+            reject(error)
+          }
         )
       })
     },
@@ -156,6 +180,8 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
       onTick: (bar: Bar) => void,
       listenerGuid: string
     ) {
+      if (disposed) return
+      barListeners.add(listenerGuid)
       const chartSymbol = librarySymbolDisplayName(symbolInfo)
       candleDebug.bwcSubscribeBars({
         chartSymbol,
@@ -165,13 +191,15 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
       source.subscribeBars(
         symbolInfo,
         resolution as ResolutionString,
-        (bar) => onTick(normalizeBarForBwc(bar)),
-        listenerGuid
+        (bar) => {
+          if (!disposed && barListeners.has(listenerGuid)) onTick(normalizeBarForBwc(bar))
+        },
+        sourceListener(listenerGuid)
       )
     },
 
     unsubscribeBars(listenerGuid: string) {
-      source.unsubscribeBars(listenerGuid)
+      if (barListeners.delete(listenerGuid)) source.unsubscribeBars(sourceListener(listenerGuid))
     },
 
     getQuotes(symbolInfos: LibrarySymbolInfo | LibrarySymbolInfo[]) {
@@ -184,6 +212,8 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
       onQuotes: (quotes: unknown[]) => void,
       listenerGuid: string
     ) {
+      if (disposed) return
+      quoteListeners.add(listenerGuid)
       const list = Array.isArray(symbolInfos) ? symbolInfos : [symbolInfos]
       const info = list[0]
       if (info) {
@@ -192,11 +222,23 @@ export function createBwcDatafeed(source: IDatafeedChartApi) {
           listenerGuid,
         })
       }
-      source.subscribeQuotes?.(symbolInfos, onQuotes, listenerGuid)
+      source.subscribeQuotes?.(symbolInfos, (quotes) => {
+        if (!disposed && quoteListeners.has(listenerGuid)) onQuotes(quotes)
+      }, sourceListener(listenerGuid))
     },
 
     unsubscribeQuotes(listenerGuid: string) {
-      source.unsubscribeQuotes?.(listenerGuid)
+      if (quoteListeners.delete(listenerGuid)) source.unsubscribeQuotes?.(sourceListener(listenerGuid))
+    },
+
+    /** Detach this chart without clearing the retained account datafeed. */
+    dispose() {
+      if (disposed) return
+      disposed = true
+      for (const listenerGuid of barListeners) source.unsubscribeBars(sourceListener(listenerGuid))
+      for (const listenerGuid of quoteListeners) source.unsubscribeQuotes?.(sourceListener(listenerGuid))
+      barListeners.clear()
+      quoteListeners.clear()
     },
   }
 }
@@ -210,6 +252,11 @@ export type BwcChartApi = {
 }
 
 export type BwcWidget = {
+  datafeed?: {
+    historyCache?: {
+      subscribe(listener: (stats: Record<string, number>) => void): () => void
+    }
+  }
   chart: () => BwcChartApi
   indicators?: {
     list?: () => Array<{
@@ -224,6 +271,9 @@ export type BwcWidget = {
   getSymbol?: () => string
   getResolution?: () => string
   setSymbol?: (symbol: string) => void | Promise<void>
+  /** Opaque, widget-local checkpoints captured before a live feed can miss bars. */
+  captureResumeState?: () => unknown
+  recover?: (opts?: { since?: unknown; shouldContinue?: () => boolean }) => Promise<unknown>
   reload?: (opts?: { force?: boolean }) => void | Promise<unknown>
   reset?: (opts?: {
     price?: boolean
@@ -249,6 +299,9 @@ export type BwcWidget = {
     opts?: { paneIndex?: number; locked?: boolean; props?: Record<string, unknown> }
   ) => unknown
   getAllChartPanes?: () => Array<{
+    symbol?: string
+    resolution?: string
+    bars?: Array<{ time: number }>
     chart?: { timeScale?: () => { setVisibleRange?: (range: { from: number; to: number }) => void } }
     series?: {
       applyOptions?: (options: Record<string, unknown>) => void

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import TradePanel from '../../shared/pad/TradePanel'
 import { renderPracticeTradeLayout } from '../../../../utils/layoutRenderer'
@@ -10,6 +10,7 @@ import { MOBILE_TRADE_OVERLAY_BODY_CLASS } from '../../../../constants/mobileTra
 import { getMobileTradePrefs, setMobileFloatingPad } from '../../../../utils/mobileTradePrefs'
 import { isPracticePadDetached } from './buildTradePadProps'
 import type { TradePanelProps } from '../../../../types/tradePanel'
+import { LiveTradeViewActive } from '../../../../contexts/LiveTradeViewContext'
 
 type TerminalTradeLayoutProps = {
   padSessionId: string
@@ -38,6 +39,7 @@ export function TerminalTradeLayout({
   onCloseMobileSettings,
   onForceUpdate,
 }: TerminalTradeLayoutProps) {
+  const viewActive = useContext(LiveTradeViewActive)
   const padDetached = isPracticePadDetached(padSessionId)
   const [orderPaneCollapsed, setOrderPaneCollapsed] = useState(() => {
     try {
@@ -48,7 +50,7 @@ export function TerminalTradeLayout({
   })
   const mobileTradePrefs = getMobileTradePrefs(padSessionId)
   const chartSymbolLabel = padProps.chartSymbol ?? ''
-  const mobileOverlayOpen = mobileOrderOpen || mobileSettingsOpen
+  const mobileOverlayOpen = viewActive && (mobileOrderOpen || mobileSettingsOpen)
 
   useEffect(() => {
     if (!mobileOverlayOpen) return
@@ -72,13 +74,13 @@ export function TerminalTradeLayout({
     <div className="relative flex flex-1 flex-col min-h-0 min-w-0 w-full h-full">
       {renderPracticeTradeLayout(
         chartElement,
-        <TradePanel {...padProps} />,
+        viewActive ? <TradePanel {...padProps} /> : <div />,
         {
           panelWidth: 312,
           panelFrame: false,
           panelHidden: padDetached || orderPaneCollapsed,
           mobileScalpBar:
-            mobileOverlayOpen || mobileTradePrefs.floatingPad ? null : (
+            !viewActive || mobileOverlayOpen || mobileTradePrefs.floatingPad ? null : (
             <MobileScalpBar
               accountId={padSessionId}
               props={padProps}
@@ -91,7 +93,7 @@ export function TerminalTradeLayout({
           showMobileNav,
         }
       )}
-      {!padDetached ? (
+      {viewActive && !padDetached ? (
         <button
           type="button"
           onClick={toggleOrderPane}
@@ -111,19 +113,19 @@ export function TerminalTradeLayout({
           )}
         </button>
       ) : null}
-      <MobileOrderSheet
+      {viewActive && <MobileOrderSheet
         open={mobileOrderOpen}
         onClose={onCloseMobileOrder}
         isDark={isDark}
         padProps={padProps}
-      />
-      <MobileTradingSettingsSheet
+      />}
+      {viewActive && <MobileTradingSettingsSheet
         open={mobileSettingsOpen}
         onClose={onCloseMobileSettings}
         practiceAccountId={padSessionId}
         isDark={isDark}
-      />
-      {padDetached && (
+      />}
+      {viewActive && padDetached && (
         <div className="hidden lg:block">
           <DetachedTradePanel
             accountId={padSessionId}
@@ -135,7 +137,7 @@ export function TerminalTradeLayout({
           />
         </div>
       )}
-      {mobileTradePrefs.floatingPad && !mobileOverlayOpen && (
+      {viewActive && mobileTradePrefs.floatingPad && !mobileOverlayOpen && (
         <div className="lg:hidden">
           <DetachedTradePanel
             accountId={padSessionId}

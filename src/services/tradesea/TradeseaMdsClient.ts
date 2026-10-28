@@ -103,6 +103,7 @@ export class TradeseaMdsClient {
   private lastAccountId: string | null = null
   private lastConnectionGroupId: string | null = null
   private reconnecting = false
+  private connectionGeneration = 0
   private suspended = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private static readonly CLOSE_GRACE_MS = 2_000
@@ -122,6 +123,7 @@ export class TradeseaMdsClient {
 
   private pageHiddenAt: number | null = null
   private lastWireActivityAt = 0
+  private connectionStartedAt = 0
   private pageVisibleTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Call after stream-config: production feed = false, sandbox delayed = true. */
@@ -232,6 +234,7 @@ export class TradeseaMdsClient {
       notifyVisible()
     })
     window.addEventListener('focus', notifyVisible)
+    window.addEventListener('pagehide', notifyHidden)
   }
 
   private registerPageLifecycle(): void {
@@ -279,12 +282,15 @@ export class TradeseaMdsClient {
     const hiddenMs = this.pageHiddenAt ? Date.now() - this.pageHiddenAt : 0
     this.pageHiddenAt = null
 
-    if (this.ws?.readyState === WebSocket.CONNECTING) return
-
     const staleWire =
       this.lastWireActivityAt > 0 &&
       Date.now() - this.lastWireActivityAt > TradeseaMdsClient.STALE_WIRE_MS
     const longBackground = hiddenMs >= TradeseaMdsClient.BACKGROUND_RECONNECT_MS
+
+    if (this.ws?.readyState === WebSocket.CONNECTING) {
+      if (longBackground || Date.now() - this.connectionStartedAt >= TradeseaMdsClient.BACKGROUND_RECONNECT_MS) this.reconnect()
+      return
+    }
 
     if (this.ws?.readyState === WebSocket.OPEN && (longBackground || staleWire)) {
       this.logWs('Reconnecting (foreground resume)', { hiddenMs, staleWire })
@@ -441,10 +447,11 @@ export class TradeseaMdsClient {
       return
     }
     this.reconnecting = true
+    const generation = this.connectionGeneration
     this.suppressAutoReconnectOnce = true
     try {
       await this.closeAndWait(closeGraceMs)
-      if (this.suspended) return
+      if (this.suspended || generation !== this.connectionGeneration) return
       this.connect(this.lastAccountId, this.lastConnectionGroupId, this.bootstrap ?? undefined)
     } finally {
       this.reconnecting = false
@@ -501,6 +508,8 @@ export class TradeseaMdsClient {
     }
 
     this.lastAccountId = accountId
+    this.connectionGeneration += 1
+    this.connectionStartedAt = Date.now()
     this.lastConnectionGroupId = connectionGroupId
     this.registerPageLifecycle()
     this.clearReconnectTimer()
@@ -701,7 +710,7 @@ export class TradeseaMdsClient {
     ws.onmessage = null
     ws.onerror = null
     ws.onclose = null
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING) {
       try {
         ws.close()
       } catch {
@@ -711,6 +720,7 @@ export class TradeseaMdsClient {
   }
 
   disconnect(clearSubs = true): void {
+    this.connectionGeneration += 1
     this.suspended = false
     this.manualDisconnect = true
     this.unregisterPageLifecycle()

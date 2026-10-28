@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
+import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 
 const MIME: Record<string, string> = {
@@ -20,24 +22,24 @@ function safeUnder(root: string, urlPath: string): string | null {
   return full
 }
 
-// Unique per server start. Stamped onto every BWC module specifier below so the
-// browser fetches a fresh URL each run — see bustModuleSpecifiers().
-const BUILD_ID = String(Date.now())
+const VERSION_MODULE = 'virtual:auren-chart-version'
+const RESOLVED_VERSION_MODULE = `\0${VERSION_MODULE}`
+const VERSIONED_EXTENSIONS = /\.(?:js|mjs|json|css)$/
 
 /**
- * Append `?v=<BUILD_ID>` to every relative/root-absolute module specifier in a JS
- * module. `no-store` stops the browser caching NEW responses, but it does not evict
- * entries stored earlier (e.g. before a header/export existed): the ES module loader
- * fetches transitive imports with `cache: "default"`, so a bare URL like `../js/sdk.js`
- * can resolve to a poisoned disk-cache entry and silently run old code — even after a
- * hard reload (dynamic import() ignores the reload's cache bypass). Giving every
- * specifier a per-run query makes each a guaranteed cache-miss, so the whole graph is
- * always fresh. Only `.js/.mjs/.json/.css` paths are touched to avoid rewriting
- * lookalike strings/comments.
+ * Use the same content version for root and transitive imports, including Auren's
+ * own indicators. This also keeps a single SDK registry: importing /js/sdk.js with
+ * different query strings would create independent instances of its module state.
  */
-function bustModuleSpecifiers(code: string): string {
-  const spec = "(\\.{1,2}/[^'\"]*?\\.(?:js|mjs|json|css)|/[^'\"]*?\\.(?:js|mjs|json|css))"
-  const stamp = (s: string) => `${s}${s.includes('?') ? '&' : '?'}v=${BUILD_ID}`
+function versionModuleSpecifiers(code: string, version: string): string {
+  const spec = "((?:\\.{1,2}/|/)[^'\"]*?\\.(?:js|mjs|json|css)(?:\\?[^'\"#]*)?(?:#[^'\"]*)?)"
+  const stamp = (specifier: string) => {
+    const url = new URL(specifier, 'http://chart.local')
+    url.searchParams.set('bwc', version)
+    // Keep relative imports relative to their original module.
+    const [pathname] = specifier.split(/[?#]/)
+    return `${pathname}${url.search}${url.hash}`
+  }
   return code
     // static: `... from "./x.js"` / `export ... from "/js/x.js"`
     .replace(new RegExp(`(\\bfrom\\s*)(['"])${spec}(\\2)`, 'g'), (_m, kw, q, s, q2) => `${kw}${q}${stamp(s)}${q2}`)
@@ -47,31 +49,15 @@ function bustModuleSpecifiers(code: string): string {
     .replace(new RegExp(`(\\bimport\\(\\s*)(['"])${spec}(\\2)(\\s*\\))`, 'g'), (_m, kw, q, s, q2, close) => `${kw}${q}${stamp(s)}${q2}${close}`)
 }
 
-function serveFile(res: Connect.ServerResponse, filePath: string): void {
-  const ext = path.extname(filePath)
-  res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
-  // Dev/preview only (prod copies these into dist and the host serves them).
-  // Never cache here — the BWC sources are edited live in the sibling repo and a
-  // stale HTTP cache silently runs old modules across reloads.
-  res.setHeader('Cache-Control', 'no-store')
-  if (ext === '.js' || ext === '.mjs') {
-    res.end(bustModuleSpecifiers(fs.readFileSync(filePath, 'utf8')))
-    return
-  }
-  fs.createReadStream(filePath).pipe(res)
-}
-
-function copyDir(src: string, dest: string): void {
+function copyDir(src: string, dest: string, version: string): void {
   if (!fs.existsSync(src)) return
   fs.mkdirSync(dest, { recursive: true })
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const from = path.join(src, entry.name)
     const to = path.join(dest, entry.name)
-    if (entry.isDirectory()) copyDir(from, to)
+    if (entry.isDirectory()) copyDir(from, to, version)
     else if (entry.name.endsWith('.js') || entry.name.endsWith('.mjs')) {
-      // Production is served directly by Nginx, so apply the same graph-wide
-      // cache busting used by the dev middleware before copying modules to dist.
-      fs.writeFileSync(to, bustModuleSpecifiers(fs.readFileSync(from, 'utf8')), 'utf8')
+      fs.writeFileSync(to, versionModuleSpecifiers(fs.readFileSync(from, 'utf8'), version), 'utf8')
     } else fs.copyFileSync(from, to)
   }
 }
@@ -90,9 +76,67 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
     { prefix: '/css', root: path.join(publicRoot, 'css'), distSubdir: 'css' },
     { prefix: '/vendor', root: path.join(publicRoot, 'vendor'), distSubdir: 'vendor' },
     { prefix: '/testing/js', root: path.join(testingRoot, 'js'), distSubdir: 'testing/js' },
+    { prefix: '/auren-indicators', root: path.resolve('public/auren-indicators'), distSubdir: 'auren-indicators' },
   ]
 
-  function tryServe(req: Connect.IncomingMessage, res: Connect.ServerResponse): boolean {
+  let outDir = path.resolve('dist')
+  let assetVersion: string | null = null
+  const responses = new Map<string, { body: Buffer; etag: string }>()
+
+  function getAssetVersion(): string {
+    if (assetVersion) return assetVersion
+    const hash = createHash('sha256').update('auren-chart-graph-v1\0')
+    const addDirectory = (directory: string, prefix: string) => {
+      if (!fs.existsSync(directory)) return
+      const entries = fs.readdirSync(directory, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name))
+      for (const entry of entries) {
+        const filePath = path.join(directory, entry.name)
+        const url = `${prefix}/${entry.name}`
+        if (entry.isDirectory()) addDirectory(filePath, url)
+        else if (VERSIONED_EXTENSIONS.test(entry.name)) {
+          hash.update(url)
+          hash.update('\0')
+          hash.update(fs.readFileSync(filePath))
+          hash.update('\0')
+        }
+      }
+    }
+    // Hash served module assets once, then again only after a source edit. The
+    // version is stable across reloads/restarts and changes with actual content.
+    for (const { root, prefix } of roots) addDirectory(root, prefix)
+    assetVersion = hash.digest('hex').slice(0, 20)
+    return assetVersion
+  }
+
+  function serveFile(req: Connect.IncomingMessage, res: ServerResponse, filePath: string): void {
+    const version = getAssetVersion()
+    const ext = path.extname(filePath)
+    let cached = responses.get(filePath)
+    if (!cached) {
+      const raw = fs.readFileSync(filePath)
+      const body = ext === '.js' || ext === '.mjs'
+        ? Buffer.from(versionModuleSpecifiers(raw.toString('utf8'), version))
+        : raw
+      cached = { body, etag: `"${createHash('sha256').update(body).digest('hex')}"` }
+      responses.set(filePath, cached)
+    }
+    res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
+    res.setHeader('ETag', cached.etag)
+    const requestVersion = new URL(req.url ?? '/', 'http://chart.local').searchParams.get('bwc')
+    res.setHeader('Cache-Control', requestVersion === version
+      ? 'public, max-age=31536000, immutable'
+      : 'no-cache')
+    if (req.headers['if-none-match'] === cached.etag) {
+      res.statusCode = 304
+      res.end()
+      return
+    }
+    res.setHeader('Content-Length', cached.body.length)
+    res.end(req.method === 'HEAD' ? undefined : cached.body)
+  }
+
+  function tryServe(req: Connect.IncomingMessage, res: ServerResponse): boolean {
     const url = req.url?.split('?')[0] ?? ''
     for (const { prefix, root } of roots) {
       if (!url.startsWith(prefix + '/') && url !== prefix) continue
@@ -101,7 +145,7 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
       if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
         continue
       }
-      serveFile(res, filePath)
+      serveFile(req, res, filePath)
       return true
     }
     return false
@@ -109,7 +153,31 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
 
   return {
     name: 'betterweightchartpro-static',
+    configResolved(config) {
+      roots[roots.length - 1].root = path.join(config.publicDir, 'auren-indicators')
+      outDir = path.resolve(config.root, config.build.outDir)
+    },
+    resolveId(id) {
+      if (id === VERSION_MODULE) return RESOLVED_VERSION_MODULE
+    },
+    load(id) {
+      if (id === RESOLVED_VERSION_MODULE) {
+        return `export default ${JSON.stringify(getAssetVersion())}`
+      }
+    },
     configureServer(server) {
+      const watchedRoots = roots.map(({ root }) => path.resolve(root))
+      server.watcher.add(watchedRoots)
+      const onAssetChange = (_event: string, filePath: string) => {
+        const absolute = path.resolve(filePath)
+        if (!watchedRoots.some((root) => absolute.startsWith(root + path.sep))) return
+        assetVersion = null
+        responses.clear()
+        const versionModule = server.moduleGraph.getModuleById(RESOLVED_VERSION_MODULE)
+        if (versionModule) server.moduleGraph.invalidateModule(versionModule)
+      }
+      server.watcher.on('all', onAssetChange)
+      server.httpServer?.once('close', () => server.watcher.off('all', onAssetChange))
       server.middlewares.use((req, res, next) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') return next()
         if (tryServe(req, res)) return
@@ -124,9 +192,9 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
       })
     },
     closeBundle() {
-      const outDir = path.resolve('dist')
+      const version = getAssetVersion()
       for (const { root, distSubdir } of roots) {
-        copyDir(root, path.join(outDir, distSubdir))
+        copyDir(root, path.join(outDir, distSubdir), version)
       }
     },
   }

@@ -71,6 +71,8 @@ export interface IDatafeedChartApi {
       from: number
       to: number
       firstDataRequest?: boolean
+      requestReason?: string
+      refresh?: boolean
       countBack?: number
     },
     onResult: (bars: Bar[], meta: { noData: boolean }) => void,
@@ -129,6 +131,7 @@ export type AurenChartProps = {
   tradeseaTradeHandler?: {
     handleSymbolChange(symbol: string): void
     onReady(widget: unknown, datafeed?: unknown): void
+    detachChart?(widget: unknown): void
     logButtonPress?(label: string, details?: Record<string, unknown>): void | Promise<void>
     placeLimitOrder?(side: string, quantity: number, price: number): void | Promise<void>
   }
