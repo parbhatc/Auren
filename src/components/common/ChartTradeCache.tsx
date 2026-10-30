@@ -25,6 +25,7 @@ class ChartTradeCache {
     tickSize: number | null
     tickValue: number | null
   } | null = null
+  private realtimePanFlushScheduled = false
 
   constructor(handler: any, chartOrWidget: any) {
     this.handler = handler
@@ -64,6 +65,7 @@ class ChartTradeCache {
     this.bwcPositionBridge?.dispose()
     this.bwcPositionBridge = null
     this.pendingRealtimeWhilePan = null
+    this.realtimePanFlushScheduled = false
     for (const position of this.cache.values()) {
       const line = position?.line
       if (position) position.line = null
@@ -262,7 +264,13 @@ class ChartTradeCache {
   onRealTimeBar(symbol: string, bar: any, tickSize: number|null = null, tickValue: number|null = null) {
     if (isBwcChartPanning()) {
       this.pendingRealtimeWhilePan = { symbol, bar, tickSize, tickValue }
-      whenBwcPanEnds(() => this.flushPanDeferredRealtime())
+      if (!this.realtimePanFlushScheduled) {
+        this.realtimePanFlushScheduled = true
+        whenBwcPanEnds(() => {
+          if (!this.realtimePanFlushScheduled) return
+          this.flushPanDeferredRealtime()
+        })
+      }
       return
     }
 
@@ -271,6 +279,7 @@ class ChartTradeCache {
 
   /** Flush bar-driven trade overlay work deferred during chart pan. */
   flushPanDeferredRealtime(): void {
+    this.realtimePanFlushScheduled = false
     const pending = this.pendingRealtimeWhilePan
     this.pendingRealtimeWhilePan = null
     if (!pending) return

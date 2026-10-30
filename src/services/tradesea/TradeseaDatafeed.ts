@@ -128,6 +128,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private mdsOpenTimer: ReturnType<typeof setTimeout> | null = null
   private tradeBarRaf: number | null = null
   private pendingTradeBar: { symbol: string; resolution: string; bar: Bar } | null = null
+  private tradeBarPanFlushScheduled = false
 
   constructor(options: {
     mds: TradeseaMdsClient
@@ -498,6 +499,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   }
 
   setTradeHandler(handler: TradeseaTradeHandler | import('../practice/PracticeTradeHandler').PracticeTradeHandler | null): void {
+    if (this.tradeHandler !== handler) this.clearScheduledTradeHandlerBar()
     this.tradeHandler = handler
     debugTradeseaUpl('datafeed:tradeHandler', {
       force: true,
@@ -536,11 +538,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
   /** Drop candle WS subs + listener maps before BWC remount (e.g. MDS reconnect). */
   teardownCandleStreams(): void {
-    if (this.tradeBarRaf != null) {
-      cancelAnimationFrame(this.tradeBarRaf)
-      this.tradeBarRaf = null
-      this.pendingTradeBar = null
-    }
+    this.clearScheduledTradeHandlerBar()
     for (const subId of this.subIdByKey.values()) {
       this.mds.unsubscribe(subId)
     }
@@ -553,6 +551,15 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
       this.offCandles()
       this.offCandles = null
     }
+  }
+
+  private clearScheduledTradeHandlerBar(): void {
+    if (this.tradeBarRaf != null) {
+      cancelAnimationFrame(this.tradeBarRaf)
+      this.tradeBarRaf = null
+    }
+    this.pendingTradeBar = null
+    this.tradeBarPanFlushScheduled = false
   }
 
   /** @deprecated Prefer MDS open listener in AurenChart; kept for callers that set it explicitly. */
@@ -803,12 +810,17 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     if (!this.tradeHandler) return
     this.pendingTradeBar = { symbol, resolution, bar }
     if (isBwcChartPanning()) {
-      whenBwcPanEnds(() => {
-        const pending = this.pendingTradeBar
-        if (!pending || !this.tradeHandler) return
-        this.pendingTradeBar = null
-        this.tradeHandler.onRealTimeBar(pending.symbol, pending.resolution, pending.bar)
-      })
+      if (!this.tradeBarPanFlushScheduled) {
+        this.tradeBarPanFlushScheduled = true
+        whenBwcPanEnds(() => {
+          if (!this.tradeBarPanFlushScheduled) return
+          this.tradeBarPanFlushScheduled = false
+          const pending = this.pendingTradeBar
+          if (!pending || !this.tradeHandler) return
+          this.pendingTradeBar = null
+          this.tradeHandler.onRealTimeBar(pending.symbol, pending.resolution, pending.bar)
+        })
+      }
       return
     }
     if (this.tradeBarRaf != null) return

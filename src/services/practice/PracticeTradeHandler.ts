@@ -273,6 +273,7 @@ export class PracticeTradeHandler {
       cancelAnimationFrame(this.uplRefreshRaf)
       this.uplRefreshRaf = null
     }
+    this.uplRefreshDeferredWhilePan = false
     if (this.blownConfirmationTimer != null) {
       clearTimeout(this.blownConfirmationTimer)
       this.blownConfirmationTimer = null
@@ -341,16 +342,7 @@ export class PracticeTradeHandler {
 
   /** Sum UP&L for every open position (any symbol), not only the active chart. */
   refreshUnrealizedPl(): void {
-    if (isBwcChartPanning()) {
-      if (!this.uplRefreshDeferredWhilePan) {
-        this.uplRefreshDeferredWhilePan = true
-        whenBwcPanEnds(() => {
-          this.uplRefreshDeferredWhilePan = false
-          this.refreshUnrealizedPl()
-        })
-      }
-      return
-    }
+    if (this.deferUnrealizedRefreshWhilePan()) return
 
     const cache = this.tradeCache
     const prevUpl = this.upl
@@ -545,10 +537,7 @@ export class PracticeTradeHandler {
   }
 
   scheduleRefreshUnrealizedPl(): void {
-    if (isBwcChartPanning()) {
-      whenBwcPanEnds(() => this.scheduleRefreshUnrealizedPl())
-      return
-    }
+    if (this.deferUnrealizedRefreshWhilePan()) return
     if (this.uplRefreshRaf != null || this.uplRefreshTimer != null) return
 
     const scheduleFrame = () => {
@@ -556,10 +545,7 @@ export class PracticeTradeHandler {
       if (this.uplRefreshRaf != null) return
       this.uplRefreshRaf = requestAnimationFrame(() => {
         this.uplRefreshRaf = null
-        if (isBwcChartPanning()) {
-          whenBwcPanEnds(() => this.scheduleRefreshUnrealizedPl())
-          return
-        }
+        if (this.deferUnrealizedRefreshWhilePan()) return
         this.uplLastRefreshAt = performance.now()
         this.refreshUnrealizedPl()
       })
@@ -572,6 +558,20 @@ export class PracticeTradeHandler {
     } else {
       scheduleFrame()
     }
+  }
+
+  /** Quotes share one latest-state P&L refresh after a held chart gesture. */
+  private deferUnrealizedRefreshWhilePan(): boolean {
+    if (!isBwcChartPanning()) return false
+    if (!this.uplRefreshDeferredWhilePan) {
+      this.uplRefreshDeferredWhilePan = true
+      whenBwcPanEnds(() => {
+        if (!this.uplRefreshDeferredWhilePan) return
+        this.uplRefreshDeferredWhilePan = false
+        this.refreshUnrealizedPl()
+      })
+    }
+    return true
   }
 
   /** Place a working limit (Join Bid / Join Ask / chart limit / order tab limit). */
