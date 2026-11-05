@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import TradePanel from '../../shared/pad/TradePanel'
 import { renderPracticeTradeLayout } from '../../../../utils/layoutRenderer'
@@ -7,10 +7,14 @@ import { MobileOrderSheet } from '../../shared/mobile/MobileOrderSheet'
 import { MobileTradingSettingsSheet } from '../../shared/mobile/MobileTradingSettingsSheet'
 import { DetachedTradePanel } from '../../shared/mobile/DetachedTradePanel'
 import { MOBILE_TRADE_OVERLAY_BODY_CLASS } from '../../../../constants/mobileTrade'
-import { getMobileTradePrefs, setMobileFloatingPad } from '../../../../utils/mobileTradePrefs'
+import { getMobileTradePrefs, setMobileFloatingPad, setMobileEntryMode } from '../../../../utils/mobileTradePrefs'
 import { isPracticePadDetached } from './buildTradePadProps'
 import type { TradePanelProps } from '../../../../types/tradePanel'
 import { LiveTradeViewActive } from '../../../../contexts/LiveTradeViewContext'
+import { MobileAutoModeBar, type MobileAutoState } from '../../shared/mobile/MobileAutoModeBar'
+import { requestChartAutoTrade } from '../../../common/aurenTradeContextMenu'
+import { isTradePanelTradingEnabled } from '../../../../utils/tradePanelTrading'
+import type { MobileEntryMode } from '../../../../types/mobileTrade'
 
 type TerminalTradeLayoutProps = {
   padSessionId: string
@@ -40,6 +44,26 @@ export function TerminalTradeLayout({
   onForceUpdate,
 }: TerminalTradeLayoutProps) {
   const viewActive = useContext(LiveTradeViewActive)
+  const [autoState, setAutoState] = useState<MobileAutoState | null>(null)
+  const forceUpdateRef = useRef(onForceUpdate)
+  forceUpdateRef.current = onForceUpdate
+  const handleAutoModeChange = useCallback((state: MobileAutoState) => {
+    // An explicit Auto request from the order sheet/context menu must remain
+    // visible even when this account previously showed only market controls.
+    if (state.mode && window.matchMedia('(max-width: 1023px)').matches &&
+        getMobileTradePrefs(padSessionId).entryMode === 'market') {
+      setMobileEntryMode(padSessionId, 'auto')
+      forceUpdateRef.current()
+    }
+    setAutoState(state)
+  }, [padSessionId])
+  const armAuto = useCallback((mode: 'buy' | 'sell' | 'auto') => {
+    requestChartAutoTrade(mode, padProps.accountId)
+  }, [padProps.accountId])
+  const armAutoFromSheet = useCallback((mode: 'buy' | 'sell' | 'auto') => {
+    armAuto(mode)
+    onCloseMobileOrder()
+  }, [armAuto, onCloseMobileOrder])
   const padDetached = isPracticePadDetached(padSessionId)
   const [orderPaneCollapsed, setOrderPaneCollapsed] = useState(() => {
     try {
@@ -49,6 +73,12 @@ export function TerminalTradeLayout({
     }
   })
   const mobileTradePrefs = getMobileTradePrefs(padSessionId)
+  const entryMode = padProps.hideTicketTab ? 'market' : mobileTradePrefs.entryMode
+  const changeEntryMode = (mode: MobileEntryMode) => {
+    if (mode === 'market') autoState?.cancel()
+    setMobileEntryMode(padSessionId, mode)
+    onForceUpdate()
+  }
   const chartSymbolLabel = padProps.chartSymbol ?? ''
   const mobileOverlayOpen = viewActive && (mobileOrderOpen || mobileSettingsOpen)
 
@@ -74,21 +104,25 @@ export function TerminalTradeLayout({
     <div className="relative flex flex-1 flex-col min-h-0 min-w-0 w-full h-full">
       {renderPracticeTradeLayout(
         chartElement,
-        viewActive ? <TradePanel {...padProps} /> : <div />,
+        viewActive ? <TradePanel key={padProps.accountId} {...padProps} onAutoModeChange={handleAutoModeChange} /> : <div />,
         {
           panelWidth: 312,
           panelFrame: false,
           panelHidden: padDetached || orderPaneCollapsed,
           mobileScalpBar:
-            !viewActive || mobileOverlayOpen || mobileTradePrefs.floatingPad ? null : (
-            <MobileScalpBar
+            !viewActive || mobileOverlayOpen ? null : (
+            <>
+              {entryMode !== 'market' && <MobileAutoModeBar state={autoState} onArm={armAuto} isDark={isDark}
+                disabled={!isTradePanelTradingEnabled(padProps) || !padProps.pickChartPriceOnce} />}
+              {entryMode !== 'auto' && !mobileTradePrefs.floatingPad && <MobileScalpBar
               accountId={padSessionId}
               props={padProps}
               maxQty={practiceMaxQty}
               isDark={isDark}
               showMobileNav={showMobileNav}
               onPrefsChange={onForceUpdate}
-            />
+            />}
+            </>
           ),
           showMobileNav,
         }
@@ -117,11 +151,13 @@ export function TerminalTradeLayout({
         open={mobileOrderOpen}
         onClose={onCloseMobileOrder}
         isDark={isDark}
-        padProps={padProps}
+        padProps={{ ...padProps, onRequestAutoMode: armAutoFromSheet }}
       />}
       {viewActive && <MobileTradingSettingsSheet
         open={mobileSettingsOpen}
         onClose={onCloseMobileSettings}
+        entryMode={padProps.hideTicketTab ? undefined : entryMode}
+        onEntryModeChange={changeEntryMode}
         practiceAccountId={padSessionId}
         isDark={isDark}
       />}
@@ -137,7 +173,7 @@ export function TerminalTradeLayout({
           />
         </div>
       )}
-      {viewActive && mobileTradePrefs.floatingPad && !mobileOverlayOpen && (
+      {viewActive && entryMode !== 'auto' && mobileTradePrefs.floatingPad && !mobileOverlayOpen && (
         <div className="lg:hidden">
           <DetachedTradePanel
             accountId={padSessionId}

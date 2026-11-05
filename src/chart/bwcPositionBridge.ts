@@ -9,6 +9,7 @@ export type BwcPositionSnapshot = {
 }
 
 export type BwcPositionPresentation = {
+  softStopLoss?: boolean
   symbolLabel?: string | null
   quantityLabel?: string | null
   tickSize?: number | null
@@ -179,6 +180,7 @@ export class BwcPositionBridge {
   private syncRevision = 0
   private syncQueue: Promise<void> = Promise.resolve()
   private suppressedCloseEvents = 0
+  private presentation: BwcPositionPresentation = {}
 
   constructor(
     private readonly widget: BwcWidgetWithOverlay,
@@ -313,7 +315,6 @@ export class BwcPositionBridge {
     if (!overlay) return
 
     this.wire()
-    if (opts.presentation) this.getOverlay()?.setPresentation?.(opts.presentation)
     this.activeSymbol = symbol
     const revision = ++this.syncRevision
     const run = () =>
@@ -347,7 +348,13 @@ export class BwcPositionBridge {
     const cachedPosition = this.tradeCache.getPosition(symbol) as {
       stopLoss?: number | null
       takeProfit?: number | null
+      stopLossMode?: 'hard' | 'soft'
     } | null
+    const presentation = { ...this.presentation, ...opts.presentation, softStopLoss: cachedPosition?.stopLossMode === 'soft' }
+    if (Object.keys(presentation).some(key => presentation[key] !== this.presentation[key])) {
+      this.presentation = presentation
+      overlay.setPresentation?.(presentation)
+    }
     // A queued sync can start after the user has already dragged a bracket.
     // Always prefer the live cache over the prices captured when sync() was
     // enqueued so an older chart task cannot restore a stale exit level.

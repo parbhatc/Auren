@@ -48,6 +48,7 @@ export function modulesForRoute(path: string): ModuleLoader[] {
     '/analytics': [routeModules.analytics], '/news': [routeModules.news],
     '/journal': [routeModules.journal], '/journal/reviews': [routeModules.journalReviews],
     '/practice': [routeModules.practice], '/trade': [routeModules.liveTrade],
+    '/accounts': [routeModules.practiceAccounts],
     '/practice/accounts': [routeModules.practiceAccounts],
     '/backtester': [routeModules.replay], '/backtester/chart': [routeModules.replayChart],
     '/backtester/stats': [routeModules.dashboard], '/backtester/data-management': [routeModules.replayData],

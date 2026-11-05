@@ -64,11 +64,63 @@ class TradeseaMdsWebSocket extends WebSocketBase {
       return
     }
 
+    let upstream
+    let clientClosed = false
+    let settleTimer
+    const pending = []
+    let upstreamReadyForTraffic = false
+
+    const closeUpstream = () => {
+      clientClosed = true
+      pending.length = 0
+      clearTimeout(settleTimer)
+      try {
+        if (
+          upstream?.readyState === WebSocket.OPEN ||
+          upstream?.readyState === WebSocket.CONNECTING
+        ) {
+          upstream.close(1000, 'client closed')
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    clientWs.on('message', (raw, isBinary) => {
+      if (clientClosed) return
+      if (isWsPing(raw)) {
+        safeSend(clientWs, buildWsPongReply(raw))
+        return
+      }
+
+      // Tradesea's socket can report OPEN before its subscription session is
+      // ready. Keep every control frame ordered behind the settle delay;
+      // otherwise a fast foreground reconnect can silently lose the final
+      // candle/book subscribe frames while HTTP history still succeeds.
+      if (upstream?.readyState === WebSocket.OPEN && upstreamReadyForTraffic) {
+        try {
+          const out = translateClientToUpstream(raw, isBinary)
+          if (out != null) upstream.send(out, { binary: isBinary && typeof out !== 'string' })
+        } catch {
+          /* ignore */
+        }
+      } else if (!isBinary) {
+        const out = translateClientToUpstream(raw, isBinary)
+        if (out != null) pending.push(typeof out === 'string' ? out : out)
+      }
+    })
+
+    clientWs.on('close', closeUpstream)
+
+    clientWs.on('error', closeUpstream)
+
     await PropsController.initializeTable()
     const firm = await Database.get(
       'SELECT token, session_id FROM prop_firms WHERE user_id = ? AND type = ?',
       [decoded.userId, 'tradesea']
     )
+
+    if (clientClosed || clientWs.readyState !== WebSocket.OPEN) return
 
     if (!firm?.token) {
       clientWs.close(1008, 'Tradesea not connected')
@@ -81,6 +133,8 @@ class TradeseaMdsWebSocket extends WebSocketBase {
     }
 
     const account = await TradeseaIdentityService.findAccountById(tokens, accountId)
+    if (clientClosed || clientWs.readyState !== WebSocket.OPEN) return
+
     if (!account?.userId) {
       clientWs.close(1008, 'Account not found')
       return
@@ -90,8 +144,6 @@ class TradeseaMdsWebSocket extends WebSocketBase {
     const upstreamUrl = `${mdsStreamBase.replace(/\/$/, '')}/${encodeURIComponent(account.userId)}/${connectionGroupId}`
     const cookie = buildAuthCookieHeader(tokens)
 
-    let upstream
-    let clientClosed = false
     try {
       upstream = new WebSocket(upstreamUrl, {
         headers: {
@@ -105,9 +157,6 @@ class TradeseaMdsWebSocket extends WebSocketBase {
       clientWs.close(1011, 'upstream open failed')
       return
     }
-
-    const pending = []
-    let upstreamReadyForTraffic = false
 
     upstream.on('open', () => {
       console.log('[TradeseaMds] upstream connected for account', accountId)
@@ -124,7 +173,7 @@ class TradeseaMdsWebSocket extends WebSocketBase {
         pending.length = 0
       }
       // Let upstream session settle before subscribe burst (matches Tradesea worker timing).
-      setTimeout(flushPending, 75)
+      settleTimer = setTimeout(flushPending, 75)
     })
 
     upstream.on('message', (raw, isBinary) => {
@@ -177,48 +226,7 @@ class TradeseaMdsWebSocket extends WebSocketBase {
       }
     })
 
-    const closeUpstream = () => {
-      clientClosed = true
-      pending.length = 0
-      try {
-        if (
-          upstream.readyState === WebSocket.OPEN ||
-          upstream.readyState === WebSocket.CONNECTING
-        ) {
-          upstream.close(1000, 'client closed')
-        }
-      } catch {
-        /* ignore */
-      }
-    }
 
-    clientWs.on('message', (raw, isBinary) => {
-      if (clientClosed) return
-      if (isWsPing(raw)) {
-        safeSend(clientWs, buildWsPongReply(raw))
-        return
-      }
-
-      // Tradesea's socket can report OPEN before its subscription session is
-      // ready. Keep every control frame ordered behind the settle delay;
-      // otherwise a fast foreground reconnect can silently lose the final
-      // candle/book subscribe frames while HTTP history still succeeds.
-      if (upstream.readyState === WebSocket.OPEN && upstreamReadyForTraffic) {
-        try {
-          const out = translateClientToUpstream(raw, isBinary)
-          if (out != null) upstream.send(out, { binary: isBinary && typeof out !== 'string' })
-        } catch {
-          /* ignore */
-        }
-      } else if (!isBinary) {
-        const out = translateClientToUpstream(raw, isBinary)
-        if (out != null) pending.push(typeof out === 'string' ? out : out)
-      }
-    })
-
-    clientWs.on('close', closeUpstream)
-
-    clientWs.on('error', closeUpstream)
   }
 }
 

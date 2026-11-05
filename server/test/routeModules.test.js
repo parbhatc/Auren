@@ -44,6 +44,7 @@ test('route matching selects concrete pages and nested settings without importin
   assert.deepEqual(modulesForRoute('/news/'), [routeModules.news])
   assert.deepEqual(modulesForRoute('/practice'), [routeModules.practice])
   assert.deepEqual(modulesForRoute('/practice/accounts'), [routeModules.practiceAccounts])
+  assert.deepEqual(modulesForRoute('/accounts?tab=connected'), [routeModules.practiceAccounts])
   assert.deepEqual(modulesForRoute('/practice/trade/account-id'), [routeModules.practiceTrade])
   assert.deepEqual(modulesForRoute('/settings/props'), [routeModules.settingsWorkspace, routeModules.propsSettings])
   assert.deepEqual(modulesForRoute('/journal/reviews'), [routeModules.journalReviews])

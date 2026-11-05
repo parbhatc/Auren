@@ -208,6 +208,7 @@ export default function TradePanel(props: TradePanelProps) {
 
   useEffect(() => {
     const handleAutoTradeRequest = (event: Event) => {
+      if (props.onRequestAutoMode) return
       const request = (event as CustomEvent<ChartAutoTradeRequest>).detail
       if (!request || (request.accountId && request.accountId !== accountId)) return
       if (hideTicketTab) return
@@ -216,7 +217,7 @@ export default function TradePanel(props: TradePanelProps) {
     }
     window.addEventListener(CHART_AUTO_TRADE_REQUESTED, handleAutoTradeRequest)
     return () => window.removeEventListener(CHART_AUTO_TRADE_REQUESTED, handleAutoTradeRequest)
-  }, [accountId, hideTicketTab])
+  }, [accountId, hideTicketTab, props.onRequestAutoMode])
 
   useEffect(() => {
     if (tab !== 'quick') persistTab(tab)

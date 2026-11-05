@@ -13,6 +13,68 @@ const pnlCode = compile('../../src/services/tradesea/tradeseaPnL.ts')
 const tradeCacheCode = compile('../../src/components/common/ChartTradeCache.tsx')
 const datafeedCode = compile('../../src/services/tradesea/TradeseaDatafeed.ts')
 const marketBookCode = compile('../../src/services/tradesea/tradeseaMarketBook.ts')
+const tradeseaHandlerCode = compile('../../src/services/tradesea/TradeseaTradeHandler.ts')
+
+test('practice open-position watcher ignores 10,000 non-price book updates and preserves every trade tick', () => {
+  const f = fixture({ panning: false })
+  let listener
+  const trades = []
+  f.handler.tradeCache.onMarketBookTick = stream => trades.push(stream)
+  f.handler.attachLiveBracketWatcher({ subscribeMarketBook(callback) { listener = callback; return () => {} } })
+  for (let i = 0; i < 10000; i++) listener('MNQ', ['bbo', 'depth', 'vol'][i % 3])
+  assert.equal(trades.length, 0)
+  for (let i = 0; i < 1000; i++) listener('MNQ', 'ltp')
+  assert.equal(trades.length, 1000, 'no trade tick may be coalesced out of SL/TP checks')
+})
+
+test('live position watcher avoids repeated BBO/volume work after a last-trade mark is known', () => {
+  const f = fixture({ panning: false })
+  const { TradeseaTradeHandler } = f.loadProduction(tradeseaHandlerCode, {
+    './tradeseaDebug': { debugTradeseaUpl() {} },
+  })
+  const handler = new TradeseaTradeHandler({})
+  handler.sessionKey = () => 'session'
+  handler.cacheSessionKey = 'session'
+  const book = { last: 100, bestBid: 99, bestAsk: 101 }
+  let listener
+  const marks = []
+  handler.tradeCache = { onMarketPrice: (...args) => marks.push(args) }
+  handler.updateUnrealizedFromMark = () => {}
+  handler.attachToDatafeed({ setTradeHandler() {}, subscribeMarketBook(callback) { listener = callback; return () => {} }, getMarketBookForStream: () => book })
+  for (let i = 0; i < 10000; i++) listener('MNQ', ['bbo', 'depth', 'vol'][i % 3])
+  assert.equal(marks.length, 0)
+  for (let i = 0; i < 1000; i++) listener('MNQ', 'ltp')
+  assert.equal(marks.length, 1000)
+  book.last = null
+  listener('MNQ', 'bbo')
+  assert.equal(marks.at(-1)[1], 100, 'BBO can seed the first mark before LTP arrives')
+})
+
+test('live account P&L bursts retain one calculation and one pan-release waiter', () => {
+  const f = fixture({ panning: true })
+  const { TradeseaTradeHandler } = f.loadProduction(tradeseaHandlerCode, { './tradeseaDebug': { debugTradeseaUpl() {} } })
+  const handler = new TradeseaTradeHandler({})
+  handler.sessionKey = () => 'session'
+  handler.cacheSessionKey = 'session'
+  const calculated = []
+  handler.updateUnrealizedFromMark = (...args) => calculated.push(args)
+  for (let tick = 0; tick < 5000; tick++) handler.scheduleUnrealizedFromMark(tick, 'MNQ')
+  assert.equal(f.state.waiterRegistrations, 1)
+  assert.equal(calculated.length, 0)
+  f.state.panning = false
+  f.frame()
+  assert.deepEqual(calculated, [[4999, 'MNQ']])
+  for (let tick = 0; tick < 5000; tick++) handler.scheduleUnrealizedFromMark(tick, 'MNQ')
+  assert.equal(f.timers.size, 1)
+  f.advance(100)
+  f.frame()
+  assert.deepEqual(calculated, [[4999, 'MNQ'], [4999, 'MNQ']])
+  handler.scheduleUnrealizedFromMark(6000, 'MNQ')
+  handler.sessionKey = () => 'different-owner'
+  f.advance(100)
+  f.frame()
+  assert.equal(calculated.length, 2, 'old account marks cannot publish into a replacement session')
+})
 
 function fixture({ panning = true, now = 1000 } = {}) {
   const state = { panning, now, waiterRegistrations: 0, markReads: 0, riskChecks: 0, disposed: 0 }

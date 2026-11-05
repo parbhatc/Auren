@@ -73,7 +73,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { id: 'dashboard', label: 'Overview', path: ROUTES.DASHBOARD, matches: [ROUTES.HOME, ROUTES.DASHBOARD], icon: BarChart3 },
-      { id: 'accounts', label: 'Account manager', path: ROUTES.PRACTICE_ACCOUNTS, matches: [ROUTES.PRACTICE_ACCOUNTS], icon: Wallet },
+      { id: 'accounts', label: 'Accounts', path: ROUTES.PRACTICE_ACCOUNTS, matches: [ROUTES.PRACTICE_ACCOUNTS], icon: Wallet },
     ],
   },
   {
@@ -564,6 +564,7 @@ export default function ProductHeader({
             <strong>{currentNavItem?.label || 'Auren'}</strong>
           </div>
 
+          {location.pathname !== ROUTES.PRACTICE_ACCOUNTS && <>
           <AccountPicker
             key={location.pathname}
             options={accountOptions}
@@ -583,6 +584,8 @@ export default function ProductHeader({
               <span aria-hidden />{activeAccount.status}
             </span>
           ) : null}
+
+          </>}
 
           <div className="auren-header-units" aria-label="Display unit">
             {UNITS.map((item) => (

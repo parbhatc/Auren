@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { formatFinancialDisplay } from '../utils/displayValue'
 
 export type DisplayUnit = 'usd' | 'r' | 'points' | 'percent'
 
@@ -36,15 +37,7 @@ export function DisplayUnitProvider({ children }: { children: ReactNode }) {
     }
 
     const format = (amount: number, startingBalance = 1, riskUnit = 100) => {
-      if (unit === 'r') return `${(amount / Math.max(riskUnit, 1)).toFixed(2)}R`
-      if (unit === 'points') return `${(amount / 20).toFixed(1)} pts`
-      if (unit === 'percent') return `${((amount / Math.max(startingBalance, 1)) * 100).toFixed(2)}%`
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-        signDisplay: amount === 0 ? 'auto' : 'always',
-      }).format(amount)
+      return formatFinancialDisplay(amount, unit, startingBalance, riskUnit)
     }
 
     return { unit, setUnit, format }

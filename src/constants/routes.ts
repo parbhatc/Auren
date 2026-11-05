@@ -19,8 +19,8 @@ export const ROUTES = {
   PRACTICE_SETTINGS: '/settings/practice',
   /** Simulated trading terminal using the selected active practice account */
   PRACTICE: '/practice',
-  /** Create, reset and manage simulated evaluation and funded accounts */
-  PRACTICE_ACCOUNTS: '/practice/accounts',
+  /** Manage practice, connected Tradesea and replay accounts. */
+  PRACTICE_ACCOUNTS: '/accounts',
   /** Simulated accounts — `/practice/trade/:accountId` */
   PRACTICE_TRADE: '/practice/trade',
   /** Live prop-firm trading terminal */

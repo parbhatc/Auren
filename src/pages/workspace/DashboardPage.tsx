@@ -21,9 +21,13 @@ import {
 } from '../../constants/practice'
 import { ROUTES, practiceSessionPath } from '../../constants/routes'
 import { useDisplayUnit } from '../../contexts/DisplayUnitContext'
+import { financialDisplayValue, formatFinancialDisplay } from '../../utils/displayValue'
 import { useTheme } from '../../hooks/useTheme'
 import { useDashboardAccountData } from '../../hooks/useDashboardAccountData'
 import { DASHBOARD_ACCOUNT_CHANGED_EVENT } from '../../services/dashboard/dashboardAccountSelection'
+import { invalidateDashboardAccountSnapshots } from '../../services/dashboard/dashboardAccountData'
+import { getLucidAccountProfile } from '../../services/dashboard/lucidAccountProfile'
+import LucidAccountDetails from '../../components/dashboard/LucidAccountDetails'
 import {
   WorkspaceShell,
   PageHeading,
@@ -69,8 +73,9 @@ export default function DashboardPage() {
     window.addEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, closeDay)
     return () => window.removeEventListener(DASHBOARD_ACCOUNT_CHANGED_EVENT, closeDay)
   }, [])
-  const { format } = useDisplayUnit()
+  const { format, unit } = useDisplayUnit()
   const isTradesea = selection?.source === 'tradesea'
+  const lucidProfile = isTradesea ? getLucidAccountProfile(tradeseaAccount) : null
   const isReplay = selection?.source === 'replay'
   const stats = isReplay ? replayStats : practiceStats
   const hasAccount = isReplay ? Boolean(replaySession) : isTradesea ? Boolean(tradeseaAccount) : Boolean(account)
@@ -125,15 +130,10 @@ export default function DashboardPage() {
     ? finiteNumber(tradeseaDashboard?.totalNumberOfTrades)
     : finiteNumber(stats.totalTrades ?? trades.length)
   const riskUnit = account ? Math.max(1, account.rules.maxLoss / 10) : 100
+  const pnlSign = (value: number) => Math.sign(financialDisplayValue(value, isTradesea || isReplay ? 'usd' : unit, account?.rules.startingBalance, riskUnit))
   const formatPnl = (value: number) =>
     isTradesea || isReplay
-      ? new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-          signDisplay: value === 0 ? 'auto' : 'always',
-        }).format(value)
+      ? formatFinancialDisplay(value, 'usd', 1, 100, true)
       : format(value, account?.rules.startingBalance, riskUnit)
   const dollars = (value: number) =>
     new Intl.NumberFormat('en-US', {
@@ -234,7 +234,7 @@ export default function DashboardPage() {
   const headingActions = (
     <>
       <Link to={ROUTES.PRACTICE_ACCOUNTS} className={secondaryButton}>
-        Account manager
+        Accounts
       </Link>
       {hasAccount ? (
         <Link to={terminalPath} className={primaryButton}>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                       {isReplay
                         ? `${replaySession?.symbol || 'Replay'} · ${replayInitialBalance != null ? `${dollars(replayInitialBalance)} starting balance` : 'Historical simulation'}`
                         : isTradesea
-                        ? `Tradesea · ${tradeseaAccount?.accountType || 'Trading account'}`
+                        ? lucidProfile ? `${lucidProfile.title} · ${lucidProfile.phase} · Tradesea` : `Tradesea · ${tradeseaAccount?.accountType || 'Trading account'}`
                         : `${account?.mode === 'funded' ? 'Funded simulation' : 'Evaluation simulation'} · ${dollars(account?.rules.startingBalance ?? 0)} starting balance`}
                     </p>
                   </div>
@@ -389,7 +389,7 @@ export default function DashboardPage() {
                 label="Net P&L"
                 value={pnlKnown ? formatPnl(pnl) : '—'}
                 hint={scopeLabel}
-                tone={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral'}
+                tone={pnlSign(pnl) > 0 ? 'positive' : pnlSign(pnl) < 0 ? 'negative' : 'neutral'}
               />
               <MetricCard
                 label="Win rate"
@@ -455,7 +455,7 @@ export default function DashboardPage() {
                 {points ? (
                   <>
                     <p
-                      className={`mt-6 text-[26px] font-semibold tabular-nums tracking-[-0.04em] ${pnl > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : pnl < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : text}`}
+                      className={`mt-6 text-[26px] font-semibold tabular-nums tracking-[-0.04em] ${pnlSign(pnl) > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : pnlSign(pnl) < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : text}`}
                     >
                       {pnlKnown ? formatPnl(pnl) : '—'}
                     </p>
@@ -483,11 +483,11 @@ export default function DashboardPage() {
                           points={points}
                           fill="none"
                           stroke={
-                            pnl > 0
+                            pnlSign(pnl) > 0
                               ? isDark
                                 ? '#34D399'
                                 : '#059669'
-                              : pnl < 0
+                              : pnlSign(pnl) < 0
                                 ? isDark
                                   ? '#F87171'
                                   : '#DC2626'
@@ -525,7 +525,7 @@ export default function DashboardPage() {
                               <div
                                 key={`${day.date}-${index}`}
                                 title={`${day.date}: ${formatPnl(day.pnl)}`}
-                                className={`min-w-2 flex-1 rounded-t ${day.pnl > 0 ? 'bg-emerald-500/70' : day.pnl < 0 ? 'bg-red-500/70' : 'bg-zinc-400/60'}`}
+                                className={`min-w-2 flex-1 rounded-t ${pnlSign(day.pnl) > 0 ? 'bg-emerald-500/70' : pnlSign(day.pnl) < 0 ? 'bg-red-500/70' : 'bg-zinc-400/60'}`}
                                 style={{
                                   height: `${Math.max(4, (Math.abs(finiteNumber(day.pnl)) / max) * 100)}%`,
                                 }}
@@ -581,7 +581,7 @@ export default function DashboardPage() {
                 </div>
                 <p className={`mt-1.5 text-[11px] leading-5 ${muted}`}>
                   {isReplay ? 'Your selected historical simulation.' : isTradesea
-                    ? 'Your selected trading connection.'
+                    ? lucidProfile ? 'Account type, objectives and risk rules.' : 'Your selected trading connection.'
                     : 'Keep your next milestone in sight.'}
                 </p>
                 {isReplay ? (
@@ -598,6 +598,20 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </dl>
+                ) : isTradesea && lucidProfile ? (
+                  <LucidAccountDetails
+                    key={tradeseaAccount.id}
+                    profile={lucidProfile}
+                    accountId={tradeseaAccount.id}
+                    accountName={tradeseaAccount.name || tradeseaAccount.externalAccountId}
+                    settings={tradeseaAccount.ruleSettings}
+                    dashboard={tradeseaDashboard}
+                    period={calendarLabel}
+                    onSettingsSaved={() => {
+                      invalidateDashboardAccountSnapshots('tradesea')
+                      window.dispatchEvent(new Event(DASHBOARD_ACCOUNT_CHANGED_EVENT))
+                    }}
+                  />
                 ) : isTradesea ? (
                   <dl className="mt-7 space-y-5">
                     {[
@@ -628,7 +642,7 @@ export default function DashboardPage() {
                   <div className="mt-7 space-y-6">
                     <ProgressRow
                       label="Profit target"
-                      tone={pnl > 0 ? 'emerald' : 'blue'}
+                      tone={pnlSign(pnl) > 0 ? 'emerald' : 'blue'}
                       value={profitTargetProgress}
                       detail={
                         effectiveTarget
@@ -684,12 +698,12 @@ export default function DashboardPage() {
                 <Link
                   to={
                     isReplay ? ROUTES.BACKTESTER : isTradesea
-                      ? ROUTES.PROPS_SETTINGS
+                      ? `${ROUTES.PRACTICE_ACCOUNTS}?tab=connected`
                       : ROUTES.PRACTICE_ACCOUNTS
                   }
                   className={`mt-auto flex items-center justify-between gap-3 pt-6 text-[11px] font-medium ${text}`}
                 >
-                  {isReplay ? 'Manage replay accounts' : isTradesea ? 'Manage connection' : 'View accounts & rules'}
+                  {isReplay ? 'Manage replay accounts' : isTradesea ? 'Manage account' : 'View accounts & rules'}
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Surface>
@@ -719,7 +733,7 @@ export default function DashboardPage() {
                       Month total
                     </p>
                     <p
-                      className={`mt-1 text-sm font-semibold tabular-nums ${calendarMonthPnl > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : calendarMonthPnl < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : text}`}
+                      className={`mt-1 text-sm font-semibold tabular-nums ${pnlSign(calendarMonthPnl) > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : pnlSign(calendarMonthPnl) < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : text}`}
                     >
                       {tradeResultsKnown ? formatPnl(calendarMonthPnl) : '—'}
                     </p>
@@ -792,18 +806,18 @@ export default function DashboardPage() {
                           aria-label={`View statistics for ${cell.date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}${cell.pnl != null ? `, ${formatPnl(cell.pnl)}` : ''}`}
                           aria-haspopup="dialog"
                           onClick={() => setSelectedDay({ date: cell.key, pnl: cell.pnl })}
-                          className={`min-h-[76px] rounded-xl border p-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)] enabled:hover:border-[var(--app-accent)] sm:min-h-[86px] sm:p-3 ${!cell.inMonth ? `border-transparent bg-[var(--app-inset)] opacity-35` : cell.pnl != null && cell.pnl !== 0 ? (cell.pnl > 0 ? 'border-emerald-500/20 bg-emerald-500/[0.06]' : 'border-red-500/20 bg-red-500/[0.06]') : border}`}
+                          className={`min-h-[76px] rounded-xl border p-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--app-accent)] enabled:hover:border-[var(--app-accent)] sm:min-h-[86px] sm:p-3 ${!cell.inMonth ? `border-transparent bg-[var(--app-inset)] opacity-35` : cell.pnl != null && pnlSign(cell.pnl) !== 0 ? (pnlSign(cell.pnl) > 0 ? 'border-emerald-500/20 bg-emerald-500/[0.06]' : 'border-red-500/20 bg-red-500/[0.06]') : border}`}
                         >
                           <span className={`block text-[10px] ${muted}`}>
                             {cell.date.getDate()}
                           </span>
                           {cell.pnl != null ? (
                             <span
-                              className={`mt-3 flex items-center gap-1 text-[10px] font-semibold tabular-nums sm:text-[11px] ${cell.pnl > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : cell.pnl < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : muted}`}
+                              className={`mt-3 flex items-center gap-1 text-[10px] font-semibold tabular-nums sm:text-[11px] ${pnlSign(cell.pnl) > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : pnlSign(cell.pnl) < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : muted}`}
                             >
-                              {cell.pnl > 0 ? (
+                              {pnlSign(cell.pnl) > 0 ? (
                                 <ArrowUpRight className="hidden h-3 w-3 shrink-0 lg:block" />
-                              ) : cell.pnl < 0 ? (
+                              ) : pnlSign(cell.pnl) < 0 ? (
                                 <ArrowDownRight className="hidden h-3 w-3 shrink-0 lg:block" />
                               ) : null}
                               <span
@@ -824,7 +838,7 @@ export default function DashboardPage() {
                           Week {weekIndex + 1}
                         </span>
                         <span
-                          className={`mt-2 truncate text-[10px] font-semibold tabular-nums ${weekPnl > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : weekPnl < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : muted}`}
+                          className={`mt-2 truncate text-[10px] font-semibold tabular-nums ${pnlSign(weekPnl) > 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : pnlSign(weekPnl) < 0 ? (isDark ? 'text-red-400' : 'text-[#DC2626]') : muted}`}
                           title={formatPnl(weekPnl)}
                         >
                           {tradeResultsKnown ? formatPnl(weekPnl) : '—'}
@@ -847,6 +861,7 @@ export default function DashboardPage() {
             accountName={title || 'Trading account'}
             calendarPnl={selectedDay.pnl}
             formatPnl={formatPnl}
+            pnlSign={pnlSign}
             onClose={() => setSelectedDay(null)}
           />
         </Suspense>

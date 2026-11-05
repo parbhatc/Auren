@@ -13,6 +13,13 @@ class TradeseaRoutes {
   }
 
   setupRoutes() {
+    this.router.get('/saved-accounts', AuthMiddleware.authenticate(), TradeseaController.getSavedAccounts.bind(TradeseaController))
+    this.router.delete('/saved-accounts/:accountId', AuthMiddleware.authenticate(), TradeseaController.removeSavedAccount.bind(TradeseaController))
+    this.router.put(
+      '/accounts/:accountId/settings',
+      AuthMiddleware.authenticate(),
+      TradeseaController.saveAccountSettings.bind(TradeseaController)
+    )
     this.router.post(
       '/otp/send',
       AuthMiddleware.authenticate(),

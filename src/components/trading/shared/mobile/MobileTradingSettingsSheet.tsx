@@ -2,17 +2,23 @@ import { X } from 'lucide-react'
 import { t } from '../../../../utils/translator'
 import { TradingLimitsSettingsPanel } from '../header/TradingLimitsSettingsPanel'
 import { MobileTradeOverlayShell } from './MobileTradeOverlayShell'
+import { MobileEntryModeSelector } from './MobileEntryModeSelector'
+import type { MobileEntryMode } from '../../../../types/mobileTrade'
 
 export function MobileTradingSettingsSheet({
   open,
   onClose,
   practiceAccountId,
   isDark,
+  entryMode,
+  onEntryModeChange,
 }: {
   open: boolean
   onClose: () => void
   practiceAccountId: string
   isDark: boolean
+  entryMode?: MobileEntryMode
+  onEntryModeChange?: (mode: MobileEntryMode) => void
 }) {
   const shell = isDark
     ? 'bg-slate-900 border-slate-700'
@@ -47,6 +53,14 @@ export function MobileTradingSettingsSheet({
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
+          {entryMode && onEntryModeChange && (
+            <div className="pb-3">
+              <MobileEntryModeSelector mode={entryMode} onChange={onEntryModeChange} isDark={isDark} />
+              <p className={`px-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Choose which order controls appear below your chart. Saved for this account.
+              </p>
+            </div>
+          )}
           <TradingLimitsSettingsPanel
             practiceAccountId={practiceAccountId}
             isDark={isDark}

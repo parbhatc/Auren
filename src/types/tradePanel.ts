@@ -76,6 +76,9 @@ export type OrderSubmitOptions = {
 export type PracticeOrderSubmitOptions = OrderSubmitOptions
 
 export type TradePanelProps = {
+  /** Mobile sheet delegates chart entry to the persistent chart-side controller. */
+  onRequestAutoMode?: (mode: 'buy' | 'sell' | 'auto') => void
+  onAutoModeChange?: (state: { mode: 'buy' | 'sell' | 'auto' | null; message: string | null; cancel: () => void }) => void
   accountId: string
   mode?: TradingMode
   isDark: boolean

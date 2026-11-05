@@ -10,6 +10,7 @@ import {
   convertDistanceValue,
   formatDistanceEquivalents,
   positionSizeForRisk,
+  riskSizingRejectionMessage,
 } from '../bracketUtils'
 import { PadCheckbox } from '../PadControls'
 import type { ChartAutoTradeRequest } from '../../../../common/aurenTradeContextMenu'
@@ -99,6 +100,8 @@ export function OrderTab({
   const [slPrice, setSlPrice] = useState('')
   const [tpPrice, setTpPrice] = useState('')
   const [riskSettings, setRiskSettings] = useState<TradeRiskSettings>(getTradeRiskSettings)
+  const riskSettingsRef = useRef(riskSettings)
+  riskSettingsRef.current = riskSettings
   const [armedSide, setArmedSide] = useState<AutoDirectionMode | null>(null)
   const [chartStopSelected, setChartStopSelected] = useState(false)
   const [autoSubmitRequest, setAutoSubmitRequest] = useState<{
@@ -485,6 +488,11 @@ export function OrderTab({
   }, [])
 
   const armChartStopPick = useCallback((mode: AutoDirectionMode) => {
+    if (tradeDisabled) return
+    if (props.onRequestAutoMode) {
+      props.onRequestAutoMode(mode)
+      return
+    }
     if (armedSide === mode) {
       cancelChartStopPick()
       return
@@ -523,8 +531,8 @@ export function OrderTab({
     setAutoMessage(
       basis === 'stop_loss'
         ? mode === 'auto'
-          ? 'Auto mode — below entry is Long; above entry is Short. Click the chart to enter.'
-          : `${mode === 'buy' ? 'Buy' : 'Sell'} mode — move to your stop, then click the chart.`
+          ? 'Below entry buys; above entry sells. Tap or click your stop price to enter.'
+          : `${mode === 'buy' ? 'Buy' : 'Sell'} mode — tap or click your stop price to enter.`
         : `${mode === 'buy' ? 'Buy' : 'Sell'} armed — tap the chart for the take profit.`
     )
     let selectionCommitted = false
@@ -554,6 +562,14 @@ export function OrderTab({
               ? 'A buy take profit must be above the market entry.'
               : 'A sell take profit must be below the market entry.'
         )
+        return false
+      }
+      const currentRisk = riskSettingsRef.current
+      const sizing = positionSizeForRisk(currentRisk.riskPerTrade, liveEntry, pickedPrice,
+        sizingContext.tickSize, sizingContext.tickValue, sizingContext.maxQuantity, currentRisk.riskBuffer)
+      if (!sizing || sizing.quantity < 1) {
+        setAutoMessage(riskSizingRejectionMessage(sizing, currentRisk.riskPerTrade, currentRisk.riskBuffer,
+          sizingContext.executionSymbol, sizingContext.maxQuantity))
         return false
       }
       selectionCommitted = true
@@ -625,20 +641,22 @@ export function OrderTab({
             }
           }
           const sizing = positionSizeForRisk(
-            riskSettings.riskPerTrade,
+            riskSettingsRef.current.riskPerTrade,
             liveEntry,
             price,
             sizingContext.tickSize,
             sizingContext.tickValue,
             sizingContext.maxQuantity,
-            riskSettings.riskBuffer
+            riskSettingsRef.current.riskBuffer
           )
+          if (!sizing) return { label: riskSizingRejectionMessage(null, riskSettingsRef.current.riskPerTrade,
+            riskSettingsRef.current.riskBuffer, sizingContext.executionSymbol, sizingContext.maxQuantity), quantityLabel: '' }
           const dollars = (sizing.quantity > 0
             ? sizing.plannedRisk
             : sizing.perContractRisk
           ).toLocaleString(undefined, { maximumFractionDigits: 2 })
           return {
-            label: `${mode === 'auto' ? (previewSide === 'buy' ? 'Long' : 'Short') + ' · ' : ''}${sizing.quantity > 0 ? 'Risk' : '1 contract'} $${dollars}`,
+            label: `${riskSettingsRef.current.stopLossMode === 'soft' ? 'SOFT · ' : ''}${mode === 'auto' ? (previewSide === 'buy' ? 'Long' : 'Short') + ' · ' : ''}${sizing.quantity > 0 ? 'Risk' : '1 contract'} $${dollars}`,
             quantityLabel: sizing.quantity > 0 ? `${sizing.quantity} ${sizingContext.executionSymbol}` : 'Over risk',
           }
         },
@@ -650,7 +668,19 @@ export function OrderTab({
       setArmedSide(null)
       setAutoMessage('Chart stop selection is unavailable.')
     }
-  }, [armedSide, ask, bid, book?.last, cancelChartStopPick, marketPrice, props.getActiveChartResolution, props.pickChartPriceOnce, props.showAutoPositionPreview, resolveAutoSizingContext, riskSettings.riskBuffer, riskSettings.riskPerTrade, riskSettings.sizingBasis, tickSize, tickValue])
+  }, [armedSide, ask, bid, book?.last, cancelChartStopPick, marketPrice, props.getActiveChartResolution, props.pickChartPriceOnce, props.showAutoPositionPreview, props.onRequestAutoMode, tradeDisabled, resolveAutoSizingContext, riskSettings.riskBuffer, riskSettings.riskPerTrade, riskSettings.sizingBasis, riskSettings.stopLossMode, tickSize, tickValue])
+
+  useEffect(() => {
+    props.onAutoModeChange?.({ mode: armedSide, message: autoMessage, cancel: cancelChartStopPick })
+  }, [armedSide, autoMessage, cancelChartStopPick, props.onAutoModeChange])
+
+  useEffect(() => () => {
+    props.onAutoModeChange?.({ mode: null, message: null, cancel: cancelChartStopPick })
+  }, [props.onAutoModeChange, cancelChartStopPick])
+
+  useEffect(() => {
+    if (tradeDisabled) cancelChartStopPick()
+  }, [tradeDisabled, cancelChartStopPick])
 
   useEffect(() => {
     if (!autoArmRequest) return
@@ -687,7 +717,8 @@ export function OrderTab({
   useEffect(() => {
     if (!autoSubmitRequest) return
     if (!riskSizing || riskSizing.quantity < 1) {
-      setAutoMessage('The selected level cannot be sized within this amount.')
+      setAutoMessage(riskSizingRejectionMessage(riskSizing, riskSettings.riskPerTrade, riskSettings.riskBuffer,
+        autoSubmitRequest.executionSymbol, autoSubmitRequest.maxQuantity))
       setAutoSubmitRequest(null)
       return
     }
@@ -816,13 +847,14 @@ export function OrderTab({
             >
               <ArrowUpDown className="h-4 w-4 shrink-0 text-violet-400" strokeWidth={1.75} aria-hidden />
               <span className="min-w-0">
-                <span className={`block text-xs font-semibold ${strongText}`}>Auto</span>
+                <span className={`block text-xs font-semibold ${strongText}`}>Auto{riskSettings.stopLossMode === 'soft' && <span className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5 text-[8px] font-bold text-amber-500">SOFT</span>}</span>
                 <span className={`block truncate font-mono text-[10px] tabular-nums ${mutedText}`}>
                   Direction by stop
                 </span>
               </span>
             </button>
           </div>
+          <p className={`px-3 pb-2 text-[10px] ${mutedText}`}>Risk ${riskSettings.riskPerTrade.toLocaleString()} · Buffer ${riskSettings.riskBuffer.toLocaleString()} · {riskExecutionRoot}</p>
           {autoMessage ? (
             <div className={`mx-1.5 mb-1.5 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-[10px] font-medium ${
               armedSide
@@ -953,6 +985,7 @@ export function OrderTab({
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/15 text-[9px] font-bold text-red-400">1</span>
                 ) : null}
                 <span className={`text-xs font-semibold ${strongText}`}>Stop loss</span>
+                {riskSettings.stopLossMode === 'soft' && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-500">SOFT</span>}
               </div>
               {stopLossOn && chartStopSelected && slPrice && (
                 <span className="font-mono text-[10px] text-[#f85149] tabular-nums">{slPrice}</span>

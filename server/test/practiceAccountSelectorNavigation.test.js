@@ -116,7 +116,7 @@ test('mounting reflects the host-loaded account catalog and local updates withou
 test('passed and blown selections open account management and close the dropdown', () => {
   for (const id of ['passed', 'blown']) {
     clickOption(id)
-    assert.equal(state.navigation.at(-1), '/practice/accounts')
+    assert.equal(state.navigation.at(-1), '/accounts')
     assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 0)
   }
 })
@@ -124,13 +124,13 @@ test('passed and blown selections open account management and close the dropdown
 test('manage accounts opens the manager while active and current account choices retain terminal behavior', () => {
   const tree = open()
   find(tree, (node) => node.type === 'button' && text(node).trim() === 'practice.hub.manageAccounts')[0].props.onClick()
-  assert.deepEqual(state.navigation, ['/practice/accounts'])
+  assert.deepEqual(state.navigation, ['/accounts'])
   assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 0)
   clickOption('other')
-  assert.deepEqual(state.navigation, ['/practice/accounts', '/practice/trade/other'])
+  assert.deepEqual(state.navigation, ['/accounts', '/practice/trade/other'])
   assert.deepEqual(state.selections, ['other'])
   clickOption('current')
-  assert.deepEqual(state.navigation, ['/practice/accounts', '/practice/trade/other'])
+  assert.deepEqual(state.navigation, ['/accounts', '/practice/trade/other'])
   assert.deepEqual(state.selections, ['other'], 'reselecting the current account must not restart the session')
 })
 

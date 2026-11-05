@@ -167,6 +167,7 @@ export class PracticeTradeCache extends ChartTradeCache {
     const { tickSize, tickValue } = this.resolveTicks(symbol)
     return {
       symbolLabel: practiceContractRoot(symbol),
+      softStopLoss: this.cache.get(symbol)?.stopLossMode === 'soft',
       quantityLabel: String(Math.abs(contracts)),
       tickSize,
       tickValue,

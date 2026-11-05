@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -7,21 +7,15 @@ import {
   Check,
   Database,
   Layers3,
-  Play,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
-  Target,
   Trash2,
-  Wallet,
-  Wifi,
 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getAuthToken } from '../../api/api'
-import { tradeseaAPI, type TradeseaAccount } from '../../api/tradesea.api'
 import {
   createPracticeAccount,
   deletePracticeAccount,
@@ -49,10 +43,13 @@ import ProductHeader from '../../components/layout/ProductHeader'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import PracticeMarketDataSelector from '../../components/trading/Practice/PracticeMarketDataSelector'
 import PlatformLogo from '../../components/common/PlatformLogo'
-import { saveDashboardAccountSelection } from '../../services/dashboard/dashboardAccountSelection'
+import { workspaceThemeStyle } from '../../components/layout/WorkspacePrimitives'
 import './PracticeWorkspacePage.css'
 
-type AccountManagerTab = 'accounts' | 'connected' | 'create'
+const SavedTradeseaAccountsPanel = lazy(() => import('../../components/dashboard/SavedTradeseaAccountsPanel'))
+const ReplayAccountsPanel = lazy(() => import('../../components/dashboard/ReplayAccountsPanel'))
+
+type AccountManagerTab = 'accounts' | 'connected' | 'replay' | 'create'
 
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -82,7 +79,7 @@ export default function PracticeWorkspacePage() {
   const [displayName, setDisplayName] = useState(() => generatePracticeAccountName('eval', 25000))
   const [rules, setRules] = useState<PracticeAccountRules>(() => defaultRules('eval', 25000))
   const requestedTab = searchParams.get('tab')
-  const activeTab: AccountManagerTab = requestedTab === 'connected' || requestedTab === 'create' ? requestedTab : 'accounts'
+  const activeTab: AccountManagerTab = requestedTab === 'connected' || requestedTab === 'replay' || requestedTab === 'create' ? requestedTab : 'accounts'
   const [accountType, setAccountType] = useState<'all' | PracticeAccountMode>('all')
   const [accountStatus, setAccountStatus] = useState<'all' | PracticeAccount['status']>('all')
   const [query, setQuery] = useState('')
@@ -91,13 +88,6 @@ export default function PracticeWorkspacePage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<PracticeAccount | null>(null)
-  const [connectedAccounts, setConnectedAccounts] = useState<TradeseaAccount[]>([])
-  const [connectedLoading, setConnectedLoading] = useState(false)
-  const [connectedLoaded, setConnectedLoaded] = useState(false)
-  const [connectedVerified, setConnectedVerified] = useState(false)
-  const [connectedError, setConnectedError] = useState('')
-  const [connectedRevision, setConnectedRevision] = useState(0)
-
   const setActiveTab = (tab: AccountManagerTab) => {
     const next = new URLSearchParams(searchParams)
     if (tab === 'accounts') next.delete('tab')
@@ -105,12 +95,6 @@ export default function PracticeWorkspacePage() {
     setSearchParams(next, { replace: true })
   }
 
-  const summary = useMemo(() => accounts.reduce((totals, account) => ({
-    balance: totals.balance + account.balance,
-    pnl: totals.pnl + account.balance - account.rules.startingBalance,
-    active: totals.active + (account.status === 'active' ? 1 : 0),
-    passed: totals.passed + (account.status === 'passed' ? 1 : 0),
-  }), { balance: 0, pnl: 0, active: 0, passed: 0 }), [accounts])
   const filteredAccounts = useMemo(() => accounts.filter((account) =>
     (accountType === 'all' || account.mode === accountType) &&
     (accountStatus === 'all' || account.status === accountStatus) &&
@@ -150,49 +134,6 @@ export default function PracticeWorkspacePage() {
       window.removeEventListener('practiceAccountsChanged', sync)
     }
   }, [])
-
-  useEffect(() => {
-    if (activeTab !== 'connected') return
-    let mounted = true
-    const owner = getAuthToken()
-    const isCurrent = () => mounted && owner === getAuthToken()
-    setConnectedLoading(true)
-    setConnectedVerified(false)
-    setConnectedError('')
-    setConnectedAccounts([])
-    const load = async () => {
-      try {
-        const response = await tradeseaAPI.getAccounts()
-        if (!isCurrent()) return
-        if (!response.success) throw new Error(response.message || 'Connected accounts could not be loaded.')
-        setConnectedVerified(response.connected === true)
-        setConnectedAccounts(response.connected && Array.isArray(response.accounts) ? response.accounts : [])
-        if (!response.connected && response.sessionExpired) {
-          setConnectedError(response.message || 'Your Tradesea session has expired. Reconnect in connection settings.')
-        }
-      } catch (caught) {
-        if (isCurrent()) setConnectedError(caught instanceof Error ? caught.message : 'Connected accounts could not be loaded.')
-      } finally {
-        if (isCurrent()) {
-          setConnectedLoading(false)
-          setConnectedLoaded(true)
-        }
-      }
-    }
-    void load()
-    const refresh = () => setConnectedRevision((revision) => revision + 1)
-    window.addEventListener('refreshPropFirms', refresh)
-    return () => {
-      mounted = false
-      window.removeEventListener('refreshPropFirms', refresh)
-    }
-  }, [activeTab, connectedRevision])
-
-  const viewConnectedOverview = (account: TradeseaAccount) => {
-    if (account.isArchived) return
-    saveDashboardAccountSelection({ source: 'tradesea', accountId: account.id })
-    navigate(ROUTES.DASHBOARD)
-  }
 
   const createAccount = async () => {
     setBusy('create')
@@ -260,93 +201,40 @@ export default function PracticeWorkspacePage() {
   }
 
   return (
-    <div className={`auren-shell-offset practice-workspace min-h-screen ${isDark ? 'practice-workspace--dark' : ''}`}>
+    <div style={workspaceThemeStyle(isDark)} className={`auren-shell-offset practice-workspace min-h-screen ${isDark ? 'practice-workspace--dark' : ''}`}>
       <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
       <main className="practice-workspace__main">
         <header className="practice-workspace__heading">
           <div>
-            <h1>Account manager</h1>
-            <p>Your connected trading accounts and practice accounts, together in one place.</p>
+            <h1>Accounts</h1>
+            <p>Manage your practice, Tradesea and replay accounts in one place.</p>
           </div>
-          <button type="button" onClick={() => navigate(ROUTES.PRACTICE)} className="practice-workspace__button practice-workspace__button--primary">
-            <Play size={15} fill="currentColor" strokeWidth={1.5} aria-hidden /> Practice <ArrowUpRight size={16} aria-hidden />
-          </button>
         </header>
 
-        {activeTab !== 'connected' ? <section className="practice-workspace__overview" aria-label="Practice account summary">
-          <div className="practice-workspace__summary practice-workspace__summary--balance">
-            <div className="practice-workspace__summary-label"><Wallet size={16} strokeWidth={1.6} aria-hidden /> Total simulated balance</div>
-            <p className="practice-workspace__summary-value">{money.format(summary.balance)}</p>
-            <span className="practice-workspace__summary-detail">Across {accounts.length} practice {accounts.length === 1 ? 'account' : 'accounts'}</span>
-          </div>
-          <div className="practice-workspace__summary">
-            <div className="practice-workspace__summary-label"><Layers3 size={16} strokeWidth={1.6} aria-hidden /> Active practice accounts</div>
-            <p className={`practice-workspace__summary-value ${summary.active > 0 ? 'practice-workspace__positive' : ''}`}>{summary.active.toString().padStart(2, '0')}<span className="practice-workspace__summary-denominator"> / {accounts.length.toString().padStart(2, '0')}</span></p>
-            <span className="practice-workspace__summary-detail">{summary.passed} evaluation{summary.passed === 1 ? '' : 's'} passed</span>
-          </div>
-          <div className="practice-workspace__summary">
-            <div className="practice-workspace__summary-label"><Target size={16} strokeWidth={1.6} aria-hidden /> Combined net P&amp;L</div>
-            <p className={`practice-workspace__summary-value ${summary.pnl > 0 ? 'practice-workspace__positive' : summary.pnl < 0 ? 'practice-workspace__negative' : ''}`}>{summary.pnl > 0 ? '+' : ''}{money.format(summary.pnl)}</p>
-            <span className="practice-workspace__summary-detail">Results across all practice accounts</span>
-          </div>
-        </section> : null}
-
-        {error && activeTab !== 'connected' ? <div role="alert" className={`mb-5 flex items-start gap-2 rounded-lg border p-3 text-sm ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />{error}</div> : null}
-
         <div className="practice-workspace__section-nav">
-          <div role="tablist" aria-label="Account manager" className="practice-workspace__tabs">
-            <button id="practice-accounts-tab" type="button" role="tab" aria-controls="practice-accounts-panel" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={activeTab === 'accounts' ? 'is-active' : ''}>Practice accounts <span>{accounts.length}</span></button>
-            <button id="connected-accounts-tab" type="button" role="tab" aria-controls="connected-accounts-panel" aria-selected={activeTab === 'connected'} onClick={() => setActiveTab('connected')} className={activeTab === 'connected' ? 'is-active' : ''}>Connected accounts {connectedLoaded && !connectedLoading ? <span>{connectedAccounts.length}</span> : null}</button>
-            <button id="practice-create-tab" type="button" role="tab" aria-controls="practice-create-panel" aria-selected={activeTab === 'create'} onClick={() => setActiveTab('create')} className={activeTab === 'create' ? 'is-active' : ''}><Plus size={15} aria-hidden /> Create practice</button>
+          <div role="tablist" aria-label="Accounts" className="practice-workspace__tabs">
+            <button id="practice-accounts-tab" type="button" role="tab" aria-controls={activeTab === 'create' ? 'practice-create-panel' : 'practice-accounts-panel'} aria-selected={activeTab === 'accounts' || activeTab === 'create'} onClick={() => setActiveTab('accounts')} className={activeTab === 'accounts' || activeTab === 'create' ? 'is-active' : ''}>Practice <span>{accounts.length}</span></button>
+            <button id="connected-accounts-tab" type="button" role="tab" aria-label="Tradesea" aria-controls="connected-accounts-panel" aria-selected={activeTab === 'connected'} onClick={() => setActiveTab('connected')} className={activeTab === 'connected' ? 'is-active' : ''}><div aria-hidden="true"><PlatformLogo brand="tradesea" isDark={isDark} className="h-8 w-28" /></div></button>
+            <button id="replay-accounts-tab" type="button" role="tab" aria-controls="replay-accounts-panel" aria-selected={activeTab === 'replay'} onClick={() => setActiveTab('replay')} className={activeTab === 'replay' ? 'is-active' : ''}>Replay</button>
           </div>
           <button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className="practice-workspace__text-button"><Database size={14} aria-hidden /> Connections <ArrowUpRight size={14} aria-hidden /></button>
         </div>
 
-        {activeTab !== 'connected' ? <div className="practice-workspace__data-source">
+        {error && (activeTab === 'accounts' || activeTab === 'create') ? <div role="alert" className={`mb-5 flex items-start gap-2 rounded-lg border p-3 text-sm ${isDark ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />{error}</div> : null}
+
+
+
+        {(activeTab === 'accounts' || activeTab === 'create') ? <div className="practice-workspace__data-source">
           <PracticeMarketDataSelector isDark={isDark} onOpenConnectionSettings={() => navigate(ROUTES.PROPS_SETTINGS)} />
           <span className="practice-workspace__data-note"><ShieldCheck size={13} aria-hidden /> Simulated accounts. Real market data.</span>
         </div> : null}
 
         {activeTab === 'connected' ? (
-          <section id="connected-accounts-panel" role="tabpanel" aria-labelledby="connected-accounts-tab" className="practice-workspace__connected-panel">
-            <div className="practice-workspace__connected-heading">
-              <div>
-                <h2>Connected trading accounts</h2>
-                <p>Accounts supplied by Tradesea. Select an account to view its performance overview.</p>
-              </div>
-              <button type="button" onClick={() => setConnectedRevision((revision) => revision + 1)} disabled={connectedLoading} className="practice-workspace__button practice-workspace__button--secondary"><RefreshCw size={14} className={connectedLoading ? 'animate-spin' : ''} aria-hidden /> Refresh</button>
-            </div>
-            {connectedLoading || !connectedLoaded ? (
-              <div className="practice-workspace__empty" role="status"><RefreshCw size={22} className="animate-spin" aria-hidden /><p>Loading your connected accounts…</p></div>
-            ) : connectedError ? (
-              <div className="practice-workspace__empty" role="alert"><AlertTriangle size={24} aria-hidden /><h3>Accounts could not be loaded.</h3><p>{connectedError}</p><button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className="practice-workspace__button practice-workspace__button--primary">Manage connection <ArrowUpRight size={15} aria-hidden /></button></div>
-            ) : !connectedAccounts.length ? (
-              <div className="practice-workspace__empty"><div className="practice-workspace__empty-icon"><Wifi size={24} strokeWidth={1.4} aria-hidden /></div><h3>{connectedVerified ? 'No accounts are available yet.' : 'Connect your trading platform.'}</h3><p>{connectedVerified ? 'Tradesea is connected, but no accounts are available. Check your platform access or refresh this list.' : 'Connect Tradesea to see your trading accounts here.'}</p><button type="button" onClick={() => navigate(ROUTES.PROPS_SETTINGS)} className="practice-workspace__button practice-workspace__button--primary">{connectedVerified ? 'Manage connection' : 'Connect a platform'} <ArrowUpRight size={15} aria-hidden /></button></div>
-            ) : (
-              <>
-                <div className="practice-workspace__connected-status"><span className="practice-workspace__verified-connection"><span /> Tradesea connected</span><span>{connectedAccounts.length} {connectedAccounts.length === 1 ? 'account' : 'accounts'} available</span></div>
-                <div className="practice-workspace__account-grid">
-                  {connectedAccounts.map((account) => {
-                    const firm = account.propFirmDisplayName || account.propFirm || 'Not supplied'
-                    return <article key={account.id} className="practice-workspace__account-card practice-workspace__connected-card">
-                      <div className="practice-workspace__connected-brand-row"><PlatformLogo brand="tradesea" isDark={isDark} className="h-12 w-24" /><span className="practice-workspace__connected-account-tag">{account.isArchived ? 'Archived' : 'Trading account'}</span></div>
-                      <div className="practice-workspace__connected-identity"><h3>{account.name || account.label || account.id}</h3><p>{firm}</p></div>
-                      <dl className="practice-workspace__connected-details">
-                        <div><dt>Trading platform</dt><dd>Tradesea</dd></div>
-                        <div><dt>Account type</dt><dd>{account.accountType || 'Not supplied'}</dd></div>
-                        <div><dt>Account ID</dt><dd title={account.externalAccountId || account.id}>{account.externalAccountId || account.id}</dd></div>
-                        <div><dt>Status</dt><dd className={!account.isArchived ? 'practice-workspace__positive' : ''}>{account.isArchived ? 'Archived' : 'Available'}</dd></div>
-                      </dl>
-                      <div className="practice-workspace__account-footer"><button type="button" onClick={() => viewConnectedOverview(account)} disabled={account.isArchived} className="practice-workspace__button practice-workspace__button--account">{account.isArchived ? 'Archived account' : 'View overview'}{!account.isArchived ? <ArrowRight size={16} aria-hidden /> : null}</button></div>
-                    </article>
-                  })}
-                </div>
-                <p className="practice-workspace__footnote"><ShieldCheck size={13} aria-hidden /> Account details come from your trading platform. Balances and performance are available in Overview.</p>
-              </>
-            )}
-          </section>
+          <Suspense fallback={<p role="status" className="py-12 text-center text-sm">Loading Tradesea accounts…</p>}><SavedTradeseaAccountsPanel isDark={isDark} /></Suspense>
+        ) : activeTab === 'replay' ? (
+          <Suspense fallback={<p role="status" className="py-12 text-center text-sm">Loading replay accounts…</p>}><ReplayAccountsPanel /></Suspense>
         ) : activeTab === 'create' ? (
-        <section id="practice-create-panel" role="tabpanel" aria-labelledby="practice-create-tab" className={`practice-workspace__create mb-7 rounded-xl border p-4 sm:p-6 ${surface}`}>
+        <section id="practice-create-panel" role="tabpanel" aria-labelledby="practice-accounts-tab" className={`practice-workspace__create mb-7 rounded-xl border p-4 sm:p-6 ${surface}`}>
           <div className="practice-workspace__create-heading mb-5">
             <div>
               <p className="practice-workspace__eyebrow">A FRESH START</p>
@@ -486,6 +374,10 @@ export default function PracticeWorkspacePage() {
         </section>
         ) : (
           <section id="practice-accounts-panel" role="tabpanel" aria-labelledby="practice-accounts-tab">
+        {accounts.length > 0 && <div className="mt-5 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Practice accounts</h2>
+          <button type="button" onClick={() => setActiveTab('create')} className="practice-workspace__button practice-workspace__button--primary"><Plus size={15} aria-hidden /> Create practice</button>
+        </div>}
         <div className="practice-workspace__account-toolbar">
           <div className="practice-workspace__type-filter" role="group" aria-label="Filter by account type">
             {(['all', 'eval', 'funded'] as const).map((type) => (

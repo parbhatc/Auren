@@ -106,9 +106,11 @@ export class TradeseaMdsClient {
   private connectionGeneration = 0
   private suspended = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
   private static readonly CLOSE_GRACE_MS = 2_000
-  private static readonly RESUME_DELAY_MS = 2_500
-  private static readonly DROP_RECONNECT_MS = 4_000
+  private static readonly RESUME_DELAY_MS = 100
+  private static readonly DROP_RECONNECT_MS = 250
+  private static readonly MAX_RECONNECT_MS = 8_000
   private static readonly PING_INTERVAL_MS = 5_000
   /** Wait for proxy/upstream to settle before subscribe burst (Tradesea worker pattern). */
   private static readonly RESUBSCRIBE_DELAY_MS = 150
@@ -367,6 +369,7 @@ export class TradeseaMdsClient {
 
   /** Re-open MDS after upstream has time to release the previous socket. */
   reconnect(): void {
+    this.reconnectAttempts = 0
     this.suspended = false
     this.connectionLimitBlocked = false
     this.clearAllReconnectTimers()
@@ -424,7 +427,7 @@ export class TradeseaMdsClient {
       const ws = this.ws
       if (!ws || ws.readyState === WebSocket.CLOSED) {
         this.detachSocket(false)
-        setTimeout(resolve, graceMs)
+        resolve()
         return
       }
       const finish = () => {
@@ -494,7 +497,10 @@ export class TradeseaMdsClient {
     const switchingSession =
       Boolean(this.lastAccountId && this.lastConnectionGroupId) &&
       (this.lastAccountId !== accountId || this.lastConnectionGroupId !== connectionGroupId)
-    if (switchingSession) this.connectionLimitBlocked = false
+    if (switchingSession) {
+      this.connectionLimitBlocked = false
+      this.reconnectAttempts = 0
+    }
     if (this.connectionLimitBlocked) {
       this.logWs('Connect skipped — connection limit requires manual refresh', {})
       this.setConnectionState('disconnected')
@@ -515,6 +521,9 @@ export class TradeseaMdsClient {
     this.clearReconnectTimer()
     this.suppressAutoReconnectOnce = true
     this.detachSocket()
+    // detachSocket removes the retired socket's close handler. Do not carry
+    // its suppression flag into the new socket's first unexpected disconnect.
+    this.suppressAutoReconnectOnce = false
     this.depthSubscribeAllowed = this.marketDepthEntitled
     this.loggedMdsErrors.clear()
     this.setConnectionState('connecting')
@@ -593,6 +602,8 @@ export class TradeseaMdsClient {
           }
           return
         }
+        // A proxy OPEN/pong alone does not prove the upstream feed recovered.
+        this.reconnectAttempts = 0
         this.emit('message', msg)
         if (msg.f === F_CANDLES) this.emit('candles', msg as MdsEventMap['candles'])
         else if (msg.f === F_LTP) this.emit('ltp', msg as MdsEventMap['ltp'])
@@ -666,7 +677,9 @@ export class TradeseaMdsClient {
         ev.code !== 1000
       ) {
         showMdsConnectionToast('reconnecting')
-        this.scheduleConnect(TradeseaMdsClient.DROP_RECONNECT_MS)
+        const delay = Math.min(TradeseaMdsClient.MAX_RECONNECT_MS,
+          TradeseaMdsClient.DROP_RECONNECT_MS * 2 ** Math.min(this.reconnectAttempts++, 5))
+        this.scheduleConnect(delay)
       } else if (!this.suspended && !this.reconnecting && !wasManual && !suppressAuto) {
         showMdsConnectionToast('disconnected')
       } else if (wasManual || suppressAuto) {

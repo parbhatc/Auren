@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import TradeseaIdentityService from '../services/tradesea/TradeseaIdentityService.js'
+import TradeseaAccountSettings, { validateAccountSettings } from '../services/tradesea/TradeseaAccountSettings.js'
 import PropsController from './PropsController.js'
 import Database from '../config/Database.js'
 import ErrorHandler from '../middleware/ErrorHandler.js'
@@ -290,16 +291,53 @@ class TradeseaController {
       }
 
       const accounts = await TradeseaIdentityService.fetchAccounts(session.tokens)
+      const settings = await TradeseaAccountSettings.remember(req.user.id, accounts)
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,
         connected: true,
-        accounts,
+        accounts: accounts.map(account => ({ ...account, ruleSettings: settings.get(String(account.id)) || null })),
         defaultAccountId: TradeseaIdentityService.pickDefaultAccountId(accounts),
       })
     } catch (error) {
       return ErrorHandler.handleServerError(res, error)
     }
+  }
+
+  async saveAccountSettings(req, res) {
+    let settings
+    try { settings = validateAccountSettings(req.body) } catch (error) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, error: error.message })
+    }
+    try {
+      const accountId = String(req.params.accountId || '').trim()
+      const saved = await TradeseaAccountSettings.list(req.user.id)
+      if (!saved.some(account => account.id === accountId)) {
+        const session = await this.resolveTradeseaSession(req.user.id, { autoRefresh: true })
+        if (!session.connected) return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, error: session.error || MARKET_DATA_NOT_CONNECTED })
+        const accounts = await TradeseaIdentityService.fetchAccounts(session.tokens)
+        const account = accounts.find(account => String(account.id) === accountId && !account.isArchived)
+        if (!account) return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, error: 'Account not found.' })
+        await TradeseaAccountSettings.remember(req.user.id, [account], { full: false, restore: true })
+      }
+      const ruleSettings = await TradeseaAccountSettings.save(req.user.id, accountId, settings)
+      return res.status(HTTP_STATUS.OK).json({ success: true, ruleSettings })
+    } catch (error) {
+      return ErrorHandler.handleServerError(res, error)
+    }
+  }
+
+  async getSavedAccounts(req, res) {
+    try {
+      return res.status(HTTP_STATUS.OK).json({ success: true, accounts: await TradeseaAccountSettings.list(req.user.id) })
+    } catch (error) { return ErrorHandler.handleServerError(res, error) }
+  }
+
+  async removeSavedAccount(req, res) {
+    try {
+      await TradeseaAccountSettings.remove(req.user.id, String(req.params.accountId || ''))
+      return res.status(HTTP_STATUS.OK).json({ success: true })
+    } catch (error) { return ErrorHandler.handleServerError(res, error) }
   }
 
   async getStreamConfig(req, res) {

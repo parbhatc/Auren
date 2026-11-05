@@ -58,6 +58,11 @@ const JournalReviewsPage = lazy(routeModules.journalReviews)
 const JournalTradeDetailPage = lazy(routeModules.journalDetail)
 const LegacyRedirect = () => <Navigate to={ROUTES.DASHBOARD} replace />
 
+const LegacyAccountsRedirect = () => {
+  const location = useLocation()
+  return <Navigate to={`${ROUTES.PRACTICE_ACCOUNTS}${location.search}${location.hash}`} replace />
+}
+
 function RouteSessionSync() {
   const location = useLocation()
   // Logout and account/mode changes can happen outside the terminal. Retained
@@ -261,6 +266,7 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/practice/accounts" element={<LegacyAccountsRedirect />} />
           <Route path="/trade/:firmId/:accountId/*" element={<LegacyRedirect />} />
           <Route path="/backtest/*" element={<Navigate to={ROUTES.BACKTESTER} replace />} />
           <Route

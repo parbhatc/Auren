@@ -1,4 +1,7 @@
+export type MobileEntryMode = 'auto' | 'market' | 'both'
+
 export type MobileTradePrefs = {
+  entryMode: MobileEntryMode
   floatingPad: boolean
   quickTradeMinimized: boolean
 }

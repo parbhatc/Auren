@@ -215,6 +215,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
     const datafeed = this.getDatafeed()
     return {
       symbolLabel: practiceContractRoot(tradeInstrument),
+      softStopLoss: position?.stopLossMode === 'soft',
       quantityLabel: String(Math.abs(contracts)),
       tickSize: datafeed?.getTickSize?.(tradeInstrument) ?? 0.25,
       tickValue: datafeed?.getTickValue?.(tradeInstrument) ?? 0.5,

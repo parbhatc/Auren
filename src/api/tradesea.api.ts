@@ -41,6 +41,15 @@ export interface TradeseaConnectionResponse {
   reason?: string
 }
 
+export interface TradeseaAccountRuleSettings {
+  dllEnabled: boolean | null
+  dllAmount: number | null
+  consistencyPercent: number | null
+  drawdownMethod: 'eod' | 'intraday' | 'static' | null
+  profitTarget: number | null
+  maxLoss: number | null
+}
+
 export interface TradeseaAccount {
   id: string
   label: string
@@ -52,6 +61,8 @@ export interface TradeseaAccount {
   externalAccountId?: string
   externalUserId?: string
   isArchived?: boolean
+  ruleSettings?: TradeseaAccountRuleSettings | null
+  providerAvailable?: boolean
 }
 
 export interface TradeseaAccountsResponse {
@@ -208,6 +219,21 @@ export const tradeseaAPI = {
 
   getAccounts: async (): Promise<TradeseaAccountsResponse> => {
     return readBootstrap<TradeseaAccountsResponse>('/tradesea/accounts')
+  },
+
+  saveAccountSettings: async (accountId: string, settings: TradeseaAccountRuleSettings): Promise<{ success: boolean; ruleSettings: TradeseaAccountRuleSettings | null }> => {
+    const response = await api.put(`/tradesea/accounts/${encodeURIComponent(accountId)}/settings`, settings, { headers: getAuthHeaders() })
+    return response.data
+  },
+
+  getSavedAccounts: async (): Promise<{ success: boolean; accounts: TradeseaAccount[] }> => {
+    const response = await api.get('/tradesea/saved-accounts', { headers: getAuthHeaders() })
+    return response.data
+  },
+
+  removeSavedAccount: async (accountId: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/tradesea/saved-accounts/${encodeURIComponent(accountId)}`, { headers: getAuthHeaders() })
+    return response.data
   },
 
   getStreamConfig: async (accountId: string): Promise<TradeseaStreamConfig> => {

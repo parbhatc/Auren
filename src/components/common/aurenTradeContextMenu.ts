@@ -7,7 +7,7 @@ export type TradeContextHandlers = {
   onStopSell?: (quantity: number, stopPrice: number, price: number, time?: number) => void
 }
 
-export type ChartAutoTradeSide = 'buy' | 'sell'
+export type ChartAutoTradeSide = 'buy' | 'sell' | 'auto'
 
 export type ChartAutoTradeRequest = {
   side: ChartAutoTradeSide

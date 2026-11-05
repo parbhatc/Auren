@@ -10,7 +10,7 @@ import {
 import {
   calcAccountUnrealizedPl,
 } from './tradeseaPnL'
-import { isBwcChartPanning } from '../../utils/bwcPan'
+import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 import { TradeseaDatafeed, type TradeseaMarketBook } from './TradeseaDatafeed'
 import type { PracticeChartDatafeed, PracticeMarketBook } from '../practice/practiceDatafeed'
 import { TradeseaTradeCache } from './TradeseaTradeCache'
@@ -38,6 +38,10 @@ export class TradeseaTradeHandler {
   private attachedDatafeed: TradeseaDatafeed | null = null
   private cacheSessionKey: string | null = null
   private executionRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingUnrealizedMark: { price: number; symbol: string; session: string } | null = null
+  private unrealizedTimer: ReturnType<typeof setTimeout> | null = null
+  private unrealizedFrame: number | null = null
+  private unrealizedPanWait = false
   /** Fired when candle-driven UP&L changes (account bar). */
   onUnrealizedPnLUpdate?: (upl: number) => void
 
@@ -81,6 +85,12 @@ export class TradeseaTradeHandler {
 
   /** End account/auth ownership before another feed can publish new ticks. */
   disposeSession(): void {
+    if (this.unrealizedTimer != null) clearTimeout(this.unrealizedTimer)
+    if (this.unrealizedFrame != null) cancelAnimationFrame(this.unrealizedFrame)
+    this.unrealizedTimer = null
+    this.unrealizedFrame = null
+    this.unrealizedPanWait = false
+    this.pendingUnrealizedMark = null
     if (this.widget) this.detachChart(this.widget)
     if (this.streamSyncTimer) clearTimeout(this.streamSyncTimer)
     this.streamSyncTimer = null
@@ -111,6 +121,7 @@ export class TradeseaTradeHandler {
         if (this.cacheSessionKey !== this.sessionKey()) return
         if (kind !== 'ltp' && kind !== 'bbo') return
         const book = df.getMarketBookForStream(streamId)
+        if (kind === 'bbo' && book?.last != null) return
         const mark =
           book?.last ??
           (book?.bestBid != null && book?.bestAsk != null
@@ -118,7 +129,7 @@ export class TradeseaTradeHandler {
             : book?.bestBid ?? book?.bestAsk)
         if (mark != null && Number.isFinite(mark)) {
           this.tradeCache?.onMarketPrice(streamId, mark, Date.now())
-          this.updateUnrealizedFromMark(mark, streamId)
+          this.scheduleUnrealizedFromMark(mark, streamId)
         }
       })
     }
@@ -136,11 +147,43 @@ export class TradeseaTradeHandler {
     this.tradeCache.onRealTimeBar(symbol, bar)
     if (bar.close != null) {
       debugTradeseaUpl('bar', { chartSymbol: symbol, markPrice: bar.close })
-      this.updateUnrealizedFromMark(bar.close, symbol)
+      this.scheduleUnrealizedFromMark(bar.close, symbol)
     }
   }
 
-  /** Recalculate account UP&L from open positions + latest candle close. */
+  /** Coalesce display-only account calculations; soft-stop checks stay per tick. */
+  private scheduleUnrealizedFromMark(price: number, symbol: string): void {
+    this.pendingUnrealizedMark = { price, symbol, session: this.sessionKey() }
+    if (isBwcChartPanning()) {
+      if (!this.unrealizedPanWait) {
+        this.unrealizedPanWait = true
+        whenBwcPanEnds(() => {
+          if (!this.unrealizedPanWait) return
+          this.unrealizedPanWait = false
+          this.flushUnrealizedMark()
+        })
+      }
+      return
+    }
+    if (this.unrealizedTimer != null || this.unrealizedFrame != null) return
+    this.unrealizedTimer = setTimeout(() => {
+      this.unrealizedTimer = null
+      this.unrealizedFrame = requestAnimationFrame(() => {
+        this.unrealizedFrame = null
+        const pending = this.pendingUnrealizedMark
+        if (pending && isBwcChartPanning()) this.scheduleUnrealizedFromMark(pending.price, pending.symbol)
+        else this.flushUnrealizedMark()
+      })
+    }, 100)
+  }
+
+  private flushUnrealizedMark(): void {
+    const pending = this.pendingUnrealizedMark
+    this.pendingUnrealizedMark = null
+    if (!pending || pending.session !== this.sessionKey() || this.cacheSessionKey !== pending.session) return
+    this.updateUnrealizedFromMark(pending.price, pending.symbol)
+  }
+
   updateUnrealizedFromMark(markPrice: number, chartSymbol?: string): void {
     if (!Number.isFinite(markPrice)) return
 

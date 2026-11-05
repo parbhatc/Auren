@@ -39,6 +39,7 @@ export class TradeseaTradesClient {
   private accountId: string | null = null
   private listeners = new Set<TradeseaTradesListener>()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
   private shouldReconnect = false
   private connectGeneration = 0
   private keepaliveAbort: AbortController | null = null
@@ -102,6 +103,7 @@ export class TradeseaTradesClient {
   }
 
   connect(accountId: string): void {
+    if (this.accountId !== accountId) this.reconnectAttempts = 0
     const token = getAuthToken()
     if (!token) {
       throw new Error('Not authenticated')
@@ -152,6 +154,7 @@ export class TradeseaTradesClient {
       try {
         const parsed = parseTradeseaTradesMessage(JSON.parse(text))
         if (parsed) {
+          this.reconnectAttempts = 0
           this.listeners.forEach((fn) => fn(parsed))
         }
       } catch {
@@ -230,6 +233,11 @@ export class TradeseaTradesClient {
           ws.send(encodeTradesPing())
           const gotPong = await this.waitForPong(ac.signal)
           if (!gotPong || ac.signal.aborted) {
+            if (!ac.signal.aborted && this.ws === ws) {
+              this.connectGeneration += 1
+              this.detachSocket()
+              this.scheduleReconnect()
+            }
             break
           }
           await sleep(PING_INTERVAL_MS, ac.signal)
@@ -252,6 +260,7 @@ export class TradeseaTradesClient {
     if (!this.shouldReconnect || !this.accountId) return
     if (this.reconnectTimer) return
 
+    const delay = Math.min(8000, 250 * 2 ** Math.min(this.reconnectAttempts++, 5))
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (!this.shouldReconnect || !this.accountId) return
@@ -260,7 +269,7 @@ export class TradeseaTradesClient {
       } catch {
         this.scheduleReconnect()
       }
-    }, 3000)
+    }, delay)
   }
 
   private detachSocket(): void {

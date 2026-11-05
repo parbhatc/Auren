@@ -107,7 +107,8 @@ export function MobileScalpBar({
 }) {
   const [prefs, setPrefs] = useState(() => getMobileTradePrefs(accountId))
 
-  const applyPrefs = (next: typeof prefs) => {
+  const applyPrefs = (changes: Pick<typeof prefs, 'floatingPad' | 'quickTradeMinimized'>) => {
+    const next = { ...getMobileTradePrefs(accountId), ...changes }
     setPrefs(next)
     saveMobileTradePrefs(accountId, next)
     onPrefsChange?.()

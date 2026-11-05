@@ -1,9 +1,10 @@
-import type { MobileTradePrefs } from '../types/mobileTrade'
+import type { MobileEntryMode, MobileTradePrefs } from '../types/mobileTrade'
 import { MOBILE_TRADE_PREFS_EVENT, MOBILE_TRADE_PREFS_KEY_PREFIX } from '../constants/mobileTrade'
 
 export type { MobileTradePrefs, PracticeMobileTradePrefs } from '../types/mobileTrade'
 
 const DEFAULT_PREFS: MobileTradePrefs = {
+  entryMode: 'both',
   floatingPad: false,
   quickTradeMinimized: true,
 }
@@ -16,7 +17,8 @@ export function getMobileTradePrefs(accountId: string): MobileTradePrefs {
   try {
     const raw = localStorage.getItem(storageKey(accountId))
     if (raw) {
-      return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as MobileTradePrefs) }
+      const saved = JSON.parse(raw) as Partial<MobileTradePrefs>
+      return { ...DEFAULT_PREFS, ...saved, entryMode: saved.entryMode === 'auto' || saved.entryMode === 'market' ? saved.entryMode : 'both' }
     }
   } catch {
     /* ignore */
@@ -36,6 +38,7 @@ export function saveMobileTradePrefs(accountId: string, prefs: MobileTradePrefs)
 export function setMobileFloatingPad(accountId: string, floatingPad: boolean): void {
   const prev = getMobileTradePrefs(accountId)
   saveMobileTradePrefs(accountId, {
+    ...prev,
     floatingPad,
     quickTradeMinimized: floatingPad ? false : prev.quickTradeMinimized,
   })
@@ -43,9 +46,14 @@ export function setMobileFloatingPad(accountId: string, floatingPad: boolean): v
 
 export function setMobileQuickTradeMinimized(accountId: string, quickTradeMinimized: boolean): void {
   saveMobileTradePrefs(accountId, {
+    ...getMobileTradePrefs(accountId),
     floatingPad: false,
     quickTradeMinimized,
   })
+}
+
+export function setMobileEntryMode(accountId: string, entryMode: MobileEntryMode): void {
+  saveMobileTradePrefs(accountId, { ...getMobileTradePrefs(accountId), entryMode })
 }
 
 export { MOBILE_TRADE_PREFS_EVENT, PRACTICE_MOBILE_TRADE_PREFS_EVENT } from '../constants/mobileTrade'

@@ -170,3 +170,12 @@ export function positionSizeForRisk(
     plannedRisk: Math.round(perContractRisk * quantity * 100) / 100,
   }
 }
+
+/** Explain a rejected Auto selection without changing the user's risk limit. */
+export function riskSizingRejectionMessage(sizing: RiskPositionSize | null, riskBudget: number, riskBuffer: number, symbol: string, maxQty: number): string {
+  if (maxQty < 1) return `No ${symbol} contracts are available under this account’s quantity limit.`
+  if (!sizing || !Number.isFinite(sizing.perContractRisk) || sizing.perContractRisk <= 0) return 'This stop cannot be sized from the current quote. Choose another level or wait for quotes.'
+  const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+  const allowance = riskBudget + Math.max(0, riskBuffer)
+  return `1 ${symbol} contract risks ${money(sizing.perContractRisk)} at this stop; your limit is ${money(allowance)}${riskBuffer > 0 ? ' including buffer' : ''}. Choose a closer stop or change Risk & sizing.`
+}

@@ -188,7 +188,10 @@ export class PracticeTradeHandler {
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
     if (!datafeed?.subscribeMarketBook) return
-    this.marketBookUnsub = datafeed.subscribeMarketBook((streamId) => {
+    this.marketBookUnsub = datafeed.subscribeMarketBook((streamId, kind) => {
+      // Brackets and practice marks use trades, not depth/volume/BBO changes.
+      // Keep every LTP (including same-price ticks across a soft-stop bar close).
+      if (kind !== 'ltp') return
       this.tradeCache?.onMarketBookTick(streamId)
     })
   }

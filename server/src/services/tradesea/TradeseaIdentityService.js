@@ -404,21 +404,22 @@ class TradeseaIdentityService {
     }
   }
 
-  parseAccountsBody(raw) {
+  parseAccountsBody(raw, { strict = false } = {}) {
     try {
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
       const ok =
         parsed?.s === 'success' ||
         parsed?.s === 'ok' ||
         parsed?.status === 'success'
-      if (!ok) return []
+      if (!ok) throw new Error('Tradesea did not confirm the account list.')
       if (Array.isArray(parsed.d)) return parsed.d
       if (Array.isArray(parsed.d?.accounts)) return parsed.d.accounts
       if (Array.isArray(parsed.data)) return parsed.data
       if (Array.isArray(parsed.data?.accounts)) return parsed.data.accounts
       if (Array.isArray(parsed.accounts)) return parsed.accounts
-      return []
-    } catch {
+      throw new Error('Tradesea returned an invalid account list.')
+    } catch (error) {
+      if (strict) throw error
       return []
     }
   }
@@ -495,7 +496,7 @@ class TradeseaIdentityService {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw new Error(apiErrorMessage(response.body, 'Could not load Tradesea accounts'))
       }
-      return this.parseAccountsBody(response.body)
+      return this.parseAccountsBody(response.body, { strict: true })
         .map((account) => this.normalizeAccount(account))
         .filter((account) => !this.isNexusDevAccount(account))
     })

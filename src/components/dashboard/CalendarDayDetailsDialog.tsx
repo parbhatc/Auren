@@ -16,6 +16,7 @@ export interface CalendarDayDetailsDialogProps {
   date: string
   accountName: string
   formatPnl: (value: number) => string
+  pnlSign?: (value: number) => number
   onClose: () => void
   calendarPnl?: number
 }
@@ -53,8 +54,8 @@ function displayTime(value: string | null): string {
   })
 }
 
-function pnlClass(value: number | null): string {
-  return known(value) && value !== 0 ? value > 0 ? 'is-positive' : 'is-negative' : ''
+function pnlClass(value: number | null, sign: (value: number) => number = Math.sign): string {
+  return known(value) && sign(value) !== 0 ? sign(value) > 0 ? 'is-positive' : 'is-negative' : ''
 }
 
 export default function CalendarDayDetailsDialog({
@@ -62,6 +63,7 @@ export default function CalendarDayDetailsDialog({
   date,
   accountName,
   formatPnl,
+  pnlSign,
   onClose,
   calendarPnl,
 }: CalendarDayDetailsDialogProps) {
@@ -230,7 +232,7 @@ export default function CalendarDayDetailsDialog({
           <div className="calendar-day-details__summary">
             <div className="calendar-day-details__net">
               <span>Net P&amp;L{usingCalendarPnl ? <small>Calendar total</small> : null}</span>
-              <strong className={pnlClass(netPnl)}>{known(netPnl) ? formatPnl(netPnl) : '—'}</strong>
+              <strong className={pnlClass(netPnl, pnlSign)}>{known(netPnl) ? formatPnl(netPnl) : '—'}</strong>
             </div>
             {metrics.map((metric) => (
               <div className="calendar-day-details__metric" key={metric.label}>
@@ -283,7 +285,7 @@ export default function CalendarDayDetailsDialog({
                           <td>{known(trade.contracts) ? amount.format(trade.contracts) : '—'}</td>
                           <td>{known(trade.entryPrice) ? amount.format(trade.entryPrice) : '—'}<small>{known(trade.exitPrice) ? amount.format(trade.exitPrice) : '—'}</small></td>
                           <td>{known(trade.fees) ? currency.format(trade.fees) : '—'}</td>
-                          <td className={pnlClass(trade.netPnl)}>{known(trade.netPnl) ? formatPnl(trade.netPnl) : '—'}</td>
+                          <td className={pnlClass(trade.netPnl, pnlSign)}>{known(trade.netPnl) ? formatPnl(trade.netPnl) : '—'}</td>
                         </tr>
                       ))}</tbody>
                     </table>
