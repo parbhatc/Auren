@@ -25,7 +25,10 @@ if (localRoot) {
   })
 } else {
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  console.log('Updating the installed BetterweightChartPro package from main')
+  const packageJson = JSON.parse(fs.readFileSync(path.join(aurenRoot, 'package.json'), 'utf8'))
+  const chartDependency = packageJson.dependencies?.betterweightchartpro
+  if (!chartDependency) throw new Error('BetterweightChartPro dependency is not configured.')
+  console.log('Installing the configured BetterweightChartPro package revision')
   execFileSync(
     npm,
     [
@@ -33,7 +36,7 @@ if (localRoot) {
       '--save',
       '--no-audit',
       '--no-fund',
-      'betterweightchartpro@github:parbhatc/BetterweightChartPro#main',
+      `betterweightchartpro@${chartDependency}`,
     ],
     { cwd: aurenRoot, stdio: 'inherit' }
   )
