@@ -316,6 +316,24 @@ server/data/backtester/csv/{SYMBOL}/{resolution}/{year}/{Month}.csv
 
 Example: `server/data/backtester/csv/NQ/1m/2026/June.csv`
 
+**Private CSV repository**
+
+Historical CSV datasets and import backups are stored in the private
+[`parbhatc/CSV_Data`](https://github.com/parbhatc/CSV_Data) repository. GitHub access
+and Git LFS are required to download the actual CSV contents:
+
+```sh
+git lfs install
+git clone https://github.com/parbhatc/CSV_Data.git
+git -C CSV_Data lfs pull
+```
+
+Copy the required files from `CSV_Data/csv/` into
+`server/data/backtester/csv/`, preserving their relative folders and checking
+existing data before replacing it. The data repository includes a checksum
+manifest and a separate `import-backups/` archive. It is a snapshot; Auren keeps
+using its local data directory and does not automatically sync downloads to GitHub.
+
 **WebSocket**
 
 Data operations use `/backtester/data-management-ws` (see [docs/RESTART_GUIDE.md](docs/RESTART_GUIDE.md) for nginx proxy config).
