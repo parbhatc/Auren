@@ -316,23 +316,31 @@ server/data/backtester/csv/{SYMBOL}/{resolution}/{year}/{Month}.csv
 
 Example: `server/data/backtester/csv/NQ/1m/2026/June.csv`
 
-**Private CSV repository**
+**Private market data repository**
 
-Historical CSV datasets and import backups are stored in the private
-[`parbhatc/CSV_Data`](https://github.com/parbhatc/CSV_Data) repository. GitHub access
-and Git LFS are required to download the actual CSV contents:
+Historical CSV datasets and import backups are available in the private
+[`parbhatc/Market_Data`](https://github.com/parbhatc/Market_Data) repository.
+Use Git LFS to download the CSVs in the repository checkout:
 
 ```sh
 git lfs install
-git clone https://github.com/parbhatc/CSV_Data.git
-git -C CSV_Data lfs pull
+git clone https://github.com/parbhatc/Market_Data.git
+git -C Market_Data lfs pull
 ```
 
-Copy the required files from `CSV_Data/csv/` into
-`server/data/backtester/csv/`, preserving their relative folders and checking
-existing data before replacing it. The data repository includes a checksum
-manifest and a separate `import-backups/` archive. It is a snapshot; Auren keeps
-using its local data directory and does not automatically sync downloads to GitHub.
+The [FX Replay monthly snapshot](https://github.com/parbhatc/Market_Data/releases/tag/fx-replay-2026-11-09)
+contains additional 1s, 30s and 1m CSVs. Verify the downloaded `.tar.zst`
+archives against the release manifest and extract them into a staging folder
+with `tar -xf <archive>.tar.zst`.
+
+Copy the required files from the checkout or the extracted `csv/` directory
+into `server/data/backtester/csv/`, preserving their relative folders and
+skipping months that already have a local file. The checkout also contains a
+separate `import-backups/` archive. Auren reads from its local data directory.
+
+The economic calendar uses a separate local cache under `server/data/news/`.
+Run `node server/scripts/backfill-economic-news.mjs` from the project root to
+fill missing calendar months.
 
 **WebSocket**
 
