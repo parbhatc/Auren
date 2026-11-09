@@ -6,7 +6,7 @@ import { BACKTESTER_CHART_SYMBOL_KEY } from '../constants'
 import type { BacktesterChartDataFeed } from '../components/chart/BacktesterChartDataFeed'
 import type { DomPositionContext } from '../../services/tradesea/tradeseaPnL'
 import { calcTradeseaTickPnL } from '../../services/tradesea/tradeseaPnL'
-import { tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaResolutions'
+import { alignTradeseaBarTimeSec, tradeseaResolutionToSeconds } from '../../services/tradesea/tradeseaResolutions'
 import type { ResolutionString } from '../../types/chart'
 import type { BracketOptions, ChartPricePickContext } from '../../types/tradePanel'
 import type { OrderSide } from '../../types/order'
@@ -475,6 +475,7 @@ export class BacktesterTradeHandler {
     }
     this.replayPaneSyncRaf = requestAnimationFrame(() => {
       this.replayPaneSyncRaf = null
+      if (this.nextCandleInFlight || this.previousCandleInFlight) return
       this.syncAllPanesReplayCursor()
     })
   }
@@ -502,7 +503,8 @@ export class BacktesterTradeHandler {
   /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
   syncReplayCursorFromBar(_anchorSec: number, _chartResolution?: string): void {
     // NQ and ES arrive as separate batches. The final acknowledgement, not
-    // the first symbol's candle, releases the next/previous navigation latch.
+    // the first symbol's candle, commits the cursor across all panes.
+    if (this.nextCandleInFlight || this.previousCandleInFlight) return
     this.scheduleSyncAllPanesReplayCursor()
   }
 
@@ -519,6 +521,8 @@ export class BacktesterTradeHandler {
   private async reloadChartAfterSessionAnchor(opts?: {
     preserveViewport?: boolean
     preserveTimeRange?: boolean
+    reanchorViewport?: boolean
+    keepCurrentBarsWhileLoading?: boolean
     playbackAnchorSec?: number
     playbackAnchorResolution?: string
     clearPlaybackAnchor?: boolean
@@ -527,6 +531,8 @@ export class BacktesterTradeHandler {
       reloadSessionDate?: (o?: {
         preserveViewport?: boolean
         preserveTimeRange?: boolean
+        reanchorViewport?: boolean
+        keepCurrentBarsWhileLoading?: boolean
         playbackAnchorSec?: number
         playbackAnchorResolution?: string
         clearPlaybackAnchor?: boolean
@@ -601,6 +607,8 @@ export class BacktesterTradeHandler {
           const sessionAnchorSec = this.getSessionAnchorSec(updatedSession)
           await this.reloadChartAfterSessionAnchor({
             preserveViewport: true,
+            reanchorViewport: true,
+            keepCurrentBarsWhileLoading: true,
             playbackAnchorSec: sessionAnchorSec ?? undefined,
             clearPlaybackAnchor: false,
           })
@@ -1015,11 +1023,13 @@ export class BacktesterTradeHandler {
     if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
     this.nextCandleTimeout = setTimeout(() => {
       this.nextCandleInFlight = false
+      this.nextCandleTimeout = null
+      this.scheduleSyncAllPanesReplayCursor()
     }, 2000) as any
 
     const stepResolution = this.resolvePlaybackStepResolution()
     const stepSec = this.resolvePlaybackStepSec()
-    const current = this.datafeed?.getPlaybackAnchorSecPublic?.() ?? null
+    const current = this.datafeed?.getPlaybackStepCursorSec(stepResolution as ResolutionString) ?? null
 
     if (current == null || !Number.isFinite(current)) {
       console.warn('[BacktesterTradeHandler] Replay cursor not set for nextCandle')
@@ -1032,15 +1042,13 @@ export class BacktesterTradeHandler {
     // can sit mid-bucket (hh:mm:30); "current + stepSec" would then target
     // mid-bucket walls forever (dead steps / forming-bar-only updates). The
     // first step from a mid-bucket anchor completes the current bucket.
-    const targetSec = Math.floor(current / stepSec) * stepSec + stepSec
+    const targetSec = stepSec === 1
+      ? Math.floor(current) + 1
+      : alignTradeseaBarTimeSec(current, stepResolution) + stepSec
     this.datafeed?.setPlaybackAnchorSec?.(
       Math.floor(targetSec),
       stepResolution as ResolutionString,
     )
-
-    // Single RAF-coalesced pane sync; incoming realtimeBars re-schedule through
-    // the same scheduler, so the cursor ends correct after the WS round-trip.
-    this.scheduleSyncAllPanesReplayCursor()
 
     if (this.client && this.client.isConnected()) {
       this.client.send({
@@ -1054,6 +1062,7 @@ export class BacktesterTradeHandler {
     } else {
       this.nextCandleInFlight = false
       if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
+      this.scheduleSyncAllPanesReplayCursor()
     }
 
     this.logPlaybackAction('next_candle', {
@@ -1070,16 +1079,17 @@ export class BacktesterTradeHandler {
 
     const stepResolution = this.resolvePlaybackStepResolution()
     const stepSec = this.resolvePlaybackStepSec()
-    const current = this.datafeed?.getPlaybackAnchorSecPublic?.() ?? null
+    const current = this.datafeed?.getPlaybackStepCursorSec(stepResolution as ResolutionString) ?? null
     if (current == null || !Number.isFinite(current)) {
       console.warn('[BacktesterTradeHandler] Replay cursor not set for previousCandle')
       return
     }
 
-    // Complete a partially advanced interval first, then step by the selected
-    // wall-clock interval. Host sync resolves gaps to the nearest prior candle.
-    let targetSec = Math.ceil(current / stepSec) * stepSec - stepSec
-    if (targetSec >= current) targetSec = current - stepSec
+    // Use the same CME session grid as history and forward replay, including
+    // four-hour opens such as 06:00 ET and 10:00 ET.
+    let targetSec = stepSec === 1
+      ? Math.floor(current) - 1
+      : alignTradeseaBarTimeSec(current - 1, stepResolution)
 
     const firstLoaded = Number(this.getBwcWidget()?.getBars?.()?.[0]?.time)
     if (Number.isFinite(firstLoaded)) targetSec = Math.max(targetSec, firstLoaded)
@@ -1100,6 +1110,7 @@ export class BacktesterTradeHandler {
       await this.reloadChartAfterSessionAnchor({
         preserveViewport: true,
         preserveTimeRange: true,
+        keepCurrentBarsWhileLoading: true,
         playbackAnchorSec: Math.floor(targetSec),
         playbackAnchorResolution: stepResolution,
         clearPlaybackAnchor: false,

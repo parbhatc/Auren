@@ -11,17 +11,18 @@ const bundled = await build({
 const { BacktesterTradeHandler } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`)
   .catch(error => { throw new Error(error.message) })
 
-function fixture() {
-  let cursor = 1_800_000_000
+function fixture(start = 1_800_000_000, resolution = '15', stepSec = 900) {
+  let cursor = start
   const messages = []
   const client = { isConnected: () => true, send: message => messages.push(message) }
   const handler = new BacktesterTradeHandler(null, client)
   handler.datafeed = {
     getPlaybackAnchorSecPublic: () => cursor,
+    getPlaybackStepCursorSec: () => cursor,
     setPlaybackAnchorSec: next => { cursor = next },
   }
-  handler.resolvePlaybackStepResolution = () => '15'
-  handler.resolvePlaybackStepSec = () => 900
+  handler.resolvePlaybackStepResolution = () => resolution
+  handler.resolvePlaybackStepSec = () => stepSec
   handler.resolveChartSymbol = () => 'NQ'
   handler.getBwcWidget = () => ({ getBars: () => [] })
   handler.scheduleSyncAllPanesReplayCursor = () => {}
@@ -29,17 +30,35 @@ function fixture() {
   return { handler, messages, cursor: () => cursor }
 }
 
+test('4h Previous and Next use the CME session grid in winter and summer', async (t) => {
+  for (const date of ['2026-03-04T10:00:00-05:00', '2026-07-08T10:00:00-04:00']) {
+    const open = Date.parse(date) / 1000
+    const { handler, messages } = fixture(open, '240', 14400)
+    t.after(() => clearTimeout(handler.nextCandleTimeout))
+    let reloaded
+    handler.reloadChartAfterSessionAnchor = async options => { reloaded = options.playbackAnchorSec }
+    await handler.handlePreviousCandle()
+    assert.equal(reloaded, open - 14400)
+    handler.handleNextCandle()
+    assert.equal(messages.at(-1).targetSec, open)
+  }
+})
+
 test('NQ realtime frame does not allow Previous before ES and step acknowledgement', async (t) => {
   const { handler, messages } = fixture()
   t.after(() => clearTimeout(handler.nextCandleTimeout))
+  let paneSyncs = 0
+  handler.scheduleSyncAllPanesReplayCursor = () => { paneSyncs++ }
   handler.handleNextCandle()
   const requested = messages[0].targetSec
   handler.syncReplayCursorFromBar(requested, '15')
+  assert.equal(paneSyncs, 0, 'neither the click nor a partial reply refreshes all panes')
   let rewinds = 0
   handler.reloadChartAfterSessionAnchor = async () => { rewinds++ }
   await handler.handlePreviousCandle()
   assert.equal(rewinds, 0, 'first symbol reply cannot release navigation')
   handler.handleNextCandleAck({ cursorSec: requested, emitted: 2 })
+  assert.equal(paneSyncs, 1, 'the final acknowledgement refreshes the panes once')
   await handler.handlePreviousCandle()
   assert.equal(rewinds, 1, 'rewind is allowed after the final ack')
 })
@@ -57,6 +76,7 @@ test('Previous rebuilds candle data at its source resolution and serializes rapi
   assert.equal(loads[0].playbackAnchorSec, target)
   assert.equal(loads[0].clearPlaybackAnchor, false)
   assert.equal(loads[0].preserveTimeRange, true, 'rewind keeps the current time window rather than following the cursor')
+  assert.equal(loads[0].keepCurrentBarsWhileLoading, true)
   await handler.handlePreviousCandle()
   handler.handleNextCandle()
   assert.equal(loads.length, 1)

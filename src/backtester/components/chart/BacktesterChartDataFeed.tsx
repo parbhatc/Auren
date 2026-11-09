@@ -1,7 +1,7 @@
 import { IDatafeedChartApi, LibrarySymbolInfo, ResolutionString, SubscribeBarsCallback, Bar, Subscription } from '../../../types/chart'
 import { backtesterAPI } from '../../../api/backtester.api'
 import type { MarketBookUpdateKind, TradeseaMarketBook } from '../../../services/tradesea/tradeseaMarketBook'
-import { tradeseaResolutionToSeconds } from '../../../services/tradesea/tradeseaResolutions'
+import { alignTradeseaBarTimeSec, tradeseaResolutionToSeconds } from '../../../services/tradesea/tradeseaResolutions'
 import type { BacktestSession } from '../../../types/backtester'
 import { BacktesterChartClient } from '../../services/BacktesterChartClient'
 import { isBwcChartPanning } from '../../../utils/bwcPan'
@@ -118,29 +118,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
 
   /** Match server BarAggregator bucket alignment (local session timezone). */
   private alignTimeToResolutionSec(timeSec: number, resolution: ResolutionString): number {
-    const r = String(resolution).trim().toUpperCase()
-    const secMatch = r.match(/^(\d+)S$/)
-    if (secMatch) {
-      const barSec = Math.max(1, parseInt(secMatch[1], 10))
-      return Math.floor(timeSec / barSec) * barSec
-    }
-
-    const d = new Date(timeSec * 1000)
-
-    if (r === 'D' || r === '1D') {
-      d.setHours(0, 0, 0, 0)
-      return Math.floor(d.getTime() / 1000)
-    }
-
-    const mins = parseInt(r, 10)
-    if (Number.isFinite(mins) && mins > 0) {
-      const alignedMinutes = Math.floor(d.getMinutes() / mins) * mins
-      d.setMinutes(alignedMinutes, 0, 0)
-      return Math.floor(d.getTime() / 1000)
-    }
-
-    const barSec = Math.max(1, tradeseaResolutionToSeconds(r))
-    return Math.floor(timeSec / barSec) * barSec
+    return alignTradeseaBarTimeSec(timeSec, resolution)
   }
 
   /**
@@ -623,6 +601,17 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return this.getPlaybackAnchorSec()
   }
 
+  /** A finer step starts after the last source bar already revealed. */
+  getPlaybackStepCursorSec(resolution: ResolutionString): number | null {
+    const anchor = this.getPlaybackAnchorSec()
+    if (anchor == null) return null
+    const sourceSec = tradeseaResolutionToSeconds(this.playbackAnchorResolution)
+    const stepSec = tradeseaResolutionToSeconds(resolution)
+    return stepSec < sourceSec
+      ? this.capPlaybackAnchorForTargetResolution(anchor, resolution)
+      : anchor
+  }
+
   /** Loaded replay candles at the active resolution for journal evidence capture. */
   getReplayBarsForSymbol(symbol: string, resolution: ResolutionString, limit = 5000): Bar[] {
     const candidates = [
@@ -916,7 +905,17 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     this.pendingGetBarsAbort.set(params.requestId, controller)
 
     try {
-      const response = await backtesterAPI.getHistory(
+      const anchor = this.getPlaybackAnchorSec()
+      const sourceResolution = this.playbackAnchorResolution
+      const sourceSec = tradeseaResolutionToSeconds(sourceResolution)
+      const targetSec = tradeseaResolutionToSeconds(params.resolution)
+      const openSec = anchor == null ? null : this.alignTimeToResolutionSec(anchor, params.resolution)
+      const fineReplay = params.firstDataRequest && this.isSubMinuteResolution(sourceResolution) &&
+        sourceSec < targetSec && targetSec < 86400 &&
+        anchor != null && openSec != null && params.to != null && params.to >= openSec
+        ? { cutoff: this.alignTimeToResolutionSec(anchor, sourceResolution), openSec }
+        : null
+      const historyRequest = backtesterAPI.getHistory(
         {
           symbol: params.symbol,
           resolution: params.resolution,
@@ -928,14 +927,34 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
         },
         { signal: controller.signal },
       )
+      const [response, fineHistory] = await Promise.all([
+        historyRequest,
+        fineReplay && backtesterAPI.getHistory({
+          symbol: params.symbol,
+          resolution: sourceResolution,
+          from: fineReplay.openSec - 1,
+          to: fineReplay.cutoff,
+        }, { signal: controller.signal }),
+      ])
       if (!this.pendingGetBarsRequests.has(params.requestId)) return
 
+      // Coarser history can contain the full source minute. Rebuild the
+      // forming chart candle from the same fine source used by Next.
+      const formingBar = fineReplay ? {
+        openSec: fineReplay.openSec,
+        bar: this.aggregateLtfIntoHtfBar(
+          this.sanitizeBars(fineHistory?.bars ?? []), fineReplay.openSec, fineReplay.cutoff,
+        ),
+      } : undefined
       this.handleGetBarsResponse({
         requestId: params.requestId,
         bars: response.bars,
         noData: response.noData,
         meta: response.meta,
-        error: response.success === false ? response.message : undefined,
+        formingBar,
+        error: response.success === false || fineHistory?.success === false
+          ? response.message || fineHistory?.message || 'Replay history failed'
+          : undefined,
       })
     } catch (error) {
       if (controller.signal.aborted) return
@@ -950,7 +969,14 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     }
   }
 
-  handleGetBarsResponse(response: { requestId: string; bars?: any[]; noData?: boolean; error?: string; meta?: { noData?: boolean } }): void {
+  handleGetBarsResponse(response: {
+    requestId: string
+    bars?: Bar[]
+    noData?: boolean
+    error?: string
+    meta?: { noData?: boolean }
+    formingBar?: { openSec: number; bar: Bar | null }
+  }): void {
     const request = this.pendingGetBarsRequests.get(response.requestId)
     if (!request) {
       console.error(`[BacktesterChartDataFeed] No request found for requestId: ${response.requestId}`)
@@ -965,19 +991,16 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       return
     }
 
-    if (response.noData || !response.bars || response.bars.length === 0) {
-      request.onHistoryCallback([], {noData: true})
-      return
+    let history = response.noData ? [] : this.sanitizeBars(response.bars ?? [])
+    if (response.formingBar) {
+      const { openSec, bar } = response.formingBar
+      history = history.filter((entry) => entry.time < openSec)
+      if (bar) history.push(bar)
     }
-
-    const bars = this.patchFormingHtfBars(
-      this.filterBarsToSessionAnchor(
-        this.sanitizeBars(response.bars as Bar[]),
-        request.resolution,
-      ),
-      request.symbol,
-      request.resolution,
-    )
+    const visible = this.filterBarsToSessionAnchor(history, request.resolution)
+    const bars = response.formingBar || !this.isSubMinuteResolution(this.playbackAnchorResolution)
+      ? visible
+      : this.patchFormingHtfBars(visible, request.symbol, request.resolution)
     if (!bars.length) {
       request.onHistoryCallback([], { noData: true })
       return
@@ -1008,7 +1031,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       }
     }
 
-    const noData = Boolean(response.noData || response.meta?.noData)
+    const noData = Boolean(response.meta?.noData)
     request.onHistoryCallback(bars, { noData })
   }
 

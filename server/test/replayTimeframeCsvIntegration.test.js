@@ -138,6 +138,49 @@ test('CSV-backed 09:15 and 09:30 candles retain distinct full OHLC across histor
   assert.deepEqual(read(start + 900), next)
 })
 
+test('one-second replay reloads forming intraday candles without exposing the final OHLC', async (t) => {
+  const source = new BacktesterChartDataFeed(null)
+  // 10:00 ET is a 4h open even though 14:00 UTC is not a UTC 4h boundary.
+  const openSec = Date.parse('2026-07-08T10:00:00-04:00') / 1000
+  let previous
+  const completed = { time: openSec, open: 100, high: 130, low: 80, close: 120, volume: 500 }
+  const seconds = [
+    { time: openSec, open: 100, high: 102, low: 99, close: 101, volume: 3 },
+    { time: openSec + 1, open: 101, high: 104, low: 98, close: 103, volume: 7 },
+  ]
+  const read = async (anchor, resolution) => {
+    source.setPlaybackAnchorSec(anchor, '1S')
+    let result
+    const requestId = String(anchor)
+    source.pendingGetBarsRequests.set(requestId, {
+      symbol: 'NQ', resolution,
+      onHistoryCallback: bars => { result = bars },
+      onErrorCallback: reason => assert.fail(reason),
+    })
+    await source.fetchBarsHttp({ requestId, symbol: 'NQ', resolution, to: anchor, firstDataRequest: true })
+    return result
+  }
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const query = new URL(String(url), 'https://replay.test').searchParams
+    const fine = query.get('resolution') === '1s'
+    if (fine) assert.equal(Number(query.get('from')), openSec - 1)
+    const bars = fine ? seconds.filter(bar => bar.time <= Number(query.get('to'))) : [previous, completed]
+    return new Response(JSON.stringify({ success: true, bars }))
+  })
+  for (const resolution of ['1', '60', '240']) {
+    const intervalSec = Number(resolution) * 60
+    previous = { time: openSec - intervalSec, open: 98, high: 100, low: 96, close: 99, volume: 30 }
+    const advanced = [previous, {
+      time: openSec, open: 100, high: 104, low: 98, close: 103, volume: 10,
+    }]
+    assert.deepEqual(await read(openSec + 1, resolution), advanced)
+    assert.deepEqual(await read(openSec, resolution), [previous, seconds[0]])
+    assert.deepEqual(await read(openSec + 1, resolution), advanced)
+    source.setPlaybackAnchorSec(openSec, resolution)
+    assert.equal(source.getPlaybackStepCursorSec('1S'), openSec + intervalSec - 1)
+  }
+})
+
 test('actual Replay and CSV history reuse 30s/1m/5m round trips and join overlapping backfill', async (t) => {
   const csvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-replay-timeframes-'))
   t.after(() => fs.rmSync(csvDir, { recursive: true, force: true }))
@@ -272,7 +315,10 @@ test('actual Replay and CSV history reuse 30s/1m/5m round trips and join overlap
     assert.equal(pane.bars[0].open, 500, 'minute and HTF history use the native minute dataset')
     assert.ok(pane.bars.at(-1).time <= source.getPlaybackAnchorSecForResolution(resolution))
   }
-  assert.deepEqual(historyRequests.map((request) => request.resolution), ['30s', '30s', '1', '1', '5', '5'])
+  assert.deepEqual(historyRequests.map((request) => request.resolution), ['30s', '30s', '1', '30s', '1', '5', '30s', '5'])
+  assert.ok(historyRequests.filter((request) => request.requestId === null && request.resolution === '30s')
+    .every((request) => request.to === anchor && request.to - request.from <= 300),
+  'forming candles only read the fine bars inside their active bucket')
   assert.deepEqual(diskReads.sort(), [files['1m'], files['30s']].sort(), '1m and 5m share one parsed month; native 30s reads its own month once')
   for (const resolution of ['30s', '1', '5']) {
     const [initial, older] = historyRequests.filter((request) => request.resolution === resolution)

@@ -148,6 +148,8 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
   reloadSessionDate = async (opts?: {
     preserveViewport?: boolean
     preserveTimeRange?: boolean
+    reanchorViewport?: boolean
+    keepCurrentBarsWhileLoading?: boolean
     playbackAnchorSec?: number
     playbackAnchorResolution?: string
     clearPlaybackAnchor?: boolean
@@ -177,6 +179,8 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         price: !preserve,
         time: !preserve,
         preserveTimeRange: opts?.preserveTimeRange === true,
+        reanchorViewport: opts?.reanchorViewport === true,
+        keepCurrentBarsWhileLoading: opts?.keepCurrentBarsWhileLoading === true,
       })
       if (!preserve) {
         widget.replay?.enter?.()

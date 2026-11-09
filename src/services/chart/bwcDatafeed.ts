@@ -281,6 +281,8 @@ export type BwcWidget = {
     data?: boolean
     viewport?: boolean
     preserveTimeRange?: boolean
+    reanchorViewport?: boolean
+    keepCurrentBarsWhileLoading?: boolean
   }) => void | Promise<unknown>
   destroy?: () => void
   onChartReady?: (cb: () => void) => void
