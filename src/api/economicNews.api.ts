@@ -7,7 +7,7 @@ export interface EconomicEvent {
   date?: string
   time: string
   currency: string
-  impact: 'high' | 'medium' | 'low'
+  impact: 'high' | 'medium' | 'low' | 'holiday'
   event: string
   forecast?: string
   previous?: string

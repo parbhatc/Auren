@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer'
+import { launchChrome } from 'chrome-pro-x/src/launch-chrome.js'
+import { ChromeApi } from 'chrome-pro-x/src/chrome-api.js'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -12,12 +13,104 @@ const __dirname = path.dirname(__filename)
 // News data directory: data/news/{year}/{month}.json
 const NEWS_DIR = path.join(__dirname, '../../data/news')
 const FOREX_FACTORY_WEEKLY_JSON_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json'
+const LIVE_CACHE_TTL_MS = 10 * 60 * 1000
+const monthLoads = new Map()
+const monthFailures = new Map()
 
 /**
  * Economic News Controller
  * Handles economic calendar data scraping from ForexFactory
  */
 class EconomicNewsController {
+  isCurrentMonth(year, month) {
+    const now = new Date()
+    return year === now.getFullYear() && month === now.getMonth() + 1
+  }
+
+  mergeEvents(existing, incoming) {
+    const byKey = new Map()
+    for (const event of [...existing, ...incoming]) {
+      const key = [event.date, event.timeLabel || event.time, event.currency, event.event].join('|').toLowerCase()
+      byKey.set(key, { ...(byKey.get(key) || {}), ...event })
+    }
+    return [...byKey.values()]
+  }
+
+  async refreshCurrentWeek(year, month) {
+    const existing = await this.getEventsFromFile(year, month)
+    let weekly
+    try {
+      weekly = await this.fetchForexFactoryWeeklyJson(year, month)
+    } catch (error) {
+      if (existing.length) {
+        console.warn(`[News] Live ForexFactory refresh failed; using ${existing.length} cached events:`, error.message)
+        return existing
+      }
+      throw error
+    }
+    if (!weekly.length) {
+      if (existing.length) return existing
+      throw new Error('ForexFactory weekly export returned no calendar data. Please retry shortly.')
+    }
+    const merged = this.mergeEvents(existing, weekly)
+    await this.saveEvents(merged, year, month)
+    return this.getEventsFromFile(year, month)
+  }
+
+  async refreshCurrentMonth(year, month) {
+    try {
+      const events = await this.scrapeForexFactory(year, month)
+      if (!events.length) throw new Error('ChromeProX returned no monthly calendar data')
+      events.coverage = 'month'
+      await this.saveEvents(events, year, month)
+      return this.getEventsFromFile(year, month)
+    } catch (error) {
+      console.warn('[News] ChromeProX monthly refresh failed; falling back to the official weekly export:', error.message)
+      return this.refreshCurrentWeek(year, month)
+    }
+  }
+
+  /** A weekly export is never proof that the requested replay month is loaded. */
+  async ensureMonth(year, month) {
+    const key = `${year}-${month}`
+    const saved = await this.loadNewsData(year, month)
+    const cacheAge = saved?.lastUpdated ? Date.now() - new Date(saved.lastUpdated).getTime() : Infinity
+    if (this.isCurrentMonth(year, month) && cacheAge >= 0 && cacheAge < LIVE_CACHE_TTL_MS) {
+      return this.getEventsFromFile(year, month)
+    }
+    // Current-month values can change throughout the week, even if an older
+    // full-month cache exists, so always refresh the official live export.
+    if (!this.isCurrentMonth(year, month) && saved?.coverage === 'month') {
+      return this.getEventsFromFile(year, month)
+    }
+    if (monthLoads.has(key)) return monthLoads.get(key)
+    const failure = monthFailures.get(key)
+    if (failure && Date.now() - failure.time < 60000) throw failure.error
+    const task = (async () => {
+      try {
+        // ChromeProX reads every weekly page for the live month. The official
+        // weekly export remains only as a fallback if browser loading fails.
+        if (this.isCurrentMonth(year, month)) {
+          const events = await this.refreshCurrentMonth(year, month)
+          monthFailures.delete(key)
+          return events
+        }
+        const events = await this.scrapeForexFactory(year, month)
+        if (!events.length) throw new Error('Monthly news download returned no calendar data. Please retry shortly.')
+        events.coverage = 'month'
+        await this.saveEvents(events, year, month)
+        monthFailures.delete(key)
+        return this.getEventsFromFile(year, month)
+      } catch (error) {
+        monthFailures.set(key, { time: Date.now(), error })
+        throw error
+      } finally {
+        monthLoads.delete(key)
+      }
+    })()
+    monthLoads.set(key, task)
+    return task
+  }
   /**
    * Static methods for scheduler access
    */
@@ -265,6 +358,7 @@ class EconomicNewsController {
       
       const data = {
         events: eventsByDate,
+        coverage: events.coverage === 'month' ? 'month' : 'partial',
         lastUpdated: new Date().toISOString()
       }
       
@@ -314,37 +408,79 @@ class EconomicNewsController {
     }
   }
 
+  async extractForexFactoryPageEvents(page, year, month) {
+    return page.evaluate(({ requestedYear, requestedMonth }) => {
+      const monthIndexes = {
+        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+      }
+      const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+      const events = []
+      let currentDate = null
+      let currentTime = null
+
+      for (const row of document.querySelectorAll('tr.calendar__row')) {
+        if (row.classList.contains('calendar__row--day-breaker')) {
+          const match = clean(row.textContent).match(/\b([A-Za-z]{3})\s+(\d{1,2})\b/)
+          const eventMonth = match ? monthIndexes[match[1].toLowerCase()] : null
+          currentDate = eventMonth
+            ? `${requestedYear}-${String(eventMonth).padStart(2, '0')}-${String(Number(match[2])).padStart(2, '0')}`
+            : null
+          currentTime = null
+          continue
+        }
+
+        const title = clean(row.querySelector('.calendar__event-title')?.textContent)
+        if (!title || !currentDate) continue
+        const displayedTime = clean(row.querySelector('.calendar__time')?.textContent)
+        if (displayedTime) currentTime = displayedTime
+        const impactText = clean(row.querySelector('.calendar__impact [title]')?.getAttribute('title')).toLowerCase()
+        let impactName = 'low'
+        if (impactText.includes('high')) impactName = 'high'
+        else if (impactText.includes('medium')) impactName = 'medium'
+        else if (impactText.includes('non-economic') || /holiday/i.test(title)) impactName = 'holiday'
+
+        events.push({
+          id: row.getAttribute('data-event-id'),
+          date: currentDate,
+          timeLabel: currentTime || 'All Day',
+          currency: clean(row.querySelector('.calendar__currency')?.textContent),
+          name: title,
+          impactName,
+          actual: clean(row.querySelector('.calendar__actual')?.textContent),
+          forecast: clean(row.querySelector('.calendar__forecast')?.textContent),
+          previous: clean(row.querySelector('.calendar__previous')?.textContent),
+        })
+      }
+
+      const prefix = `${requestedYear}-${String(requestedMonth).padStart(2, '0')}-`
+      return events.filter((event) => event.date.startsWith(prefix))
+    }, { requestedYear: year, requestedMonth: month })
+  }
+
   /**
    * Scrape economic calendar from ForexFactory
    */
   async scrapeForexFactory(year, month) {
     let browser = null
     try {
-      // Prefer the official export. ForexFactory now commonly protects the
-      // HTML calendar with Cloudflare, which leaves the old page-state scraper
-      // with an empty payload and previously caused Auren to cache no events.
-      try {
-        const weeklyEvents = await this.fetchForexFactoryWeeklyJson(year, month)
-        if (weeklyEvents.length > 0) {
-          console.log(`[News] Loaded ${weeklyEvents.length} events from ForexFactory's official weekly JSON export`)
-          return weeklyEvents
-        }
-      } catch (jsonError) {
-        console.warn('[News] Official ForexFactory JSON export failed; falling back to page scrape:', jsonError.message)
+      // ForexFactory lazy-loads its month view. Visit every weekly route for
+      // speed, then fill any missing dates from direct day routes.
+      const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+      const firstDay = new Date(Date.UTC(year, month - 1, 1))
+      const lastDay = new Date(Date.UTC(year, month, 0))
+      const firstWeek = new Date(firstDay)
+      firstWeek.setUTCDate(firstWeek.getUTCDate() - firstWeek.getUTCDay())
+      const weekStarts = []
+      for (const date = new Date(firstWeek); date <= lastDay; date.setUTCDate(date.getUTCDate() + 7)) {
+        weekStarts.push(new Date(date))
       }
 
-      // Format month for URL (e.g., jan1.2025)
-      const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-      const monthName = monthNames[month - 1]
-      const url = `https://www.forexfactory.com/calendar?month=${monthName}1.${year}`
+      console.log(`[News] Scraping ForexFactory with ChromeProX: ${year}-${String(month).padStart(2, '0')} (${weekStarts.length} weeks)`)
 
-      console.log(`[News] Scraping ForexFactory: ${url}`)
-
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--disable-gpu', '--window-size=1920x1080'],
-      })
+      browser = await launchChrome({ headless: true })
       const page = await browser.newPage()
+      const chrome = await ChromeApi.connect(page)
       
       // Pin the browser to US Eastern so ForexFactory renders event times in ET
       // regardless of the host machine's timezone (VPS clocks vary) — the client
@@ -359,149 +495,56 @@ class EconomicNewsController {
         path: '/',
       })
 
-      // Set user agent and viewport
-      await page.setViewport({ width: 1920, height: 1080 })
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36')
-      
-      // Set additional headers
-      await page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      })
-      
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+      const domEvents = []
+      for (const weekStart of weekStarts) {
+        const weekName = monthNames[weekStart.getUTCMonth()]
+        const weekKey = `${weekName}${weekStart.getUTCDate()}.${weekStart.getUTCFullYear()}`
+        const url = `https://www.forexfactory.com/calendar?week=${weekKey}`
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+        await page.waitForSelector('tr.calendar__row', { timeout: 15000 })
 
-      // Wait for calendar data to load
-      await new Promise(resolve => setTimeout(resolve, 5000))
+        // ForexFactory initially renders only the first portion of a week.
+        // One ChromeProX "More" interaction reveals the remaining days.
+        const initialEventCount = await page.$$eval('.calendar__event-title', (elements) => elements.length)
+        try {
+          await chrome.click({ selector: 'a', text: 'More', placement: 'center', timeout: 5000 })
+          await page.waitForFunction(
+            (count) => document.querySelectorAll('.calendar__event-title').length > count,
+            { timeout: 5000 },
+            initialEventCount
+          )
+        } catch (error) {
+          console.warn(`[News] ChromeProX could not expand ${weekKey}; using the loaded rows:`, error.message)
+        }
 
-      // Try to extract calendar data directly from JavaScript context
-      let calendarData = null
-      try {
-        calendarData = await page.evaluate(() => {
-          if (window.calendarComponentStates && window.calendarComponentStates[1]) {
-            return window.calendarComponentStates[1]
-          }
-          return null
-        })
-      } catch (error) {
-        console.warn('[News] Could not extract calendar data from window object:', error.message)
+        const weekEvents = await this.extractForexFactoryPageEvents(page, year, month)
+        domEvents.push(...weekEvents)
       }
 
-      // If we got the data directly, use it
-      if (calendarData && calendarData.days) {
-        const allEvents = []
-        console.log(`[News] Processing ${calendarData.days.length} days from calendar data`)
-        
-        // Extract year and month from URL for fallback
-        const urlMatch = url.match(/month=(\w+)(\d+)\.(\d+)/)
-        let defaultYear = null
-        let defaultMonthIndex = null
-        if (urlMatch) {
-          const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-          const monthName = urlMatch[1].toLowerCase()
-          defaultYear = parseInt(urlMatch[3])
-          defaultMonthIndex = monthNames.indexOf(monthName)
-        }
-        
-        for (let dayIndex = 0; dayIndex < calendarData.days.length; dayIndex++) {
-          const day = calendarData.days[dayIndex]
-          if (day.events && Array.isArray(day.events)) {
-            // Normalize date to YYYY-MM-DD format
-            let normalizedDate = null
-            
-            // Try dateline field (Unix timestamp) - PRIMARY SOURCE
-            if (!normalizedDate && day.dateline !== undefined && day.dateline !== null) {
-              try {
-                const timestamp = typeof day.dateline === 'number' ? day.dateline : parseInt(day.dateline)
-                if (!isNaN(timestamp) && timestamp > 0) {
-                  const dateObj = new Date(timestamp * 1000)
-                  if (!isNaN(dateObj.getTime())) {
-                    // ForexFactory displays dates in US Eastern timezone
-                    const formatter = new Intl.DateTimeFormat('en-US', {
-                      timeZone: 'America/New_York',
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit'
-                    })
-                    
-                    const parts = formatter.formatToParts(dateObj)
-                    const year = parts.find(p => p.type === 'year').value
-                    const month = parts.find(p => p.type === 'month').value
-                    const dayNum = parts.find(p => p.type === 'day').value
-                    
-                    normalizedDate = `${year}-${month}-${dayNum}`
-                  }
-                }
-              } catch (e) {
-                console.warn(`[News] Could not parse dateline: ${day.dateline}`, e.message)
-              }
-            }
-            
-            // Try day.date field
-            if (!normalizedDate && day.date !== undefined && day.date !== null) {
-              try {
-                let dateStr = day.date
-                if (typeof dateStr === 'number') {
-                  const dateObj = new Date(dateStr)
-                  if (!isNaN(dateObj.getTime())) {
-                    normalizedDate = dateObj.toISOString().split('T')[0]
-                  }
-                } else if (dateStr instanceof Date) {
-                  normalizedDate = dateStr.toISOString().split('T')[0]
-                } else if (typeof dateStr === 'string') {
-                  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-                    normalizedDate = dateStr
-                  } else if (dateStr.includes('T')) {
-                    normalizedDate = dateStr.split('T')[0]
-                  } else {
-                    const dateObj = new Date(dateStr)
-                    if (!isNaN(dateObj.getTime())) {
-                      normalizedDate = dateObj.toISOString().split('T')[0]
-                    }
-                  }
-                }
-              } catch (e) {
-                // Continue
-              }
-            }
-            
-            // Use day index as fallback
-            if (!normalizedDate && defaultYear && defaultMonthIndex !== -1) {
-              const estimatedDay = dayIndex + 1
-              const daysInMonth = new Date(defaultYear, defaultMonthIndex + 1, 0).getDate()
-              if (estimatedDay >= 1 && estimatedDay <= daysInMonth) {
-                normalizedDate = `${defaultYear}-${String(defaultMonthIndex + 1).padStart(2, '0')}-${String(estimatedDay).padStart(2, '0')}`
-              }
-            }
-            
-            // Add normalized date to each event
-            const dayEvents = day.events.map(event => ({
-              ...event,
-              date: normalizedDate
-            }))
-            
-            if (normalizedDate) {
-              allEvents.push(...dayEvents)
-            }
-          }
-        }
-        
-        console.log(`[News] Extracted ${allEvents.length} events directly from JavaScript context`)
-        await browser.close()
-        
-        // Format events
-        return this.formatForexFactoryEvents(allEvents, year, month)
+      // Weekly pages are lazily rendered and can omit entire days. Fill only
+      // those gaps from the direct day routes instead of making 30 requests.
+      const loadedDates = new Set(domEvents.map((event) => event.date))
+      for (let day = 1; day <= lastDay.getUTCDate(); day++) {
+        const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        if (loadedDates.has(date)) continue
+        const dayKey = `${monthNames[month - 1]}${day}.${year}`
+        const url = `https://www.forexfactory.com/calendar?day=${dayKey}`
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
+        await page.waitForSelector('tr.calendar__row', { timeout: 15000 })
+        const dayEvents = await this.extractForexFactoryPageEvents(page, year, month)
+          .then((events) => events.filter((event) => event.date === date))
+        domEvents.push(...dayEvents)
       }
-      
-      // Fallback: Get the page content for HTML parsing
-      const html = await page.content()
+
       await browser.close()
-      
-      // Parse HTML (simplified - you may want to enhance this)
-      return this.parseEventsFromHTML(html, year, month)
+      browser = null
+
+      const unique = [...new Map(domEvents.map((event) => [event.id || `${event.date}|${event.timeLabel}|${event.currency}|${event.name}`, event])).values()]
+      if (!unique.length) throw new Error('ChromeProX found no Forex Factory calendar events')
+      console.log(`[News] Extracted ${unique.length} monthly events with ChromeProX`)
+      const events = this.formatForexFactoryEvents(unique, year, month)
+      events.coverage = 'month'
+      return events
     } catch (error) {
       if (browser) {
         await browser.close()
@@ -524,6 +567,8 @@ class EconomicNewsController {
         impact = 'medium'
       } else if (event.impactName === 'low' || event.impactName === 'yellow') {
         impact = 'low'
+      } else if (event.impactName === 'holiday') {
+        impact = 'holiday'
       }
       
       return {
@@ -547,8 +592,7 @@ class EconomicNewsController {
   parseEventsFromHTML(html, year, month) {
     // Simplified HTML parsing - you may want to enhance this
     // For now, return empty array and rely on JavaScript extraction
-    console.warn('[News] HTML parsing not fully implemented, relying on JavaScript extraction')
-    return []
+    throw new Error('Monthly news calendar could not be downloaded from Forex Factory (calendar unavailable or access blocked).')
   }
 
   /**
@@ -630,19 +674,13 @@ class EconomicNewsController {
         })
       }
 
-      // Try to get from file first
-      let events = await this.getEventsFromFile(year, month)
-
-      // If no events in file, scrape and save (only for current or past months)
-      if (events.length === 0) {
-        try {
-          const scrapedEvents = await this.scrapeForexFactory(year, month)
-          await this.saveEvents(scrapedEvents, year, month)
-          events = await this.getEventsFromFile(year, month)
-        } catch (scrapeError) {
-          console.error('Error scraping events:', scrapeError)
-          events = []
-        }
+      let events = []
+      try {
+        events = await this.ensureMonth(year, month)
+      } catch (scrapeError) {
+        console.error('Error loading events:', scrapeError)
+        // Preserve already-cached events when ForexFactory is temporarily down.
+        events = await this.getEventsFromFile(year, month)
       }
 
       return res.status(HTTP_STATUS.OK).json({
@@ -675,10 +713,15 @@ class EconomicNewsController {
         })
       }
 
-      // Scrape and save
-      const events = await this.scrapeForexFactory(year, month)
-      await this.saveEvents(events, year, month)
-      const savedEvents = await this.getEventsFromFile(year, month)
+      let savedEvents
+      if (this.isCurrentMonth(year, month)) {
+        savedEvents = await this.refreshCurrentMonth(year, month)
+      } else {
+        const events = await this.scrapeForexFactory(year, month)
+        events.coverage = 'month'
+        await this.saveEvents(events, year, month)
+        savedEvents = await this.getEventsFromFile(year, month)
+      }
 
       return res.status(HTTP_STATUS.OK).json({
         success: true,

@@ -1,12 +1,29 @@
 import WebSocketBase from './WebSocketBase.js'
 import aggregateBars from '../utils/BarAggregator.js'
 import { csvFolderForChartResolution } from '../utils/backtesterCsvPaths.js'
-import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, resolutionToMinutes, alignTimeToResolutionSec, alignBarOpenSec } from '../utils/backtesterResolution.js'
+import { parseBacktesterResolution, isSubMinuteResolution, capReplayWallForResolution, resolutionToSeconds, alignBarOpenSec, replaySourceCutoffSec } from '../utils/backtesterResolution.js'
 import { getBacktesterBarsService } from '../services/BacktesterBarsService.js'
 
 function normalizeReplaySymbol(value) {
   const symbol = String(value || '').trim().toUpperCase()
   return (symbol.includes(':') ? symbol.split(':').pop() : symbol).replace(/^\//, '')
+}
+
+/** Fold sub-minute source data even when the target chart is exactly 1m. */
+function aggregateReplayFineBars(bars, resolution) {
+  const buckets = new Map()
+  for (const bar of bars) {
+    const time = alignBarOpenSec(bar.time / 1000, resolution) * 1000
+    const bucket = buckets.get(time)
+    if (!bucket) buckets.set(time, { ...bar, time })
+    else {
+      bucket.high = Math.max(bucket.high, bar.high)
+      bucket.low = Math.min(bucket.low, bar.low)
+      bucket.close = bar.close
+      bucket.volume = (bucket.volume || 0) + (bar.volume || 0)
+    }
+  }
+  return [...buckets.values()]
 }
 
 class BacktesterWebSocket extends WebSocketBase {
@@ -452,8 +469,6 @@ class BacktesterWebSocket extends WebSocketBase {
           targetWallSec = baseSec
         }
       }
-      const skippedGap = targetWallSec > requestedTargetWallSec
-
       for (const group of groups.values()) {
         const { symbol, resolution, uids } = group
         const subRes = parseBacktesterResolution(resolution)
@@ -462,56 +477,14 @@ class BacktesterWebSocket extends WebSocketBase {
         const capSec = capReplayWallForResolution(targetWallSec, stepResolution, subRes)
         const capMs = capSec * 1000
 
-        // Intrabar replay: a step finer than the chart resolution (e.g. 30s step on
-        // a 1m chart) advances the replay clock by the sub-step and rebuilds the
-        // currently-forming chart candle from finer data, so its H/L/C update in
-        // place (TradingView-style) instead of failing to advance (the 1m cache has
-        // no bar before the next full minute). Emits ONE candle stamped at the chart
-        // candle open, folded from finer bars whose open time is in [candleStart, targetWall).
         const subResSec = resolutionToSeconds(subRes)
-        if (!skippedGap && !nativeSubMinute && stepWallSec > 0 && stepWallSec < subResSec) {
-          const fineOpts = { csvResolution: csvFolderForChartResolution(stepResolution) }
-          const candleStartSec = alignBarOpenSec(targetWallSec - 1, subRes)
-          const candleStartMs = candleStartSec * 1000
-          const windowEndMs = targetWallSec * 1000
-          const fineBars = this.csvLoader
-            .loadForward(symbol, candleStartMs - 1, 64, fineOpts)
-            .filter((bar) => bar.time >= candleStartMs && bar.time < windowEndMs)
-          if (!fineBars.length) continue
-          let high = -Infinity
-          let low = Infinity
-          let volume = 0
-          for (const bar of fineBars) {
-            if (bar.high > high) high = bar.high
-            if (bar.low < low) low = bar.low
-            volume += bar.volume || 0
-          }
-          const partial = {
-            time: candleStartMs,
-            time_string: new Date(candleStartMs).toLocaleString(),
-            open: fineBars[0].open,
-            high,
-            low,
-            close: fineBars[fineBars.length - 1].close,
-            volume,
-          }
-          for (const uid of uids) {
-            this.send(ws, {
-              type: "realtimeBars",
-              subscriberUID: uid,
-              symbol,
-              resolution,
-              candles: [partial],
-            })
-          }
-          emittedFrames += 1
-          continue
-        }
-
+        const finerSource = resolutionToSeconds(stepResolution) < subResSec
         const loadOpts = { csvResolution }
         const newestMs = state.barCache.getNewest(symbol, loadOpts)
-        // Full replay wall for this step; capMs is only the last emitted candle OPEN.
-        const loadToMs = Math.max(capMs, targetWallSec * 1000)
+        // The cursor names a completed SOURCE candle's open. Reveal its whole
+        // interval, not just the first minute of a newly selected 15m candle.
+        const sourceBaseSec = Math.min(60, resolutionToSeconds(stepResolution))
+        const loadToMs = replaySourceCutoffSec(targetWallSec, stepResolution, sourceBaseSec) * 1000
         // The client cursor is authoritative when provided. Using the cache's
         // newest bar as the floor breaks after any backward move (prev-day nav,
         // rewind): the cache still holds future bars, so loadForward starts past
@@ -521,7 +494,7 @@ class BacktesterWebSocket extends WebSocketBase {
           : (newestMs ?? last.getTime())
 
         let bars = []
-        if (nativeSubMinute) {
+        if (nativeSubMinute && !finerSource) {
           let guard = 0
           while (guard < 64) {
             guard += 1
@@ -539,15 +512,21 @@ class BacktesterWebSocket extends WebSocketBase {
             state.barCache.addBars(symbol, bars, loadOpts)
           }
         } else {
-          const minuteOpts = { csvResolution: '1m' }
-          // Load 1m bars through the FULL replay wall (targetWallSec), not just the
-          // emitted candle's open (capMs). With an unaligned cursor (e.g. 9:29 on a
-          // 4h chart), capMs is the new candle's open (10:00) while the wall is
-          // 13:29 — loading only to capMs left the new candle with one minute of
-          // data (wrong OHLC until a history reload re-fetched it).
-          const fetchBars = Math.max(1, Math.ceil((loadToMs - afterMs) / 60000))
-          bars = state.barCache.loadForward(symbol, afterMs, fetchBars, minuteOpts)
-          bars = bars.filter((bar) => bar.time <= loadToMs)
+          const sourceOpts = {
+            csvResolution: sourceBaseSec < 60 ? csvFolderForChartResolution(stepResolution) : '1m',
+          }
+          // Always rebuild from the pre-step chart bucket. This completes a
+          // previously partial bucket and emits the distinct next bucket too.
+          const candleStartMs = alignBarOpenSec(baseSec, subRes) * 1000
+          if (typeof state.barCache.loadRange === 'function') {
+            bars = state.barCache.loadRange(symbol, candleStartMs, loadToMs, sourceOpts)
+          } else {
+            // Count follows the source cadence; 1s replay into 15m may require
+            // 900+ rows and must not silently truncate at a fixed 64-bar cap.
+            const count = Math.max(1, Math.floor((loadToMs - candleStartMs) / (sourceBaseSec * 1000)) + 1)
+            bars = this.csvLoader.loadForward(symbol, candleStartMs - 1, count, sourceOpts)
+          }
+          bars = bars.filter((bar) => bar.time >= candleStartMs && bar.time <= loadToMs)
         }
 
         if (!bars.length) {
@@ -557,21 +536,9 @@ class BacktesterWebSocket extends WebSocketBase {
 
         // Bars to emit are identical for every uid in the group — compute once.
         let framesToSend = bars
-        if (!nativeSubMinute) {
-          // Rebuild the complete window from the pre-step candle, even for 1m.
-          // loadForward is strictly after cursorSec, so a 30s -> 1m switch at
-          // 09:38:00 otherwise appends 09:39 without completing 09:38 first.
-          const candleStartMs = alignBarOpenSec(baseSec, resolution) * 1000
-          const windowBars = state.barCache.loadRange(
-            symbol,
-            candleStartMs - 1,
-            loadToMs,
-            { csvResolution: '1m' },
-          )
-          const barsToAggregate = windowBars.filter(
-            (bar) => bar.time >= candleStartMs && bar.time <= loadToMs,
-          )
-          framesToSend = aggregateBars(barsToAggregate, resolution).filter(
+        if (!nativeSubMinute || finerSource) {
+          const aggregate = sourceBaseSec < 60 ? aggregateReplayFineBars : aggregateBars
+          framesToSend = aggregate(bars, subRes).filter(
             (bar) => bar.time <= capMs,
           )
         }

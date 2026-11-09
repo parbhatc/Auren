@@ -38,6 +38,7 @@ export class BacktesterTradeHandler {
   private replayPaneSyncRaf: number | null = null
   private cancelChartPricePick: (() => void) | null = null
   private nextCandleInFlight: boolean = false
+  private previousCandleInFlight: boolean = false
   private nextCandleTimeout: NodeJS.Timeout | null = null
   /** A select-bar jump uses bars already loaded in BWC, so its ack must not refetch them. */
   private pendingSelectedBarAnchorSec: number | null = null
@@ -500,11 +501,8 @@ export class BacktesterTradeHandler {
 
   /** Keep BWC replay state aligned with the datafeed playback anchor (host-controlled replay). */
   syncReplayCursorFromBar(_anchorSec: number, _chartResolution?: string): void {
-    this.nextCandleInFlight = false
-    if (this.nextCandleTimeout) {
-      clearTimeout(this.nextCandleTimeout)
-      this.nextCandleTimeout = null
-    }
+    // NQ and ES arrive as separate batches. The final acknowledgement, not
+    // the first symbol's candle, releases the next/previous navigation latch.
     this.scheduleSyncAllPanesReplayCursor()
   }
 
@@ -520,20 +518,24 @@ export class BacktesterTradeHandler {
 
   private async reloadChartAfterSessionAnchor(opts?: {
     preserveViewport?: boolean
+    preserveTimeRange?: boolean
     playbackAnchorSec?: number
+    playbackAnchorResolution?: string
     clearPlaybackAnchor?: boolean
   }): Promise<void> {
     const chart = this.client?.getChart() as {
       reloadSessionDate?: (o?: {
         preserveViewport?: boolean
+        preserveTimeRange?: boolean
         playbackAnchorSec?: number
+        playbackAnchorResolution?: string
         clearPlaybackAnchor?: boolean
       }) => Promise<void>
       resetAllChartData?: () => Promise<void>
     } | null
     if (chart?.reloadSessionDate) {
       await chart.reloadSessionDate(opts)
-      this.syncWidgetReplayCursor(opts?.playbackAnchorSec)
+      this.syncWidgetReplayCursor(opts?.playbackAnchorSec, opts?.playbackAnchorResolution)
       return
     }
     this.datafeed?.resetSessionState?.()
@@ -1008,7 +1010,7 @@ export class BacktesterTradeHandler {
     // Guard against overlapping round-trips: a spammed button or a fast
     // auto-play interval can otherwise queue up steps faster than the
     // server can reply, piling up WS traffic and redundant re-renders.
-    if (this.nextCandleInFlight) return
+    if (this.nextCandleInFlight || this.previousCandleInFlight) return
     this.nextCandleInFlight = true
     if (this.nextCandleTimeout) clearTimeout(this.nextCandleTimeout)
     this.nextCandleTimeout = setTimeout(() => {
@@ -1063,8 +1065,8 @@ export class BacktesterTradeHandler {
   }
 
   /** Move the host-controlled replay cursor back one selected replay interval. */
-  handlePreviousCandle = (): void => {
-    if (this.nextCandleInFlight) return
+  handlePreviousCandle = async (): Promise<void> => {
+    if (this.nextCandleInFlight || this.previousCandleInFlight) return
 
     const stepResolution = this.resolvePlaybackStepResolution()
     const stepSec = this.resolvePlaybackStepSec()
@@ -1083,38 +1085,48 @@ export class BacktesterTradeHandler {
     if (Number.isFinite(firstLoaded)) targetSec = Math.max(targetSec, firstLoaded)
     if (!Number.isFinite(targetSec) || targetSec >= current) return
 
-    this.datafeed?.setPlaybackAnchorSec?.(
-      Math.floor(targetSec),
-      stepResolution as ResolutionString,
-    )
-    this.scheduleSyncAllPanesReplayCursor()
-
-    // Previous Candle does not emit a realtime bar, so explicitly reprice the
-    // open position from the last visible bar at/before the rewound cursor.
-    // This must not run normal bracket-hit processing while navigating history.
-    const chartSymbol = this.resolveChartSymbol()
-    const eligibleRewoundBars = (this.getBwcWidget()?.getBars?.() ?? [])
-      .filter((bar) => {
-        const time = Number(bar?.time)
-        return Number.isFinite(time) && Number.isFinite(Number(bar?.close)) && time <= targetSec
+    this.previousCandleInFlight = true
+    try {
+      this.datafeed?.setPlaybackAnchorSec?.(
+        Math.floor(targetSec),
+        stepResolution as ResolutionString,
+      )
+      if (this.client?.isConnected()) {
+        this.client.send({ type: 'syncReplayCursor', cursorSec: Math.floor(targetSec) })
+      }
+      // Trimming future candles cannot undo an already-completed HTF candle.
+      // Reload at the authoritative cutoff so reverse and forward use the same
+      // OHLC for this exact cursor, including partially revealed chart candles.
+      await this.reloadChartAfterSessionAnchor({
+        preserveViewport: true,
+        preserveTimeRange: true,
+        playbackAnchorSec: Math.floor(targetSec),
+        playbackAnchorResolution: stepResolution,
+        clearPlaybackAnchor: false,
       })
-      .sort((a, b) => Number(a.time) - Number(b.time))
-    const rewoundBar = eligibleRewoundBars[eligibleRewoundBars.length - 1]
-    this.tradeCache?.repriceOpenPosition(chartSymbol, rewoundBar)
 
-    if (this.client?.isConnected()) {
-      this.client.send({
-        type: 'syncReplayCursor',
-        cursorSec: Math.floor(targetSec),
+      // Navigation reprices open positions without processing historical fills.
+      const chartSymbol = this.resolveChartSymbol()
+      const eligibleRewoundBars = (this.getBwcWidget()?.getBars?.() ?? [])
+        .filter((bar) => {
+          const time = Number(bar?.time)
+          return Number.isFinite(time) && Number.isFinite(Number(bar?.close)) && time <= targetSec
+        })
+        .sort((a, b) => Number(a.time) - Number(b.time))
+      const rewoundBar = eligibleRewoundBars[eligibleRewoundBars.length - 1]
+      this.tradeCache?.repriceOpenPosition(chartSymbol, rewoundBar)
+
+      this.logPlaybackAction('previous_candle', {
+        stepResolution,
+        stepSec,
+        cursorSec: current,
+        targetSec,
       })
+    } catch (error) {
+      console.error('[BacktesterTradeHandler] Failed to restore previous candle:', error)
+    } finally {
+      this.previousCandleInFlight = false
     }
-
-    this.logPlaybackAction('previous_candle', {
-      stepResolution,
-      stepSec,
-      cursorSec: current,
-      targetSec,
-    })
   }
 
   /**

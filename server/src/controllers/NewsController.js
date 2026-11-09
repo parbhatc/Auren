@@ -88,17 +88,7 @@ class NewsController {
 
       const [year, month] = dayYmd.split('-').map(Number)
       const controller = new EconomicNewsController()
-      let events = await controller.getEventsFromFile(year, month)
-
-      if (!events.length) {
-        try {
-          const scraped = await controller.scrapeForexFactory(year, month)
-          await controller.saveEvents(scraped, year, month)
-          events = await controller.getEventsFromFile(year, month)
-        } catch (err) {
-          console.warn('[News] scrape on calendar request failed:', err.message || err)
-        }
-      }
+      const events = await controller.ensureMonth(year, month)
 
       const currencySet = new Set(
         String(req.query.currencies || 'USD')

@@ -14,6 +14,7 @@
   "dependencies": {
     "@microsoft/signalr": "^8.0.17",
     "bcryptjs": "^2.4.3",
+    "chrome-pro-x": "github:parbhatc/ChromeProX#355320113e0a6f400e0d7c7ed7dd58b8a2ee2899",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

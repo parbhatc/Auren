@@ -57,6 +57,87 @@ function deferred() {
   return { promise, resolve }
 }
 
+test('switching from 1m to 30s includes the closing half-minute bar', () => {
+  const source = new BacktesterChartDataFeed(null)
+  const minuteOpen = 1_800_000_000
+  source.setPlaybackAnchorSec(minuteOpen, '1')
+
+  const clamped = source.clampPeriodToSessionAnchor({
+    from: minuteOpen - 120,
+    to: minuteOpen + 60,
+    countBack: 5,
+    firstDataRequest: true,
+  }, '30S')
+
+  assert.equal(source.getPlaybackAnchorSecForResolution('30S'), minuteOpen + 30)
+  assert.equal(clamped.to, minuteOpen + 30)
+})
+
+test('completed 15m replay history reveals the full source candle and keeps earlier backfill bounded', () => {
+  const source = new BacktesterChartDataFeed(null)
+  const anchor = Date.parse('2026-11-06T09:30:00-05:00') / 1000
+  source.setPlaybackAnchorSec(anchor, '15')
+
+  for (const target of ['1', '15', '60']) {
+    const currentOpen = source.getPlaybackAnchorSecForResolution(target)
+    const current = source.clampPeriodToSessionAnchor({ to: currentOpen, countBack: 10, firstDataRequest: true }, target)
+    assert.equal(current.to, anchor + 14 * 60, `${target}: includes 09:44 minute`)
+    const olderTo = anchor - 3600
+    const older = source.clampPeriodToSessionAnchor({ to: olderTo, countBack: 10, firstDataRequest: false }, target)
+    assert.equal(older.to, olderTo, `${target}: does not expand an older backfill page`)
+  }
+  const seconds = source.clampPeriodToSessionAnchor({ to: anchor + 14 * 60 + 30, firstDataRequest: true }, '30S')
+  assert.equal(seconds.to, anchor + 14 * 60 + 30)
+})
+
+test('history reads cannot move the source replay cursor or replace completed candles with stale finer data', () => {
+  const source = new BacktesterChartDataFeed(null)
+  const anchor = Date.parse('2026-11-06T09:30:00-05:00') / 1000
+  source.setPlaybackAnchorSec(anchor, '15')
+  const complete = { time: anchor, open: 100, high: 130, low: 90, close: 125, volume: 150 }
+  source.replayLtfBars.set('NQ:1', [{ time: anchor, open: 100, high: 101, low: 99, close: 100, volume: 1 }])
+  assert.deepEqual(source.patchFormingHtfBars([complete], 'NQ', '15'), [complete])
+
+  let delivered = null
+  source.pendingGetBarsRequests.set('finer-history', {
+    symbol: 'NQ', resolution: '1',
+    onHistoryCallback: bars => { delivered = bars },
+    onErrorCallback: reason => assert.fail(reason),
+  })
+  source.handleGetBarsResponse({ requestId: 'finer-history', bars: [{ ...complete, time: anchor + 14 * 60 }] })
+  assert.equal(delivered.at(-1).time, anchor + 14 * 60)
+  assert.equal(source.getPlaybackAnchorSecPublic(), anchor)
+  assert.equal(source.playbackAnchorResolution, '15')
+})
+
+test('CSV-backed 09:15 and 09:30 candles retain distinct full OHLC across history round trips', () => {
+  const start = Date.parse('2026-11-06T09:15:00-05:00') / 1000
+  const minutes = Array.from({ length: 30 }, (_, index) => ({
+    time: (start + index * 60) * 1000,
+    open: 100 + index, high: 102 + index, low: 99 + index, close: 101 + index, volume: 10,
+  }))
+  const select = (from, to) => minutes.filter(bar => bar.time >= from && bar.time <= to)
+  const service = new BacktesterBarsService({
+    loadBars: (_symbol, from, to) => select(from, to),
+    loadCountback: (_symbol, to, count, inclusive) => minutes.filter(bar => inclusive ? bar.time <= to : bar.time < to).slice(-count),
+  })
+  const source = new BacktesterChartDataFeed(null)
+  const read = anchor => {
+    source.setPlaybackAnchorSec(anchor, '15')
+    const bounds = source.clampPeriodToSessionAnchor({ to: anchor, from: start, countBack: 2, firstDataRequest: true }, '15')
+    return service.getHistoryBars({ symbol: 'NQ', resolution: '15', ...bounds }).bars
+  }
+  const first = read(start)
+  const next = read(start + 900)
+  assert.equal(first.length, 1)
+  assert.equal(first[0].close, 115)
+  assert.equal(next.length, 2)
+  assert.equal(next[1].close, 130)
+  assert.deepEqual(next[0], first[0])
+  assert.deepEqual(read(start), first)
+  assert.deepEqual(read(start + 900), next)
+})
+
 test('actual Replay and CSV history reuse 30s/1m/5m round trips and join overlapping backfill', async (t) => {
   const csvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-replay-timeframes-'))
   t.after(() => fs.rmSync(csvDir, { recursive: true, force: true }))

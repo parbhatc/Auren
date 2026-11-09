@@ -49,7 +49,9 @@ class CSVLoader {
         }
         
         const content = fs.readFileSync(filePath, "utf-8");
-        const lines = content.trim().split("\n");
+        // CSV imports can use Windows, Unix, or legacy CR-only line endings.
+        // Splitting only on LF makes a full month look like a single bar.
+        const lines = content.trim().split(/\r\n|\n|\r/);
         const bars = [];
         
         for (const line of lines) {

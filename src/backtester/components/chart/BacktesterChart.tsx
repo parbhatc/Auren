@@ -147,16 +147,18 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
   /** Reload history from the server anchor and optionally reset viewport. */
   reloadSessionDate = async (opts?: {
     preserveViewport?: boolean
+    preserveTimeRange?: boolean
     playbackAnchorSec?: number
+    playbackAnchorResolution?: string
     clearPlaybackAnchor?: boolean
   }): Promise<void> => {
     const datafeed = this.getDatafeed() as {
-      setPlaybackAnchorSec?: (sec: number | null) => void
+      setPlaybackAnchorSec?: (sec: number | null, resolution?: ResolutionString) => void
       resetSessionState?: (o?: { clearPlaybackAnchor?: boolean }) => void
     } | undefined
 
     if (opts?.playbackAnchorSec != null) {
-      datafeed?.setPlaybackAnchorSec?.(opts.playbackAnchorSec)
+      datafeed?.setPlaybackAnchorSec?.(opts.playbackAnchorSec, opts.playbackAnchorResolution as ResolutionString | undefined)
     }
     datafeed?.resetSessionState?.({
       clearPlaybackAnchor: opts?.clearPlaybackAnchor !== false && opts?.preserveViewport !== true,
@@ -174,6 +176,7 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         viewport: !preserve,
         price: !preserve,
         time: !preserve,
+        preserveTimeRange: opts?.preserveTimeRange === true,
       })
       if (!preserve) {
         widget.replay?.enter?.()

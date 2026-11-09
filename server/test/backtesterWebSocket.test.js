@@ -2,6 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import BacktesterWebSocket from '../src/websocket/BacktesterWebSocket.js'
+import BarCache from '../src/utils/BarCache.js'
+import BacktesterBarsService from '../src/services/BacktesterBarsService.js'
+import { replaySourceCutoffSec } from '../src/utils/backtesterResolution.js'
 
 function createSocket() {
   return {
@@ -32,6 +35,128 @@ function createBarCache(nextTimeMs) {
     clearAll: () => {},
   }
 }
+
+function minuteReplayFixture() {
+  const base = Date.parse('2026-11-06T09:15:00-05:00')
+  const source = Array.from({ length: 60 }, (_, index) => ({
+    time: base + index * 60_000,
+    open: 100 + index,
+    high: 101 + index,
+    low: 99 + index,
+    close: 100.5 + index,
+    volume: 1,
+  }))
+  const loader = {
+    loadBars: (_symbol, from, to) => source.filter((bar) => bar.time >= from && bar.time <= to),
+    loadForward: (_symbol, after, count) => source.filter((bar) => bar.time > after).slice(0, count),
+    loadCountback: (_symbol, before, count, inclusive) => source
+      .filter((bar) => inclusive ? bar.time <= before : bar.time < before).slice(-count),
+  }
+  const replay = new BacktesterWebSocket({ csvLoader: loader })
+  replay.toEpochMs = (value) => Number(value) * 1000
+  const client = { id: 'completed-source-candle', userId: 'user' }
+  replay.onSubscribeBars(createSocket(), { symbol: 'NQ', resolution: '15', subscriberUID: 'nq-15m' }, client)
+  const state = replay.getClientState(client)
+  state.cursor = new Date(base)
+  state.barCache = new BarCache({ csvLoader: loader }, state.cursor)
+  return { base, loader, replay, client, service: new BacktesterBarsService(loader) }
+}
+
+function candleValues(bars) {
+  return bars.map(({ time, open, high, low, close, volume }) => ({ time, open, high, low, close, volume }))
+}
+
+test('15m Next reveals the full distinct 09:30 candle and matches direct history at the source cutoff', () => {
+  const { base, replay, client, service } = minuteReplayFixture()
+  const cursor = base / 1000
+  const target = cursor + 900
+  const ws = createSocket()
+  replay.onNextCandle(ws, { cursorSec: cursor, targetSec: target, stepSec: 900, playbackTimeframe: '15' }, client)
+  const streamed = ws.sent.find((message) => message.type === 'realtimeBars').candles
+  const cutoff = replaySourceCutoffSec(target, '15', 60)
+  const history = service.getHistoryBars({ symbol: 'NQ', resolution: '15', from: cursor, to: cutoff }).bars
+  assert.deepEqual(streamed.map((bar) => bar.time), [base, base + 900_000])
+  assert.equal(streamed[0].close, 114.5)
+  assert.equal(streamed[1].close, 129.5)
+  assert.equal(streamed[1].volume, 15)
+  assert.deepEqual(candleValues(streamed), history)
+
+  // Rewinding the server cursor must not allow its future cache to alter the
+  // same forward request on a second pass.
+  replay.onSyncReplayCursor(createSocket(), { cursorSec: cursor }, client)
+  const again = createSocket()
+  replay.onNextCandle(again, { cursorSec: cursor, targetSec: target, stepSec: 900, playbackTimeframe: '15' }, client)
+  assert.deepEqual(again.sent, ws.sent)
+})
+
+test('1m Next across a 15m boundary includes the new minute in the new chart bucket', () => {
+  const { base, replay, client, service } = minuteReplayFixture()
+  const cursor = base / 1000 + 14 * 60
+  const target = cursor + 60
+  const ws = createSocket()
+  replay.onNextCandle(ws, { cursorSec: cursor, targetSec: target, stepSec: 60, playbackTimeframe: '1' }, client)
+  const streamed = ws.sent.find((message) => message.type === 'realtimeBars').candles
+  const history = service.getHistoryBars({ symbol: 'NQ', resolution: '15', from: base / 1000, to: target }).bars
+  assert.deepEqual(candleValues(streamed), history)
+  assert.equal(streamed[0].volume, 15)
+  assert.equal(streamed[1].time, base + 900_000)
+  assert.equal(streamed[1].volume, 1)
+  assert.equal(streamed[1].close, 115.5)
+})
+
+test('1s replay rebuilds all 900 source rows in a 15m candle without truncation', () => {
+  const base = Date.parse('2026-11-06T09:15:00-05:00')
+  const rows = Array.from({ length: 901 }, (_, index) => ({
+    time: base + index * 1000, open: index, high: index + 1, low: index, close: index + 0.5, volume: 1,
+  }))
+  let requestedCount = 0
+  const loader = {
+    loadForward(_symbol, after, count) {
+      requestedCount = Math.max(requestedCount, count)
+      return rows.filter((bar) => bar.time > after).slice(0, count)
+    },
+  }
+  const replay = new BacktesterWebSocket({ csvLoader: loader })
+  const client = { id: 'second-source', userId: 'user' }
+  replay.onSubscribeBars(createSocket(), { symbol: 'NQ', resolution: '15', subscriberUID: 'nq-15m' }, client)
+  const state = replay.getClientState(client)
+  state.cursor = new Date(base + 898_000)
+  state.barCache = { last: state.cursor, getNewest: () => null }
+  const ws = createSocket()
+  replay.onNextCandle(ws, {
+    cursorSec: base / 1000 + 898, targetSec: base / 1000 + 899, stepSec: 1, playbackTimeframe: '1S',
+  }, client)
+  const candle = ws.sent.find((message) => message.type === 'realtimeBars').candles[0]
+  assert.equal(requestedCount, 900)
+  assert.equal(candle.volume, 900)
+  assert.equal(candle.close, 899.5)
+  assert.equal(candle.time, base)
+})
+
+test('1s replay on a native 30s chart builds only revealed seconds instead of exposing the full native candle', () => {
+  const base = Date.parse('2026-11-06T09:15:00-05:00')
+  const rows = Array.from({ length: 31 }, (_, index) => ({
+    time: base + index * 1000, open: index, high: index + 1, low: index, close: index + 0.5, volume: 1,
+  }))
+  const loader = {
+    loadForward: (_symbol, after, count) => rows.filter((bar) => bar.time > after).slice(0, count),
+  }
+  const replay = new BacktesterWebSocket({ csvLoader: loader })
+  const client = { id: 'native-second-source', userId: 'user' }
+  replay.onSubscribeBars(createSocket(), { symbol: 'NQ', resolution: '30S', subscriberUID: 'nq-30s' }, client)
+  const state = replay.getClientState(client)
+  state.cursor = new Date(base + 8000)
+  state.barCache = { last: state.cursor, getNewest: () => null }
+  const ws = createSocket()
+  replay.onNextCandle(ws, {
+    cursorSec: base / 1000 + 8, targetSec: base / 1000 + 9, stepSec: 1, playbackTimeframe: '1S',
+  }, client)
+  const candle = ws.sent.find((message) => message.type === 'realtimeBars').candles[0]
+  assert.equal(candle.time, base)
+  assert.equal(candle.volume, 10)
+  assert.equal(candle.high, 10)
+  assert.equal(candle.close, 9.5)
+})
 
 test('closing a stale socket does not delete the active replay subscription', () => {
   const replay = new BacktesterWebSocket({ csvLoader: {} })

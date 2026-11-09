@@ -1269,7 +1269,12 @@ class BacktesterChartView extends Component<BacktesterChartViewProps> {
               this.wsClient.setChart(this.chartRef.current)
             }
             this.tradeHandler?.onReady(widget)
-            this.syncBwcReplayStepInterval(widget)
+            // Layout restoration can finish on 15m while React still holds
+            // its initial "1". Adopt the restored chart before syncing replay,
+            // or reload silently changes Next/Previous to one-minute substeps.
+            const restoredResolution = widget.getResolution?.()
+            if (restoredResolution) this.handleChartIntervalChange(String(restoredResolution))
+            else this.syncBwcReplayStepInterval(widget)
             this.tradeHandler?.syncServerReplayCursor()
           }}
           onChartReady={async () => {

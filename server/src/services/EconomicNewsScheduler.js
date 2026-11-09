@@ -90,8 +90,8 @@ class EconomicNewsScheduler {
 
       console.log(`[Economic News Scheduler] Fetching data for ${year}-${month}`)
       
-      const events = await EconomicNewsController.scrapeForexFactory(year, month)
-      await EconomicNewsController.saveEvents(events, year, month)
+      const controller = new EconomicNewsController()
+      const events = await controller.refreshCurrentMonth(year, month)
       
       console.log(`[Economic News Scheduler] Successfully fetched ${events.length} events for ${year}-${month}`)
     } catch (error) {

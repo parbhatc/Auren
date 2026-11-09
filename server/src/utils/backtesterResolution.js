@@ -234,4 +234,11 @@ export function capReplayWallForResolution(anchorSec, sourceRes, targetRes) {
   return alignBarOpenSec(lastLtOpen, targetRes)
 }
 
+/** Last source-data bar open revealed by a completed replay source candle. */
+export function replaySourceCutoffSec(anchorSec, sourceRes, dataBarSec = 60) {
+  const sourceSec = Math.max(1, resolutionToSeconds(sourceRes))
+  const baseSec = Math.max(1, Math.min(sourceSec, Number(dataBarSec) || 60))
+  return alignBarOpenSec(anchorSec, sourceRes) + sourceSec - baseSec
+}
+
 

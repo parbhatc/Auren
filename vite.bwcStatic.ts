@@ -317,7 +317,7 @@ export function betterweightChartStatic(bwcRoot: string): Plugin {
           // Append after the document's import map, while the Vite application
           // graph is still loading. Modulepreload fetches public code without
           // evaluating indicators or starting an authenticated account request.
-          children: `(()=>{try{if(location.pathname!=="/trade"||!localStorage.getItem("token"))return;for(const href of ${JSON.stringify(urls)}){const link=document.createElement("link");link.rel="modulepreload";link.href=href;document.head.appendChild(link)}}catch{}})()`,
+          children: `(()=>{try{if(!["/trade","/backtester/chart"].includes(location.pathname)||!localStorage.getItem("token"))return;for(const href of ${JSON.stringify(urls)}){const link=document.createElement("link");link.rel="modulepreload";link.href=href;document.head.appendChild(link)}}catch{}})()`,
         }]
       },
     },

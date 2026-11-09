@@ -69,3 +69,61 @@ test('weekly calendar fetch uses the official ForexFactory export', async (t) =>
   assert.equal(events[0].timeLabel, '8:30am')
   assert.equal(events[0].impact, 'medium')
 })
+
+test('current-week refresh merges updated ForexFactory values without dropping cached days', async () => {
+  const controller = new EconomicNewsController()
+  const cached = [
+    { date: '2026-11-01', time: '8:30am', currency: 'USD', event: 'Old Event', actual: '1' },
+    { date: '2026-11-06', time: '8:30am', currency: 'USD', event: 'Payrolls', actual: '10K' },
+  ]
+  const weekly = [
+    { date: '2026-11-06', time: '8:30am', timeLabel: '8:30am', currency: 'USD', event: 'Payrolls', actual: '25K' },
+  ]
+  let saved = null
+
+  controller.fetchForexFactoryWeeklyJson = async () => weekly
+  controller.getEventsFromFile = async () => saved || cached
+  controller.saveEvents = async (events) => { saved = events }
+
+  const events = await controller.refreshCurrentWeek(2026, 11)
+
+  assert.equal(events.length, 2)
+  assert.equal(events.find((event) => event.event === 'Old Event').actual, '1')
+  assert.equal(events.find((event) => event.event === 'Payrolls').actual, '25K')
+})
+
+test('current-week refresh serves cached news when ForexFactory rate limits the refresh', async () => {
+  const controller = new EconomicNewsController()
+  const cached = [{ date: '2026-11-06', time: '8:30am', currency: 'USD', event: 'Payrolls' }]
+  controller.getEventsFromFile = async () => cached
+  controller.fetchForexFactoryWeeklyJson = async () => {
+    throw new Error('ForexFactory JSON export returned HTTP 429')
+  }
+  controller.saveEvents = async () => assert.fail('must not replace a valid cache')
+
+  assert.equal(await controller.refreshCurrentWeek(2026, 11), cached)
+})
+
+test('current-month refresh prefers ChromeProX monthly data', async () => {
+  const controller = new EconomicNewsController()
+  const scraped = [{ date: '2026-11-03', time: '8:30am', currency: 'USD', event: 'CPI' }]
+  let saved = null
+  controller.scrapeForexFactory = async () => scraped
+  controller.saveEvents = async (events) => { saved = events }
+  controller.getEventsFromFile = async () => saved
+  controller.refreshCurrentWeek = async () => assert.fail('weekly fallback should not run')
+
+  const events = await controller.refreshCurrentMonth(2026, 11)
+
+  assert.equal(events, scraped)
+  assert.equal(saved.coverage, 'month')
+})
+
+test('current-month refresh falls back to the official week if ChromeProX fails', async () => {
+  const controller = new EconomicNewsController()
+  const fallback = [{ date: '2026-11-06', time: '8:30am', currency: 'USD', event: 'Payrolls' }]
+  controller.scrapeForexFactory = async () => { throw new Error('browser unavailable') }
+  controller.refreshCurrentWeek = async () => fallback
+
+  assert.equal(await controller.refreshCurrentMonth(2026, 11), fallback)
+})

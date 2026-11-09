@@ -170,12 +170,17 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return this.alignTimeToResolutionSec(effective, resolution)
   }
 
-  /**
-   * History API `to` bound — must reach the raw replay cursor so server aggregation
-   * includes the full partial HTF bucket (e.g. 9:15–9:29:30 on 15m).
-   */
-  private replayHistoryToSec(anchorSec: number): number {
-    return anchorSec
+  /** Last source-data bar revealed by the completed replay source candle. */
+  private replayHistoryToSec(anchorSec: number, resolution: ResolutionString): number {
+    if (this.isSubMinuteResolution(resolution)) {
+      return this.capPlaybackAnchorForTargetResolution(anchorSec, resolution)
+    }
+    // Minute and larger charts aggregate the minute dataset. The anchor is
+    // the SOURCE candle's open: 15m at 09:30 reveals minutes through 09:44,
+    // regardless of which target chart requested that history.
+    const sourceRes = this.playbackAnchorResolution ?? '1'
+    const sourceSec = Math.max(1, tradeseaResolutionToSeconds(String(sourceRes)))
+    return Math.max(anchorSec, this.alignTimeToResolutionSec(anchorSec, sourceRes) + sourceSec - 60)
   }
 
   /** Cap history window to replay anchor — BWC host-controlled replay uses Date.now() otherwise. */
@@ -187,13 +192,15 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     if (anchorSec == null) return periodParams
 
     const barSec = Math.max(1, tradeseaResolutionToSeconds(String(resolution)))
-    const historyTo = this.replayHistoryToSec(anchorSec)
+    const historyTo = this.replayHistoryToSec(anchorSec, resolution)
     const lastBarOpen = this.replayLastBarOpenSec(anchorSec, resolution)
     const count = Math.max(1, Number(periodParams.countBack) || 1)
     let from = periodParams.from
     let to = periodParams.to
 
-    if (to == null || !Number.isFinite(Number(to)) || Number(to) > historyTo) {
+    const asksForCurrentCandle = periodParams.firstDataRequest &&
+      to != null && Number.isFinite(Number(to)) && Number(to) >= lastBarOpen
+    if (to == null || !Number.isFinite(Number(to)) || Number(to) > historyTo || asksForCurrentCandle) {
       to = historyTo
       if (periodParams.firstDataRequest) {
         from = Math.min(lastBarOpen, historyTo) - (count - 1) * barSec
@@ -327,6 +334,9 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     const sourceRes = this.playbackAnchorResolution ?? '1'
     const sourceSec = tradeseaResolutionToSeconds(String(sourceRes))
     const targetSec = tradeseaResolutionToSeconds(String(htfResolution))
+    // The requested source-resolution candle is already complete. Replacing
+    // it with a stale finer cache makes the same cursor change after reload.
+    if (!Number.isFinite(sourceSec) || !Number.isFinite(targetSec) || sourceSec >= targetSec) return bars
 
     const htfOpen = this.alignTimeToResolutionSec(anchorSec, htfResolution)
     if (anchorSec >= htfOpen + targetSec) return bars
@@ -335,7 +345,7 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     const ltBars = ltfKey ? this.replayLtfBars.get(ltfKey) ?? [] : []
     if (!ltBars.length) return bars
 
-    const agg = this.aggregateLtfIntoHtfBar(ltBars, htfOpen, anchorSec)
+    const agg = this.aggregateLtfIntoHtfBar(ltBars, htfOpen, this.replayHistoryToSec(anchorSec, htfResolution))
     if (!agg) return bars
 
     const idx = bars.findIndex((b) => b.time === htfOpen)
@@ -991,7 +1001,9 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
       const cachedLastBar = this.lastBarsCache.get(cacheKey)
       if (!cachedLastBar || lastBar.time >= cachedLastBar.time) {
         this.lastBarsCache.set(cacheKey, lastBar)
-        this.notePlaybackBar(lastBar.time, request.resolution)
+        // History is a read. A finer timeframe's final sub-candle must not
+        // replace the explicit replay source open/resolution (09:30 -> 09:44).
+        if (this.playbackAnchorSec == null) this.notePlaybackBar(lastBar.time, request.resolution)
         this.notifyMarketBook(request.symbol, 'ltp')
       }
     }

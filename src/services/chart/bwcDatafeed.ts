@@ -280,6 +280,7 @@ export type BwcWidget = {
     time?: boolean
     data?: boolean
     viewport?: boolean
+    preserveTimeRange?: boolean
   }) => void | Promise<unknown>
   destroy?: () => void
   onChartReady?: (cb: () => void) => void
