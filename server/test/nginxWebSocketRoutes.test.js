@@ -18,6 +18,16 @@ const websocketPaths = [
   '/backtester/data-management-ws',
 ]
 
+test('HQS namespace is reserved before the Auren SPA fallback', () => {
+  assert.match(configSource, /location = \/hqs \{ return 308 \/hqs\/; \}/)
+  const block = configSource.match(/location \^~ \/hqs\/ \{([\s\S]*?)\n\}/)?.[1]
+  assert.ok(block)
+  assert.match(block, /proxy_pass http:\/\/127\.0\.0\.1:7543;/)
+  assert.match(block, /proxy_set_header Upgrade \$http_upgrade;/)
+  assert.doesNotMatch(block, /index\.html|try_files/)
+  assert.match(configSource, /include \/etc\/nginx\/snippets\/hqs-web\*\.conf;/)
+})
+
 for (const path of websocketPaths) {
   test(`production nginx proxies ${path} websocket upgrades`, () => {
     const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -160,6 +160,26 @@ free_api_port() {
 }
 
 setup_nginx() {
+  # HQS owns this namespace even when its service is temporarily unavailable;
+  # proxy errors must never fall through to Auren's index.html.
+  mkdir -p /etc/nginx/snippets
+  cat > /etc/nginx/snippets/hqs-web.conf <<'HQS_NGINX'
+location = /hqs { return 308 /hqs/; }
+location ^~ /hqs/ {
+    client_max_body_size 50m;
+    proxy_pass http://127.0.0.1:7543;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
+    proxy_buffering off;
+    proxy_redirect off;
+}
+HQS_NGINX
   local domain server_names
   domain="$(resolve_app_domain)"
   if [[ -n "$domain" ]]; then
@@ -175,6 +195,8 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name ${server_names};
+    # Independently deployed HQS Web keeps its HTTPS subpath across Auren updates.
+    include /etc/nginx/snippets/hqs-web*.conf;
 
     root ${INSTALL_DIR}/dist;
     index index.html;

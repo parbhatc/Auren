@@ -6,6 +6,7 @@
 server {
     listen 80;
     server_name 74.208.46.161;  # or your domain
+    include /etc/nginx/snippets/hqs-web*.conf;
 
     root /root/Auren/dist;
     index index.html;

@@ -3,6 +3,16 @@ import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { resolveBwcRoot } from './scripts/resolve-bwc-root.mjs'
 import { betterweightChartStatic } from './vite.bwcStatic'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+
+// HQS is an independent application, including when Auren runs locally.
+// Never let Vite's SPA fallback claim one of its URLs.
+function reserveHqs(req: IncomingMessage, res: ServerResponse, next: () => void) {
+  const requested = new URL(req.url || '/', 'http://localhost')
+  if (!/^\/hqs(?:\/|$)/.test(requested.pathname)) return next()
+  res.writeHead(302, { Location: `http://localhost:7543${requested.pathname.slice(4) || '/'}${requested.search}${requested.hash}` })
+  res.end()
+}
 
 const bwcRoot = resolveBwcRoot()
 const devHttps =
@@ -10,6 +20,11 @@ const devHttps =
 
 export default defineConfig({
   plugins: [
+    {
+      name: 'separate-hqs-workspace',
+      configureServer(server) { server.middlewares.use(reserveHqs) },
+      configurePreviewServer(server) { server.middlewares.use(reserveHqs) },
+    },
     ...(devHttps ? [basicSsl()] : []),
     react(),
     betterweightChartStatic(bwcRoot),
