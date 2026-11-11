@@ -1,5 +1,6 @@
 import api, { getApiBaseUrl, getAuthHeaders } from './api'
 import { BacktestSession } from '../types/backtester'
+import type { CsvInventoryEntry } from '../types/backtesterDataManagement'
 import { formatBacktesterResolutionForApi } from '../backtester/utils/backtesterResolution'
 
 /**
@@ -382,21 +383,14 @@ export const backtesterAPI = {
   /**
    * CSV inventory with date ranges per symbol/resolution (admin)
    */
-  getCsvInventory: async (): Promise<{
+  getCsvInventory: async (dataset?: Pick<CsvInventoryEntry, 'symbol' | 'resolution'>): Promise<{
     success: boolean
-    inventory: Array<{
-      symbol: string
-      resolution: string
-      resolutionLabel: string
-      fromMs: number
-      toMs: number
-      fromLabel: string
-      toLabel: string
-    }>
+    inventory: CsvInventoryEntry[]
     count: number
   }> => {
     const response = await api.get('/backtester/config/csv-inventory', {
       headers: getAuthHeaders(),
+      params: dataset,
     })
     return response.data
   },

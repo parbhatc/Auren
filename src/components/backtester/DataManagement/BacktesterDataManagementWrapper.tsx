@@ -403,6 +403,9 @@ const BacktesterDataManagementWrapper = () => {
     const ticker = resolveCsvTicker(storageSymbol, source)
 
     return new Promise<void>((resolve, reject) => {
+      const csvSymbol = source === 'tradingview' ? storageSymbol.replace(/:/g, '__') : storageSymbol
+      const csvResolution = chartResolutionToCsvFolder(resolution)
+      const datasetLabel = `${csvSymbol} ${csvResolution}`
       const client = wsClientRef.current as any
       const originalCallback = client.callbacks?.onUpdateResponse
       client.callbacks = client.callbacks || {}
@@ -416,17 +419,32 @@ const BacktesterDataManagementWrapper = () => {
           return newState
         })
 
+        // The update has finished writing. Refresh only this row before advancing the batch.
+        // A failed update may also have written some files before it stopped.
+        try {
+          const response = await backtesterAPI.getCsvInventory({ symbol: csvSymbol, resolution: csvResolution })
+          if (!response.success) throw new Error('CSV inventory request failed')
+          setCsvInventory((previous) => [
+            ...previous.filter((row) => row.symbol !== csvSymbol || row.resolution !== csvResolution),
+            ...response.inventory,
+          ])
+        } catch (err) {
+          console.error(`Error refreshing CSV inventory for ${datasetLabel}:`, err)
+          if (data.success) {
+            const refreshError = new Error('Update saved, but the date range could not be refreshed. Reload the CSV tab.')
+            if (!options.quiet) toast.error(refreshError.message)
+            reject(refreshError)
+            return
+          }
+        }
+
         if (data.success) {
-          const datasetLabel = `${storageSymbol} ${chartResolutionToCsvFolder(resolution)}`
           if (!options.quiet) {
             toast.success(
               data.message
                 ? `${datasetLabel}: ${data.message}`
                 : `${datasetLabel}: Update completed`
             )
-          }
-          if (options.refreshInventory !== false) {
-            await loadCsvInventory({ showLoading: false })
           }
           resolve()
         } else {
@@ -673,7 +691,6 @@ const BacktesterDataManagementWrapper = () => {
       csvInventory={csvInventory}
       loadingCsvInventory={loadingCsvInventory}
       onCsvUpdate={runCsvUpdate}
-      onCsvInventoryRefresh={() => loadCsvInventory({ showLoading: false })}
       onCsvOverwrite={runCsvOverwrite}
       onCsvDownload={runCsvDownload}
       onCsvTradingViewTokenChange={handleCsvTradingViewTokenChange}

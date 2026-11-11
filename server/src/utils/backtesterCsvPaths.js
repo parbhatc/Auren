@@ -170,16 +170,20 @@ export function listSymbolCsvFiles(csvDir, symbol, resolution = DEFAULT_CSV_RESO
     }
   }
 
-  // Legacy symbol/YEAR/month.csv
+  // Legacy layouts: symbol/YEAR/RESOLUTION/month.csv and minute-only symbol/YEAR/month.csv.
   for (const yearStr of fs.readdirSync(symbolDir, { withFileTypes: true })
     .filter((item) => item.isDirectory() && /^\d{4}$/.test(item.name))
     .map((item) => item.name)) {
     const yearDir = path.join(symbolDir, yearStr)
-    for (const entry of monthCsvEntriesForYearDir(yearDir, symbol, yearStr, resolution)) {
-      const key = `${entry.year}:${entry.month}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        files.push(entry)
+    const legacyDirs = [path.join(yearDir, resolution)]
+    if (resolution === DEFAULT_CSV_RESOLUTION) legacyDirs.push(yearDir)
+    for (const legacyDir of legacyDirs) {
+      for (const entry of monthCsvEntriesForYearDir(legacyDir, symbol, yearStr, resolution)) {
+        const key = `${entry.year}:${entry.month}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          files.push(entry)
+        }
       }
     }
   }
@@ -209,44 +213,61 @@ export function listAllCsvFiles(csvDir, resolution = DEFAULT_CSV_RESOLUTION) {
   return files
 }
 
-/**
- * Find the latest year/month on disk for incremental updates.
- */
-export function findLatestMonth(csvDir, symbol, resolution = DEFAULT_CSV_RESOLUTION) {
-  const files = listSymbolCsvFiles(csvDir, symbol, resolution)
-  if (!files.length) {
-    return { latestYear: null, latestMonth: null, latestMonthIndex: null }
-  }
+/** Read the first or last nonblank CSV row without loading the whole file. */
+export async function readEdgeTimestamp(file, size, fromEnd) {
+  const buffer = Buffer.allocUnsafe(8192)
+  let offset = fromEnd ? size : 0
+  let partial = Buffer.alloc(0)
 
-  const latest = files[0]
-  const latestMonthIndex = MONTH_NAMES.indexOf(latest.month)
-  return {
-    latestYear: latest.year,
-    latestMonth: latest.month,
-    latestMonthIndex: latestMonthIndex >= 0 ? latestMonthIndex : null,
+  while (fromEnd ? offset > 0 : offset < size) {
+    const length = Math.min(buffer.length, fromEnd ? offset : size - offset)
+    const position = fromEnd ? offset - length : offset
+    const { bytesRead } = await file.read(buffer, 0, length, position)
+    offset = fromEnd ? position : position + bytesRead
+
+    // Carry the line cut by the read boundary into the next chunk.
+    const chunk = buffer.subarray(0, bytesRead)
+    const data = Buffer.concat(fromEnd ? [chunk, partial] : [partial, chunk])
+    const atEdge = fromEnd ? offset === 0 : offset === size || bytesRead === 0
+    const newline = fromEnd ? data.indexOf(10) : data.lastIndexOf(10)
+    if (!atEdge && newline === -1) {
+      partial = data
+      continue
+    }
+    const complete = atEdge ? data : fromEnd ? data.subarray(newline + 1) : data.subarray(0, newline)
+    const lines = complete.toString('utf8').split('\n')
+    const row = fromEnd ? lines.findLast((line) => line.trim()) : lines.find((line) => line.trim())
+    if (row !== undefined) return parseInt(row.split(',')[0], 10)
+    if (atEdge) break
+    partial = fromEnd ? data.subarray(0, newline) : data.subarray(newline + 1)
   }
+  return NaN
 }
 
 /**
- * Last candle timestamp (seconds) from the newest month file on disk.
+ * Last candle timestamp (seconds) from the newest nonempty month file on disk.
  */
-export function findLatestBarTimestamp(csvDir, symbol, resolution = DEFAULT_CSV_RESOLUTION) {
-  const files = listSymbolCsvFiles(csvDir, symbol, resolution)
-  if (!files.length) return null
-
-  const latest = files[0]
-  if (!fs.existsSync(latest.filePath)) return null
-
-  const lines = fs.readFileSync(latest.filePath, 'utf8').split('\n').filter((line) => line.trim())
-  if (!lines.length) return null
-
-  const timestamp = parseInt(lines[lines.length - 1].split(',')[0], 10)
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return null
-
-  return {
-    timestampSeconds: timestamp,
-    timestampMs: timestamp * 1000,
-    year: latest.year,
-    month: latest.month,
+export async function findLatestBarTimestamp(csvDir, symbol, resolution = DEFAULT_CSV_RESOLUTION) {
+  for (const entry of listSymbolCsvFiles(csvDir, symbol, resolution)) {
+    const file = await fs.promises.open(entry.filePath, 'r').catch((error) => {
+      if (error.code === 'ENOENT') return null
+      throw error
+    })
+    if (!file) continue
+    try {
+      const { size } = await file.stat()
+      const timestamp = await readEdgeTimestamp(file, size, true)
+      if (Number.isFinite(timestamp) && timestamp > 0) {
+        return {
+          timestampSeconds: timestamp,
+          timestampMs: timestamp * 1000,
+          year: entry.year,
+          month: entry.month,
+        }
+      }
+    } finally {
+      await file.close()
+    }
   }
+  return null
 }

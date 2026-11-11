@@ -43,7 +43,6 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
       csvInventory,
       loadingCsvInventory,
       onCsvUpdate,
-      onCsvInventoryRefresh,
       onCsvOverwrite,
       onCsvDownload,
       onCsvTradingViewTokenChange,
@@ -170,7 +169,6 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
               symbols={symbols}
               tradingViewToken={tradingviewCurrentToken}
               onUpdate={onCsvUpdate}
-              onInventoryRefresh={onCsvInventoryRefresh}
               onOverwrite={onCsvOverwrite}
               onDownload={onCsvDownload}
               onTradingViewTokenChange={onCsvTradingViewTokenChange}

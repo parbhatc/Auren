@@ -340,8 +340,19 @@ class BacktesterController {
    */
   async getCsvInventory(req, res) {
     try {
+      const { symbol, resolution } = req.query
+      let dataset
+      if (symbol !== undefined || resolution !== undefined) {
+        if (typeof symbol !== 'string' || !symbol || typeof resolution !== 'string' || !resolution) {
+          return res.status(HTTP_STATUS.BAD_REQUEST).json({
+            success: false,
+            message: 'A CSV dataset requires both a symbol and a resolution.',
+          })
+        }
+        dataset = { symbol, resolution }
+      }
       const csvDir = path.join(__dirname, '../../data/backtester/csv')
-      const inventory = buildCsvInventory(csvDir)
+      const inventory = await buildCsvInventory(csvDir, dataset)
       return res.status(HTTP_STATUS.OK).json({
         success: true,
         inventory,

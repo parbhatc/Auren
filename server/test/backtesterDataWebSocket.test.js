@@ -124,6 +124,7 @@ test('Tradesea CSV updates keep sub-minute data in its own resolution folder', a
   const handler = new TradeseaDataHandler(websocket, {})
   let page = 0
   const timeMs = Date.UTC(2027, 0, 15, 12)
+  t.mock.method(Date, 'now', () => timeMs + 60_000)
   handler.getHistory = async () => {
     page += 1
     return page === 1
@@ -138,6 +139,55 @@ test('Tradesea CSV updates keep sub-minute data in its own resolution folder', a
   assert.equal(fs.readFileSync(csvPath, 'utf8'), `${Math.floor(timeMs / 1000)},1,2,0.5,1.5,10`)
   assert.equal(invalidations[0][3], '30s')
   assert.equal(messages.at(-1).success, true)
+})
+
+test('Tradesea CSV updates page only to the last saved candle and recheck it once', async (t) => {
+  const csvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auren-tradesea-tail-'))
+  t.after(() => fs.rmSync(csvDir, { recursive: true, force: true }))
+  const lastSaved = new Date(2026, 0, 15, 12).getTime() / 1000
+  t.mock.method(Date, 'now', () => (lastSaved + 503) * 1000)
+
+  const yearDir = path.join(csvDir, 'NQ', '2026')
+  const secondsDir = path.join(yearDir, '1s')
+  fs.mkdirSync(secondsDir, { recursive: true })
+  fs.writeFileSync(path.join(yearDir, 'February.csv'), `${lastSaved + 60},1,1,1,1,1`)
+  fs.writeFileSync(path.join(secondsDir, 'February.csv'), '\n')
+  fs.writeFileSync(path.join(secondsDir, 'January.csv'), `${lastSaved - 1},1,1,1,1,1\n${lastSaved},1,1,1,1,1`)
+
+  const requests = []
+  const progress = []
+  const messages = []
+  const handler = new TradeseaDataHandler({
+    csvDir,
+    sendProgress: (_ws, _action, _symbol, _source, _percent, message) => progress.push(message),
+    broadcast: (message) => messages.push(message),
+  }, {
+    async proxyUdfRequest(_tokens, _accountId, targetPath) {
+      const params = new URL(targetPath, 'https://example.test').searchParams
+      const from = Number(params.get('from'))
+      const to = Number(params.get('to'))
+      const countback = Number(params.get('countback'))
+      requests.push({ from, to, countback })
+      // Simulate UDF giving countback priority over from with an exclusive upper bound.
+      const times = Array.from({ length: countback }, (_, index) => to - countback + index)
+      const prices = times.map(() => 2)
+      return { statusCode: 200, body: { s: 'ok', t: times, o: prices, h: prices, l: prices, c: prices, v: prices } }
+    },
+  }, { historyRequestIntervalMs: 0 })
+
+  await handler.update('CME:NQ', 'NQ', {}, '1S', 500)
+
+  assert.deepEqual(requests, [
+    { from: lastSaved, to: lastSaved + 504, countback: 500 },
+    { from: lastSaved, to: lastSaved + 4, countback: 5 },
+  ])
+  const updated = fs.readFileSync(monthFilePathForTest(csvDir, 'NQ', 2026, '1s'), 'utf8').split('\n')
+  assert.equal(updated[0], `${lastSaved - 1},1,1,1,1,1`)
+  assert.equal(updated[1], `${lastSaved},2,2,2,2,2`)
+  assert.deepEqual(updated.slice(2).map((row) => Number(row.split(',')[0])),
+    Array.from({ length: 503 }, (_, index) => lastSaved + index + 1))
+  assert.ok(progress.some((message) => message.startsWith('Fetched 503 new bars')))
+  assert.match(messages.at(-1).message, /503 new bars/)
 })
 
 function monthFilePathForTest(root, symbol, year, resolution) {

@@ -434,6 +434,7 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
       const chartDatafeed = datafeed as {
         getPlaybackAnchorSecForResolution?: (resolution: string) => number | null
         getPlaybackAnchorSecPublic?: () => number | null
+        getReplayClosedThroughSec?: () => number | null
         validateResolutionAtCursor?: (
           symbol: string,
           resolution: ResolutionString,
@@ -464,6 +465,7 @@ class BacktesterChart extends Component<BacktesterChartProps, BacktesterChartSta
         getPlaybackAnchorSec: (resolution?: string) =>
           chartDatafeed?.getPlaybackAnchorSecForResolution?.(String(resolution ?? '1')) ?? null,
         getPlaybackAnchorRawSec: () => chartDatafeed?.getPlaybackAnchorSecPublic?.() ?? null,
+        getReplayClosedThroughSec: () => chartDatafeed?.getReplayClosedThroughSec?.() ?? null,
         validateResolutionChange: async ({
           symbol: sym,
           to,

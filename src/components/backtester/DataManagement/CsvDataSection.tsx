@@ -71,7 +71,6 @@ export default function CsvDataSection({
   onDownload,
   onTradingViewTokenChange,
   onTradingViewTokenBlur,
-  onInventoryRefresh,
 }: {
   isDark: boolean
   inventory: CsvInventoryEntry[]
@@ -93,7 +92,6 @@ export default function CsvDataSection({
     resolution?: string,
     options?: CsvUpdateOptions
   ) => Promise<void>
-  onInventoryRefresh: () => Promise<void>
   onOverwrite: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onDownload: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onTradingViewTokenChange?: (token: string) => void
@@ -297,7 +295,7 @@ export default function CsvDataSection({
             target.symbol,
             wsSource,
             csvFolderToChartResolution(target.resolution),
-            { quiet: true, refreshInventory: false }
+            { quiet: true }
           )
         } catch (err) {
           const reason = err instanceof Error ? err.message : 'Update failed'
@@ -309,7 +307,6 @@ export default function CsvDataSection({
           current: `${target.symbol} ${target.resolution}`,
         })
       }
-      await onInventoryRefresh()
       setUpdateAllResult({ total: updateAllTargets.length, failures })
       if (failures.length) {
         setSearchError(`Update all finished with ${failures.length} failed dataset${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`)
@@ -766,7 +763,7 @@ export default function CsvDataSection({
                   ? `Updating ${updateAllState.current} · ${Math.min(updateAllState.completed + 1, updateAllState.total)} of ${updateAllState.total}`
                   : updateAllResult
                     ? updateAllResult.failures.length
-                      ? `${updateAllResult.total - updateAllResult.failures.length} of ${updateAllResult.total} datasets updated`
+                      ? `${updateAllResult.total - updateAllResult.failures.length} of ${updateAllResult.total} datasets updated and refreshed`
                       : `All ${updateAllResult.total} datasets are up to date`
                     : `${updateAllTargets.length} eligible dataset${updateAllTargets.length === 1 ? '' : 's'} for ${dataSource === 'tradesea' ? 'Tradesea' : 'TradingView'}`}
               </p>

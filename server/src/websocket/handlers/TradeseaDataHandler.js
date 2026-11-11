@@ -8,10 +8,12 @@ import TradeseaIdentityService from '../../services/tradesea/TradeseaIdentitySer
 import {
   csvFolderForChartResolution,
   ensureMonthFileDir,
-  findLatestMonth,
+  findLatestBarTimestamp,
   monthFilePath,
   monthNameFromIndex,
+  resolveMonthFilePath,
 } from '../../utils/backtesterCsvPaths.js'
+import { parseBacktesterResolution, resolutionToSeconds } from '../../utils/backtesterResolution.js'
 import { normalizeTradeseaMarketDataSymbol } from '../../utils/tradeseaMarketDataSymbol.js'
 
 const DEFAULT_HISTORY_CHUNK_SIZE = 5_000
@@ -289,136 +291,61 @@ class TradeseaDataHandler {
       
       this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Finding latest data...')
 
-      const now = new Date()
-      const nowTimestamp = Math.floor(now.getTime() / 1000)
-      
-      const { latestYear, latestMonth, latestMonthIndex } = findLatestMonth(
+      const latest = await findLatestBarTimestamp(
         this.ws.csvDir,
         normalizedSymbol,
         csvResolution
       )
+      // Include the last saved candle so we can refresh it if it was still forming.
+      const fromTime = latest?.timestampSeconds ?? 0
+      const startMessage = latest
+        ? `Fetching updates since ${new Date(latest.timestampMs).toLocaleString()}...`
+        : 'No existing data found, starting full download...'
+      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, startMessage)
 
-      // Determine update range
-      let fromTime = 0
-      if (latestYear && latestMonthIndex !== null) {
-        fromTime = Math.floor(new Date(latestYear, latestMonthIndex, 1, 0, 0, 0, 0).getTime() / 1000)
-        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, `Updating from ${latestMonth} ${latestYear} to now...`)
-      } else {
-        fromTime = 0
-        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'No existing data found, starting full download...')
-      }
+      const maxCountback = historyChunkSize(requestedChunkSize)
+      const barSeconds = /^\d+(?:S|D|W)?$/i.test(parseBacktesterResolution(resolution))
+        ? resolutionToSeconds(resolution)
+        : 0
+      const uniqueBars = new Map()
+      let toTime = Math.floor(Date.now() / 1000) + 1
+      let newBarsFetched = 0
 
-      this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0, 'Fetching new data...')
-      
-      const allNewBars = []
-      let toTime = nowTimestamp
-      const countback = historyChunkSize(requestedChunkSize)
-      let overallFirstBarTime = null
-      let overallLastBarTime = null
+      while (toTime >= fromTime && toTime > 0) {
+        // UDF providers may prioritize countback over from. Shrink the final page for fixed intervals.
+        const countback = fromTime && barSeconds
+          ? Math.min(maxCountback, Math.floor((toTime - fromTime) / barSeconds) + 1)
+          : maxCountback
+        const { bars } = await this.getHistory(connection, apiSymbol, resolution, countback, fromTime, toTime)
+        if (!bars.length) break
 
-      const fromTimeMs = fromTime > 0 ? fromTime * 1000 : null
-      let hasReachedFromTime = false
-
-      let isIncomplete = true
-      while (isIncomplete) {
-        try {
-          const historyResponse = await this.getHistory(
-            connection,
-            apiSymbol,
-            resolution,
-            countback,
-            0,
-            toTime.toString()
-          )
-
-          const bars = historyResponse?.bars || []
-
-          if (bars.length < 1) {
-            isIncomplete = false
-            break
-          }
-
-          const firstBar = bars[0]
-          const lastBar = bars[bars.length - 1]
-
-          // Check if we've gone past the fromTime limit
-          // But continue fetching to fill gaps - only add bars within the update range
-          if (fromTimeMs && lastBar.t < fromTimeMs) {
-            // We've fetched past the beginning of the latest month
-            // Check if any bars in this batch are still within range
-            const barsInRange = bars.filter(bar => {
-              const timestamp = bar.t !== undefined ? bar.t : (bar.timestamp || 0)
-              return timestamp >= fromTimeMs
-            })
-            
-            if (barsInRange.length === 0) {
-              // No more bars in range, we're done
-              isIncomplete = false
-              console.log(`[TradeseaDataHandler] Reached fromTime limit (update mode)`)
-              break
-            }
-            // Continue processing barsInRange below
-          }
-          
-          // Process all bars, but only add those within the update range (from beginning of latest month to now)
-          for (const bar of bars) {
-            const timestamp = bar.t !== undefined ? bar.t : (bar.timestamp || 0)
-            
-            // Only add bars that are within the update range
-            if (fromTimeMs && timestamp < fromTimeMs) {
-              continue // Skip bars older than the beginning of the latest month
-            }
-            
-            const open = bar.o !== undefined ? bar.o : (bar.open || 0)
-            const high = bar.h !== undefined ? bar.h : (bar.high || 0)
-            const low = bar.l !== undefined ? bar.l : (bar.low || 0)
-            const close = bar.c !== undefined ? bar.c : (bar.close || 0)
-            const volume = bar.v !== undefined ? bar.v : (bar.volume || 0)
-
-            if (timestamp > 0) {
-              if (!overallFirstBarTime || timestamp < overallFirstBarTime) {
-                overallFirstBarTime = timestamp
-              }
-              if (!overallLastBarTime || timestamp > overallLastBarTime) {
-                overallLastBarTime = timestamp
-              }
-              
-              allNewBars.push({
-                time: timestamp,
-                open, high, low, close, volume
-              })
-            }
-          }
-
-          const firstDate = overallFirstBarTime ? new Date(overallFirstBarTime) : new Date(firstBar.t)
-          const lastDate = overallLastBarTime ? new Date(overallLastBarTime) : new Date(lastBar.t)
-          this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0,
-            `Fetched ${allNewBars.length} new bars... (${firstDate.toLocaleDateString()} ${firstDate.toLocaleTimeString()} - ${lastDate.toLocaleDateString()} ${lastDate.toLocaleTimeString()})`)
-
-          toTime = Math.floor(lastBar.t / 1000) - 1
-          await this.wait(this.historyRequestIntervalMs)
-        } catch (error) {
-          console.error(`[TradeseaDataHandler] Error fetching update chunk:`, error.message)
-          throw error
+        for (const bar of bars) {
+          const timestamp = Math.floor(bar.t / 1000)
+          if (timestamp < fromTime || timestamp > toTime || uniqueBars.has(timestamp)) continue
+          uniqueBars.set(timestamp, {
+            time: bar.t, open: bar.o, high: bar.h, low: bar.l, close: bar.c, volume: bar.v,
+          })
+          if (timestamp > fromTime) newBarsFetched++
         }
+
+        this.ws.sendProgress(null, 'update', normalizedSymbol, 'tradesea', 0,
+          `Fetched ${newBarsFetched.toLocaleString()} new bars…`)
+
+        const oldest = Math.floor(bars.at(-1).t / 1000)
+        if (oldest <= fromTime) break
+        if (oldest > toTime) throw new Error('Tradesea history did not advance the update')
+        // With an exclusive upper bound, the next page starts just before the oldest bar.
+        // If the provider includes that bound, deduplication handles the overlap.
+        toTime = Math.min(toTime - 1, oldest)
       }
 
-      if (allNewBars.length === 0) {
+      if (uniqueBars.size === 0) {
         this.ws.broadcast({
           type: 'update_response',
           success: true,
           message: 'No new data to update'
         })
         return
-      }
-
-      // Remove duplicates
-      const uniqueBars = new Map()
-      for (const bar of allNewBars) {
-        const timestamp = Math.floor(bar.time / 1000)
-        if (!uniqueBars.has(timestamp)) {
-          uniqueBars.set(timestamp, bar)
-        }
       }
 
       // Merge with existing files
@@ -453,7 +380,8 @@ class TradeseaDataHandler {
         const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
 
         // Read existing file if it exists
-        const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : ''
+        const existingPath = resolveMonthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
+        const existingContent = fs.existsSync(existingPath) ? fs.readFileSync(existingPath, 'utf8') : ''
         const existingLines = existingContent.split('\n').filter(line => line.trim())
         
         const existingTimestamps = new Map()

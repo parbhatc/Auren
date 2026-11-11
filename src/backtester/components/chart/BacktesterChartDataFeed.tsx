@@ -601,6 +601,14 @@ export class BacktesterChartDataFeed implements IDatafeedChartApi {
     return this.getPlaybackAnchorSec()
   }
 
+  /** Replay reveals the complete source candle through this exclusive boundary. */
+  getReplayClosedThroughSec(): number | null {
+    const anchor = this.getPlaybackAnchorSec()
+    if (anchor == null) return null
+    const source = this.playbackAnchorResolution
+    return this.alignTimeToResolutionSec(anchor, source) + tradeseaResolutionToSeconds(source)
+  }
+
   /** A finer step starts after the last source bar already revealed. */
   getPlaybackStepCursorSec(resolution: ResolutionString): number | null {
     const anchor = this.getPlaybackAnchorSec()

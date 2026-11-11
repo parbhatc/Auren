@@ -6,6 +6,7 @@ import {
   findLatestBarTimestamp,
   monthFilePath,
   monthNameFromIndex,
+  resolveMonthFilePath,
 } from '../../utils/backtesterCsvPaths.js'
 import TradingViewDirectClient from '../../services/tradingview/TradingViewDirectClient.js'
 
@@ -26,7 +27,7 @@ class TradingViewDataHandler {
     const csvResolution = csvFolderForChartResolution(interval)
     const chunkSize = Math.max(1, Math.floor(Number(options.chunkSize) || 25_000))
     const latest = action === 'update'
-      ? findLatestBarTimestamp(this.ws.csvDir, folderSymbol.replace(/:/g, '__'), csvResolution)
+      ? await findLatestBarTimestamp(this.ws.csvDir, folderSymbol.replace(/:/g, '__'), csvResolution)
       : null
     // The newest stored bar may have been captured before it closed. Re-fetch it.
     const intervalSeconds = /^\d+S$/i.test(interval)
@@ -110,10 +111,13 @@ class TradingViewDataHandler {
       const { year, month, monthName, bars } = barsByMonth[key]
       ensureMonthFileDir(this.ws.csvDir, normalizedSymbol, year, csvResolution)
       const filePath = monthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
+      const existingPath = action === 'update'
+        ? resolveMonthFilePath(this.ws.csvDir, normalizedSymbol, year, monthName, csvResolution)
+        : null
       let newCandlesInFile = 0
 
-      if (action === 'update' && fs.existsSync(filePath)) {
-        const existingLines = fs.readFileSync(filePath, 'utf8').split('\n').filter((line) => line.trim())
+      if (existingPath && fs.existsSync(existingPath)) {
+        const existingLines = fs.readFileSync(existingPath, 'utf8').split('\n').filter((line) => line.trim())
         const linesByTimestamp = new Map(existingLines.map((line) => [line.split(',')[0], line]))
         for (const bar of bars) {
           const timestamp = String(Math.floor(bar.time / 1000))

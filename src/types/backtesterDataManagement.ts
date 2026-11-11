@@ -14,7 +14,6 @@ export interface CsvInventoryEntry {
 
 export interface CsvUpdateOptions {
   quiet?: boolean
-  refreshInventory?: boolean
 }
 
 export interface SymbolData {
@@ -83,7 +82,6 @@ export interface BacktesterDataManagementRendererProps {
     resolution?: string,
     options?: CsvUpdateOptions
   ) => Promise<void>
-  onCsvInventoryRefresh: () => Promise<void>
   onCsvOverwrite: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onCsvDownload: (symbol: string, source: CsvDataWsSource, resolution?: string) => Promise<void>
   onCsvTradingViewTokenChange?: (token: string) => void

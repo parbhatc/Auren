@@ -1,34 +1,43 @@
 import fs from 'fs'
+import { open } from 'node:fs/promises'
 import path from 'path'
 import {
   DEFAULT_CSV_RESOLUTION,
   NATIVE_SUB_MINUTE_CSV_RESOLUTIONS,
   listSymbolCsvFiles,
+  readEdgeTimestamp,
 } from './backtesterCsvPaths.js'
 
 const MONTH_LABELS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
 
-function readFirstLastTimestamp(filePath) {
-  if (!fs.existsSync(filePath)) return null
-  const content = fs.readFileSync(filePath, 'utf-8').trim()
-  if (!content) return null
-  const lines = content.split('\n').filter((line) => line.trim())
-  if (!lines.length) return null
-  const first = parseInt(lines[0].split(',')[0], 10)
-  const last = parseInt(lines[lines.length - 1].split(',')[0], 10)
-  if (!Number.isFinite(first) || !Number.isFinite(last)) return null
-  return { firstMs: first * 1000, lastMs: last * 1000 }
+async function readFirstLastTimestamp(filePath) {
+  const file = await open(filePath, 'r').catch((error) => {
+    if (error.code === 'ENOENT') return null
+    throw error
+  })
+  if (!file) return null
+
+  try {
+    const { size } = await file.stat()
+    const first = await readEdgeTimestamp(file, size, false)
+    if (!Number.isFinite(first)) return null
+    const last = await readEdgeTimestamp(file, size, true)
+    if (!Number.isFinite(last)) return null
+    return { firstMs: first * 1000, lastMs: last * 1000 }
+  } finally {
+    await file.close()
+  }
 }
 
-function formatInventoryTime(ms) {
+function formatInventoryTime(ms, showSeconds) {
   const d = new Date(ms)
   let hours = d.getHours()
   const minutes = d.getMinutes()
   const ampm = hours >= 12 ? 'PM' : 'AM'
   hours = hours % 12
   if (hours === 0) hours = 12
-  if (minutes === 0) return `${hours}:00 ${ampm}`
-  return `${hours}:${String(minutes).padStart(2, '0')} ${ampm}`
+  const seconds = showSeconds ? `:${String(d.getSeconds()).padStart(2, '0')}` : ''
+  return `${hours}:${String(minutes).padStart(2, '0')}${seconds} ${ampm}`
 }
 
 function formatInventoryDate(ms) {
@@ -36,8 +45,8 @@ function formatInventoryDate(ms) {
   return `${MONTH_LABELS[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`
 }
 
-function formatInventoryDateTime(ms) {
-  return `${formatInventoryDate(ms)} ${formatInventoryTime(ms)}`
+function formatInventoryDateTime(ms, showSeconds) {
+  return `${formatInventoryDate(ms)} ${formatInventoryTime(ms, showSeconds)}`
 }
 
 function resolutionLabel(csvResolution) {
@@ -63,7 +72,7 @@ function listResolutionDirs(symbolDir) {
 /**
  * Scan on-disk CSV folders and return per-symbol resolution date ranges.
  */
-export function buildCsvInventory(csvDir) {
+export async function buildCsvInventory(csvDir, dataset) {
   if (!fs.existsSync(csvDir)) return []
 
   const reservedNames = new Set([DEFAULT_CSV_RESOLUTION, ...NATIVE_SUB_MINUTE_CSV_RESOLUTIONS])
@@ -76,12 +85,14 @@ export function buildCsvInventory(csvDir) {
   const inventory = []
 
   for (const symbol of symbols) {
+    if (dataset && symbol !== dataset.symbol) continue
     const symbolDir = path.join(csvDir, symbol)
     const resolutionDirs = listResolutionDirs(symbolDir)
     const csvResolutions =
       resolutionDirs.length > 0 ? resolutionDirs : [DEFAULT_CSV_RESOLUTION, ...NATIVE_SUB_MINUTE_CSV_RESOLUTIONS]
 
     for (const csvResolution of csvResolutions) {
+      if (dataset && csvResolution !== dataset.resolution) continue
       const files = listSymbolCsvFiles(csvDir, symbol, csvResolution)
       if (!files.length) continue
 
@@ -89,7 +100,7 @@ export function buildCsvInventory(csvDir) {
       let maxMs = -Infinity
 
       for (const file of files) {
-        const range = readFirstLastTimestamp(file.filePath)
+        const range = await readFirstLastTimestamp(file.filePath)
         if (!range) continue
         minMs = Math.min(minMs, range.firstMs)
         maxMs = Math.max(maxMs, range.lastMs)
@@ -97,14 +108,15 @@ export function buildCsvInventory(csvDir) {
 
       if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) continue
 
+      const showSeconds = /^\d+s$/i.test(csvResolution)
       inventory.push({
         symbol,
         resolution: csvResolution,
         resolutionLabel: resolutionLabel(csvResolution),
         fromMs: minMs,
         toMs: maxMs,
-        fromLabel: formatInventoryDateTime(minMs),
-        toLabel: formatInventoryDateTime(maxMs),
+        fromLabel: formatInventoryDateTime(minMs, showSeconds),
+        toLabel: formatInventoryDateTime(maxMs, showSeconds),
       })
     }
   }
