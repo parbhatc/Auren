@@ -10,6 +10,10 @@ type ViewLocation = { active: boolean; eligible: boolean; identity: LiveTradeSes
 
 /** Keep one chart view warm, without crossing account/auth/provider boundaries. */
 export function createLiveTradeViewRetention(idleMs = LIVE_TRADE_IDLE_MS) {
+  return createTradeViewRetention('live', idleMs)
+}
+
+export function createTradeViewRetention(mode: LiveTradeSessionIdentity['mode'], idleMs = LIVE_TRADE_IDLE_MS) {
   let view: RetainedTradeView | null = null
   let sequence = 0
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -25,9 +29,12 @@ export function createLiveTradeViewRetention(idleMs = LIVE_TRADE_IDLE_MS) {
     snapshot: () => view,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
     update({ active, eligible, identity }: ViewLocation) {
-      const authMatches = view?.identity.token === identity.token && view?.identity.firmId === identity.firmId
+      // Practice loads its account catalog before the provider is known.
+      const firmMatches = view?.identity.firmId === identity.firmId
+        || (mode === 'practice' && active && view?.identity.firmId === '')
+      const authMatches = view?.identity.token === identity.token && firmMatches
         && view?.identity.mode === identity.mode
-      if (!eligible || !identity.token || identity.mode !== 'live') { clear(); return }
+      if (!eligible || !identity.token || identity.mode !== mode) { clear(); return }
       // Account selection inside the active terminal owns its normal provider
       // transition. An inactive terminal cannot follow a dashboard selection.
       if (view && (!authMatches || (!active && view.identity.accountId !== identity.accountId)
@@ -35,7 +42,8 @@ export function createLiveTradeViewRetention(idleMs = LIVE_TRADE_IDLE_MS) {
       if (active) {
         cancelTimer()
         if (!view) publish({ key: ++sequence, identity: { ...identity }, expiresAt: null })
-        else if (view.expiresAt !== null || view.identity.accountId !== identity.accountId) {
+        else if (view.expiresAt !== null || view.identity.accountId !== identity.accountId
+          || view.identity.firmId !== identity.firmId) {
           publish({ ...view, identity: { ...identity }, expiresAt: null })
         }
       } else if (view && view.expiresAt === null) {

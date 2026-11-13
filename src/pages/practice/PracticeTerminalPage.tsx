@@ -11,7 +11,15 @@ import { useTheme } from '../../hooks/useTheme'
 import { selectPracticeTerminalAccount } from '../../services/practice/practiceTerminalSelection'
 import { traceStartup } from '../../services/debug/startupTrace'
 
-export default function PracticeTerminalPage() {
+export default function PracticeTerminalPage({
+  practiceAccountId,
+  viewActive = true,
+  onAccountResolved,
+}: {
+  practiceAccountId?: string
+  viewActive?: boolean
+  onAccountResolved?: (accountId: string | null) => void
+} = {}) {
   const { isDark } = useTheme()
   const navigate = useNavigate()
   const [accountId, setAccountId] = useState<string | null>(null)
@@ -19,6 +27,8 @@ export default function PracticeTerminalPage() {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const selectedAccountId = useRef<string | null>(null)
+  const requestedAccountId = useRef(practiceAccountId)
+  requestedAccountId.current = practiceAccountId
 
   useEffect(() => {
     let active = true
@@ -34,14 +44,19 @@ export default function PracticeTerminalPage() {
       // Let the mounted terminal display its passed/blown modal. Only a new
       // visit or an explicit selection chooses another active account.
       const current = selectedAccountId.current
-      if (current && current === savedId && accounts.some((account) => account.id === current)) return
+      if (current && current === savedId && accounts.some((account) => account.id === current)) {
+        onAccountResolved?.(requestedAccountId.current ?? current)
+        return
+      }
       const selected = selectPracticeTerminalAccount(accounts, savedId)
-      if (selected && selected.id !== savedId) {
+      if (!requestedAccountId.current && selected && selected.id !== savedId) {
         try { localStorage.setItem(PRACTICE_STORAGE_KEYS.ACTIVE_TRADE_ID, selected.id) } catch { /* Storage is optional. */ }
       }
       selectedAccountId.current = selected?.id ?? null
-      if (selected) void registerAurenChartIndicators().catch(() => undefined)
+      const resolvedId = requestedAccountId.current ?? selectedAccountId.current
+      if (resolvedId) void registerAurenChartIndicators().catch(() => undefined)
       setAccountId(selectedAccountId.current)
+      onAccountResolved?.(resolvedId)
     }
     setLoading(true)
     setError('')
@@ -63,7 +78,7 @@ export default function PracticeTerminalPage() {
       active = false
       window.removeEventListener('practiceAccountsChanged', syncAccount)
     }
-  }, [attempt])
+  }, [attempt, onAccountResolved])
 
   if (loading) return <TerminalBootScreen isDark={isDark} />
   if (error) return (
@@ -77,6 +92,7 @@ export default function PracticeTerminalPage() {
       </div>
     </div>
   )
-  if (!accountId) return <Navigate to={ROUTES.PRACTICE_ACCOUNTS} replace />
-  return <TradePage key={accountId} practiceAccountId={accountId} accountCatalogReady />
+  const selectedId = practiceAccountId ?? accountId
+  if (!selectedId) return viewActive ? <Navigate to={ROUTES.PRACTICE_ACCOUNTS} replace /> : null
+  return <TradePage key={selectedId} practiceAccountId={selectedId} accountCatalogReady viewActive={viewActive} />
 }

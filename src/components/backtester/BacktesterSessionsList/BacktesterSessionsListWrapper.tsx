@@ -39,7 +39,7 @@ const BacktesterSessionsListWrapper = ({
   embedded?: boolean
   isDark?: boolean
 }) => {
-  const { isDark: themeDark, toggleTheme } = useTheme()
+  const { isDark: themeDark } = useTheme()
   const isDark = embedded && isDarkProp !== undefined ? isDarkProp : themeDark
   const navigate = useNavigate()
   const colors = getThemeColors(isDark)
@@ -334,7 +334,7 @@ const BacktesterSessionsListWrapper = ({
 
   if (startupError || (!loading && !user)) {
     return (
-      <div className={embedded ? 'py-8' : `min-h-screen p-6 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+      <div className="py-8">
         <div className="mx-auto max-w-lg space-y-4">
           <ErrorMessage
             message={startupError || t('backtester.failedToLoadSessions', {}, 'Unable to load replay sessions. Please try again.')}
@@ -356,7 +356,7 @@ const BacktesterSessionsListWrapper = ({
         </div>
       )
     }
-    return <Loading isDark={isDark} />
+    return <Loading fullScreen={false} isDark={isDark} />
   }
 
   return (
@@ -364,7 +364,6 @@ const BacktesterSessionsListWrapper = ({
       <BacktesterSessionsList
         embedded={embedded}
         isDark={isDark}
-        toggleTheme={toggleTheme}
         navigate={navigate}
         colors={colors}
         showAdmin={Boolean(user?.isAdmin)}

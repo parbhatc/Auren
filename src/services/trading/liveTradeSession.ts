@@ -5,8 +5,8 @@ export type LiveTradeSessionIdentity = {
   mode: 'live' | 'practice'
 }
 
-export const LIVE_TRADE_WARM_MS = 10 * 60_000
-// Keep an exact ten-minute return from racing browser scheduling and cleanup.
+export const LIVE_TRADE_WARM_MS = 60 * 60_000
+// Leave time for browser scheduling when returning at the one-hour mark.
 // The widget and connection share this deadline so neither expires first.
 export const LIVE_TRADE_IDLE_MS = LIVE_TRADE_WARM_MS + 30_000
 

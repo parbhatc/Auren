@@ -154,7 +154,7 @@ for (const awayMs of [5 * 60_000, LIVE_TRADE_WARM_MS]) {
     first.release()
     t.mock.timers.tick(awayMs)
     f.cache.sync()
-    assert.equal(f.cleanups, 0, 'the nominal ten-minute window must include its endpoint')
+    assert.equal(f.cleanups, 0, 'the warm window must include its endpoint')
     const returned = f.cache.acquire(f.options)
     await returned.ready
     assert.equal(f.loads, 1, 'return must not bootstrap another source/history session')

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense, useContext, useState, useEffect } from 'react'
 import {
   BrowserRouter as Router,
   Routes,
@@ -24,10 +24,14 @@ import './App.css'
 import { RouteScrollRestore } from './components/common/RouteScrollRestore'
 import { syncLiveTradeSession } from './services/trading/liveTradeSession'
 import LiveTradeViewRetention from './components/trading/Live/LiveTradeViewRetention'
+import PracticeTradeViewRetention from './components/trading/Practice/PracticeTradeViewRetention'
 import { getAuthToken } from './api/api'
 import { traceStartup } from './services/debug/startupTrace'
 import { prefetchRoute, routeModules } from './navigation/routeModules'
+import { rememberPwaTerminalRoute } from './navigation/pwaTerminalResume'
 import LegacyReplayStatsRedirect from './components/backtester/LegacyReplayStatsRedirect'
+import BacktesterPageShell from './components/backtester/shared/BacktesterPageShell'
+import { ValidatedAuthContext } from './contexts/ValidatedAuthContext'
 
 const Login = lazy(routeModules.login)
 const Register = lazy(routeModules.register)
@@ -43,12 +47,10 @@ const PracticeTradePadPage = lazy(routeModules.practicePad)
 const PracticeStatsPage = lazy(routeModules.practiceStats)
 const PracticeNewsPage = lazy(routeModules.practiceNews)
 const SettingsWorkspacePage = lazy(routeModules.settingsWorkspace)
-const PracticeTerminalPage = lazy(routeModules.practice)
 const PracticeWorkspacePage = lazy(routeModules.practiceAccounts)
 const DashboardPage = lazy(routeModules.dashboard)
 const AnalyticsPage = lazy(routeModules.analytics)
 const NewsWorkspacePage = lazy(routeModules.news)
-const PracticeTradePage = lazy(routeModules.practiceTrade)
 const LiveTradePage = lazy(routeModules.liveTrade)
 const BacktesterChartView = lazy(routeModules.replayChart)
 const BacktesterSessionsList = lazy(routeModules.replay)
@@ -58,6 +60,11 @@ const JournalReviewsPage = lazy(routeModules.journalReviews)
 const JournalTradeDetailPage = lazy(routeModules.journalDetail)
 const LegacyRedirect = () => <Navigate to={ROUTES.DASHBOARD} replace />
 
+function AdminReplayDataRoute() {
+  const auth = useContext(ValidatedAuthContext)
+  return auth?.isAdmin ? <BacktesterDataManagement /> : <Navigate to={ROUTES.DASHBOARD} replace />
+}
+
 const LegacyAccountsRedirect = () => {
   const location = useLocation()
   return <Navigate to={`${ROUTES.PRACTICE_ACCOUNTS}${location.search}${location.hash}`} replace />
@@ -65,6 +72,7 @@ const LegacyAccountsRedirect = () => {
 
 function RouteSessionSync() {
   const location = useLocation()
+  useEffect(() => { rememberPwaTerminalRoute(location.pathname) }, [location.pathname])
   // Logout and account/mode changes can happen outside the terminal. Retained
   // sockets must follow the current session even while Live is unmounted.
   useEffect(() => { syncLiveTradeSession() }, [location.key])
@@ -197,6 +205,9 @@ function App() {
         </LiveTradeViewRetention>
       </Suspense>
       <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
+        <PracticeTradeViewRetention />
+      </Suspense>
+      <Suspense fallback={<Loading fullScreen isDark={isDark} />}>
         <Routes>
           <Route
             path={ROUTES.DASHBOARD}
@@ -250,14 +261,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path={ROUTES.PRACTICE}
-            element={
-              <ProtectedRoute>
-                <PracticeTerminalPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path={ROUTES.PRACTICE} element={null} />
           <Route
             path={ROUTES.PRACTICE_ACCOUNTS}
             element={
@@ -302,14 +306,7 @@ function App() {
             }
           />
           <Route path={`${ROUTES.LIVE_TRADE}/:accountId`} element={<LegacyLiveTradeRedirect />} />
-          <Route
-            path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId`}
-            element={
-              <ProtectedRoute>
-                <PracticeTradePage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path={`${ROUTES.PRACTICE_TRADE}/:practiceAccountId`} element={null} />
 
           <Route
             path="/practice/:practiceAccountId/*"
@@ -356,14 +353,10 @@ function App() {
             }
           />
 
-          <Route
-            path={ROUTES.BACKTESTER}
-            element={
-              <ProtectedRoute>
-                <BacktesterSessionsList />
-              </ProtectedRoute>
-            }
-          />
+          <Route element={<ProtectedRoute><BacktesterPageShell /></ProtectedRoute>}>
+            <Route path={ROUTES.BACKTESTER} element={<BacktesterSessionsList />} />
+            <Route path={ROUTES.BACKTESTER_DATA_MANAGEMENT} element={<AdminReplayDataRoute />} />
+          </Route>
           <Route
             path={ROUTES.BACKTESTER_CHART}
             element={
@@ -384,15 +377,6 @@ function App() {
             path="/backtester/testing-strategies"
             element={<Navigate to={ROUTES.BACKTESTER} replace />}
           />
-          <Route
-            path={ROUTES.BACKTESTER_DATA_MANAGEMENT}
-            element={
-              <ProtectedRoute adminOnly>
-                <BacktesterDataManagement />
-              </ProtectedRoute>
-            }
-          />
-
           {/* Legacy NexusSyncPro paths → home */}
           <Route path="/journal/*" element={<Navigate to={ROUTES.JOURNAL} replace />} />
           <Route path="/economic-news" element={<Navigate to={ROUTES.NEWS} replace />} />

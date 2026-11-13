@@ -163,7 +163,7 @@ test('Auren foreground recovery fills only the real BWC ten-minute gap while pre
   assert.equal(requests.length, 1)
 })
 
-for (const minutes of [5, 10]) {
+for (const minutes of [5, 10, 60]) {
   test(`a ${minutes}-minute Dashboard visit retains the actual Trade session and repairs only the real BWC candle gap`, async (t) => {
     const start = 1_800_000_000
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: start * 1000 })

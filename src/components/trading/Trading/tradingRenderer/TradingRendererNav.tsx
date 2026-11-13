@@ -1,6 +1,8 @@
 import TradingNav from '../../../common/TradingNav'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTES } from '../../../../constants/routes'
 import { isPwaPinnedNav } from '../../../../utils/pwa'
+import { isTerminalRoute } from '../../../../navigation/pwaTerminalResume'
 
 type TradingRendererNavProps = {
   showNav: boolean
@@ -35,6 +37,16 @@ export function TradingRendererNav({
 }: TradingRendererNavProps) {
   const pinMobileNav = isPwaPinnedNav()
   const mobileNavVisible = showNav || pinMobileNav
+  const { pathname } = useLocation()
+  const navigateWithState = useNavigate()
+  const homePath = liveMode ? `${ROUTES.HOME}?mode=live` : ROUTES.HOME
+  const navigateFromMobileNav = (path: string) => {
+    if (path === homePath && pinMobileNav && isTerminalRoute(pathname)) {
+      navigateWithState(path, { state: { returnToChart: pathname } })
+    } else {
+      navigate(path)
+    }
+  }
 
   return (
     <>
@@ -49,8 +61,8 @@ export function TradingRendererNav({
           <TradingNav
             compact={terminalShell}
             isDark={isDark}
-            navigate={navigate}
-            currentPath={window.location.pathname}
+            navigate={navigateFromMobileNav}
+            currentPath={pathname}
             onToggleNav={pinMobileNav ? undefined : onHideNav}
             showDesktopNav={false}
             showMobileNav={true}
@@ -63,7 +75,7 @@ export function TradingRendererNav({
             }
             practiceSettingsActive={practiceMobileSettingsOpen}
             showMobileSettings={showMobileSettings}
-            mobileHomePath={liveMode ? `${ROUTES.HOME}?mode=live` : ROUTES.HOME}
+            mobileHomePath={homePath}
           />
         )}
       </div>

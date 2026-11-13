@@ -38,6 +38,7 @@ class TradingNav extends Component<TradingNavProps> {
     const practiceTradeMatch = currentPath.match(/^\/practice\/trade\/([^/]+)/)
     const practiceAccountId = practiceTradeMatch?.[1]
     const isPracticeTrade = Boolean(practiceAccountId)
+    const isPracticeTerminal = currentPath === ROUTES.PRACTICE || isPracticeTrade
     const isLiveTrade = currentPath === ROUTES.TRADE
     const isPracticeHub = currentPath === ROUTES.HOME
     const practiceAccount = practiceAccountId ? getPracticeAccountById(practiceAccountId) : null
@@ -58,7 +59,9 @@ class TradingNav extends Component<TradingNavProps> {
         : practiceNavItems
       : isLiveTrade
         ? [{ path: ROUTES.TRADE, label: 'Chart', icon: BarChart3 }]
-        : [{ path: ROUTES.HOME, label: 'Hub', icon: BarChart3 }]
+        : isPracticeTerminal
+          ? [{ path: ROUTES.PRACTICE, label: 'Chart', icon: BarChart3 }]
+          : [{ path: ROUTES.HOME, label: 'Hub', icon: BarChart3 }]
 
     const isActive = (path: string) => {
       if (isLiveTrade && path === ROUTES.TRADE) {
@@ -219,7 +222,7 @@ class TradingNav extends Component<TradingNavProps> {
           ) : null}
 
           <div className="flex min-w-0 flex-1 items-stretch gap-1">
-            {(isPracticeTrade || isLiveTrade) &&
+            {(isPracticeTerminal || isLiveTrade) &&
               renderMobileTab(
                 'home',
                 'Home',
@@ -240,7 +243,7 @@ class TradingNav extends Component<TradingNavProps> {
                   active
                 )
               })}
-            {(isPracticeTrade || isLiveTrade) && onPracticeOrder && !isTerminalPracticeAccount &&
+            {(isPracticeTerminal || isLiveTrade) && onPracticeOrder && !isTerminalPracticeAccount &&
               renderMobileTab(
                 'order',
                 'Order',

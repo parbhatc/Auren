@@ -124,7 +124,6 @@ export interface BacktesterProps {
 
 export interface BacktesterSessionsListProps {
   isDark: boolean
-  toggleTheme: () => void
   navigate: (path: string) => void
   colors: any
   sessions: BacktestSession[]

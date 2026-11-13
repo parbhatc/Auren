@@ -1,25 +1,22 @@
-import { Component, type ReactNode } from 'react'
+import { Component } from 'react'
 import { ROUTES } from '../../../constants/routes'
 import ErrorMessage from '../../common/ErrorMessage'
 import SuccessMessage from '../../common/SuccessMessage'
 import Loading from '../../common/Loading'
 import ConfirmDialog from '../../common/ConfirmDialog'
 import HubHeroSection from '../../trading/Practice/hub/HubHeroSection'
-import ProductHeader from '../../layout/ProductHeader'
-import BacktesterNav from '../shared/BacktesterNav'
 import CsvDataSection from './CsvDataSection'
 import SymbolInfoSection from './SymbolInfoSection'
 import SymbolFormModal from './SymbolFormModal'
 import { BacktesterDataManagementRendererProps } from '../../../types/backtesterDataManagement'
 import { t } from '../../../utils/translator'
-import { appPageBackground, panelCardClass, primaryButtonClass, tabRailActiveClass, tabRailClass } from '../../../styles/aurenTheme'
+import { panelCardClass, primaryButtonClass, tabRailActiveClass, tabRailClass } from '../../../styles/aurenTheme'
 import { Database } from 'lucide-react'
 
 class BacktesterDataManagementRenderer extends Component<BacktesterDataManagementRendererProps> {
   render() {
     const {
       isDark,
-      toggleTheme,
       user,
       navigate,
       symbols,
@@ -51,28 +48,12 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
       progressState,
     } = this.props
 
-    const shell = (content: ReactNode) => (
-      <div className={`auren-shell-offset ${appPageBackground(isDark)}`}>
-        <ProductHeader isDark={isDark} toggleTheme={toggleTheme} />
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <BacktesterNav
-            isDark={isDark}
-            toggleTheme={toggleTheme}
-            navigate={navigate}
-            activeTab="data"
-            showAdmin
-          />
-          {content}
-        </main>
-      </div>
-    )
-
     if (loading) {
-      return shell(<div className="min-h-64"><Loading /></div>)
+      return <Loading fullScreen={false} isDark={isDark} />
     }
 
     if (!user?.isAdmin) {
-      return shell(
+      return (
         <div className="py-12">
             <div className={`${panelCardClass(isDark)} mx-auto max-w-md text-center`}>
               <h2 className={`text-xl font-bold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -95,7 +76,7 @@ class BacktesterDataManagementRenderer extends Component<BacktesterDataManagemen
 
     const isFormOpen = Boolean(editingSymbol && editingData)
 
-    return shell(
+    return (
       <>
           <HubHeroSection
             isDark={isDark}

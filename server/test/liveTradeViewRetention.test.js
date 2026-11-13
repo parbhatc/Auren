@@ -10,7 +10,7 @@ const bundled = await build({
   entryPoints: [fileURLToPath(new URL('../../src/services/trading/liveTradeViewRetention.ts', import.meta.url))],
   bundle: true, format: 'esm', platform: 'node', write: false,
 })
-const { createLiveTradeViewRetention } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`)
+const { createLiveTradeViewRetention, createTradeViewRetention } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`)
 
 function fixture(t) {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_800_000_000_000 })
@@ -82,6 +82,25 @@ test('entering a route that uses the shared practice provider disposes Live befo
   assert.equal(f.cache.snapshot(), null)
 })
 
+test('Practice adopts its resolved account without remounting and only retains it during the Home round trip', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const cache = createTradeViewRetention('practice')
+  t.after(() => cache.dispose())
+  const identity = { token: 'auth-a', firmId: 'tradesea', accountId: 'account-a', mode: 'practice' }
+  cache.update({ active: true, eligible: true, identity: { ...identity, firmId: '', accountId: '' } })
+  const key = cache.snapshot().key
+  cache.update({ active: true, eligible: true, identity })
+  assert.equal(cache.snapshot().key, key)
+  assert.deepEqual(cache.snapshot().identity, identity)
+  cache.update({ active: false, eligible: true, identity })
+  t.mock.timers.tick(95_000)
+  cache.update({ active: true, eligible: true, identity })
+  assert.equal(cache.snapshot().key, key)
+  cache.update({ active: false, eligible: true, identity })
+  cache.update({ active: false, eligible: true, identity: { ...identity, accountId: 'account-b' } })
+  assert.equal(cache.snapshot(), null)
+})
+
 test('suspended timers cannot let an expired view be reused before the delayed timer fires', (t) => {
   const f = fixture(t)
   f.update(true)
@@ -99,7 +118,7 @@ for (const awayMs of [5 * 60_000, LIVE_TRADE_WARM_MS]) {
     const first = f.cache.snapshot().key
     f.update(false)
     t.mock.timers.tick(awayMs)
-    assert.equal(f.cache.snapshot().key, first, 'cleanup must not win at exactly ten minutes')
+    assert.equal(f.cache.snapshot().key, first, 'cleanup must not win at the warm window endpoint')
     f.update(true)
     assert.equal(f.cache.snapshot().key, first, 'the retained widget must be reused')
     f.update(false)

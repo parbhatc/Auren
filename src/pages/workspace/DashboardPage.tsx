@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   ArrowDownRight,
   ArrowRight,
@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDot,
+  Home,
   Layers3,
   LineChart,
   Plus,
@@ -23,6 +24,8 @@ import { ROUTES, practiceSessionPath } from '../../constants/routes'
 import { useDisplayUnit } from '../../contexts/DisplayUnitContext'
 import { financialDisplayValue, formatFinancialDisplay } from '../../utils/displayValue'
 import { useTheme } from '../../hooks/useTheme'
+import { isTerminalRoute } from '../../navigation/pwaTerminalResume'
+import { isPwaPinnedNav } from '../../utils/pwa'
 import { useDashboardAccountData } from '../../hooks/useDashboardAccountData'
 import { DASHBOARD_ACCOUNT_CHANGED_EVENT } from '../../services/dashboard/dashboardAccountSelection'
 import { invalidateDashboardAccountSnapshots } from '../../services/dashboard/dashboardAccountData'
@@ -45,6 +48,9 @@ const finiteNumber = (value: unknown, fallback = 0) => {
 
 export default function DashboardPage() {
   const { isDark } = useTheme()
+  const location = useLocation()
+  const returnToChart = location.state?.returnToChart
+  const showChartReturn = isPwaPinnedNav() && isTerminalRoute(returnToChart)
   const [selectedDay, setSelectedDay] = useState<{ date: string; pnl?: number } | null>(null)
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date()
@@ -246,7 +252,7 @@ export default function DashboardPage() {
 
   return (
     <WorkspaceShell>
-      <main className="mx-auto max-w-[1600px] px-4 py-7 sm:px-7 sm:py-9 xl:px-9">
+      <main className={`mx-auto max-w-[1600px] px-4 py-7 sm:px-7 sm:py-9 xl:px-9 ${showChartReturn ? 'max-lg:pb-[calc(var(--auren-mobile-nav-bar-height)_+_env(safe-area-inset-bottom,0px)_+_1.75rem)]' : ''}`}>
         <PageHeading
           eyebrow="Your workspace"
           title="Overview"
@@ -852,6 +858,23 @@ export default function DashboardPage() {
           </>
         )}
       </main>
+      {showChartReturn && (
+        <nav
+          aria-label="Trading navigation"
+          className="auren-mobile-bottom-bar border-t border-[var(--app-border)] bg-[var(--app-bg)] auren-safe-bottom lg:hidden"
+        >
+          <div className="flex h-14 gap-1 px-2 py-1">
+            <span aria-current="page" className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg bg-[var(--app-hover)] text-xs font-medium text-[var(--app-text)]">
+              <Home className="h-5 w-5" aria-hidden />
+              Home
+            </span>
+            <Link to={returnToChart} className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg text-xs font-medium text-[var(--app-muted)] hover:bg-[var(--app-hover)]">
+              <BarChart3 className="h-5 w-5" aria-hidden />
+              Chart
+            </Link>
+          </div>
+        </nav>
+      )}
       {selectedDay && selection ? (
         <Suspense fallback={null}>
           <CalendarDayDetailsDialog

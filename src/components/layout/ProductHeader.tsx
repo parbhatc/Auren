@@ -566,7 +566,7 @@ export default function ProductHeader({
 
           {location.pathname !== ROUTES.PRACTICE_ACCOUNTS && <>
           <AccountPicker
-            key={location.pathname}
+            key={isReplayWorkspace ? ROUTES.BACKTESTER : location.pathname}
             options={accountOptions}
             value={accountPickerValue}
             onChange={(id) => { if (id !== accountPickerValue) selectAccount(id) }}

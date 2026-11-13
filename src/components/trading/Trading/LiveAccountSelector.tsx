@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ChevronDown, RefreshCw } from 'lucide-react'
 import { ROUTES } from '../../../constants/routes'
 import { t } from '../../../utils/translator'
 import type { FormattedAccount } from '../../../utils/marketAccountDisplay'
 import { getAccountColorClasses } from '../../../utils/marketAccountDisplay'
+import TradeAccountMenu from './TradeAccountMenu'
 
 export function LiveAccountSelector({
   isDark,
@@ -27,15 +28,7 @@ export function LiveAccountSelector({
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    if (open) document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
+  const closeMenu = useCallback(() => setOpen(false), [])
 
   const wrapperClass = compact
     ? 'relative shrink-0 w-[min(5.5rem,22vw)] lg:w-[168px] xl:w-[188px]'
@@ -83,10 +76,11 @@ export function LiveAccountSelector({
       </button>
 
       {open && (
-        <div
-          role="listbox"
-          className={`absolute top-full left-0 mt-1 z-[200] rounded-lg border shadow-xl overflow-hidden ${
-            compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'right-0 sm:left-0 sm:right-auto sm:min-w-[320px]'
+        <TradeAccountMenu
+          anchorRef={ref}
+          onClose={closeMenu}
+          className={`${
+            compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'w-[min(320px,calc(100vw-1rem))]'
           } ${isDark ? 'bg-[#0f172a] border-[#475569]' : 'bg-white border-slate-200'}`}
         >
           <div
@@ -167,7 +161,7 @@ export function LiveAccountSelector({
               {t('live.trade.backToHub')}
             </button>
           </div>
-        </div>
+        </TradeAccountMenu>
       )}
     </div>
   )

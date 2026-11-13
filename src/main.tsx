@@ -13,7 +13,9 @@ import { retireLegacyPwaCaches } from './utils/pwa'
 import { installReliableTouchButtons } from './utils/reliableTouchButtons'
 import { installStartupTrace } from './services/debug/startupTrace'
 import { installAuthSessionLifecycle } from './api/auth.api'
+import { restorePwaTerminalRoute } from './navigation/pwaTerminalResume'
 
+restorePwaTerminalRoute()
 installStartupTrace()
 installAuthSessionLifecycle()
 registerCandleDebugGlobals()

@@ -27,7 +27,6 @@ export const routeModules = {
   dashboard: routeModule(() => import('../pages/workspace/DashboardPage')),
   analytics: routeModule(() => import('../pages/workspace/AnalyticsPage')),
   news: routeModule(() => import('../pages/workspace/NewsWorkspacePage')),
-  practiceTrade: routeModule(() => import('../pages/trading/practice/TradePage')),
   liveTrade: routeModule(() => import('../pages/trading/live/TradePage')),
   replayChart: routeModule(() => import('../components/backtester/BacktesterChartView')),
   replay: routeModule(() => import('../components/backtester/BacktesterSessionsList')),
@@ -66,7 +65,7 @@ export function modulesForRoute(path: string): ModuleLoader[] {
   if (/^\/practice\/trade\/[^/]+\/stats$/.test(pathname)) return [routeModules.practiceStats]
   if (/^\/practice\/trade\/[^/]+\/news$/.test(pathname)) return [routeModules.practiceNews]
   if (/^\/practice\/trade\/[^/]+\/pad$/.test(pathname)) return [routeModules.practicePad]
-  if (/^\/practice\/trade\/[^/]+$/.test(pathname)) return [routeModules.practiceTrade]
+  if (/^\/practice\/trade\/[^/]+$/.test(pathname)) return [routeModules.practice]
   return []
 }
 

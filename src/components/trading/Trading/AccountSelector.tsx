@@ -12,6 +12,7 @@ import {
 } from '../../../constants/practice'
 import { formatPracticeSize } from '../../../services/practice/practicePlans'
 import { t } from '../../../utils/translator'
+import TradeAccountMenu from './TradeAccountMenu'
 import {
   getPracticeAccountColorClasses,
   practiceAccountModeBadgeClass,
@@ -39,6 +40,7 @@ export function AccountSelector({
   const [open, setOpen] = useState(false)
   const [accounts, setAccounts] = useState<PracticeAccount[]>(() => getPracticeAccounts())
   const ref = useRef<HTMLDivElement>(null)
+  const closeMenu = useCallback(() => setOpen(false), [])
 
   const syncAccounts = useCallback(() => {
     setAccounts(getPracticeAccounts())
@@ -52,16 +54,6 @@ export function AccountSelector({
     window.addEventListener('practiceAccountsChanged', onChange)
     return () => window.removeEventListener('practiceAccountsChanged', onChange)
   }, [syncAccounts])
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    if (open) document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
 
   const grouped = useMemo(() => {
     const map = new Map<PracticeAccountStatus, PracticeAccount[]>()
@@ -184,10 +176,11 @@ export function AccountSelector({
       </button>
 
       {open && (
-        <div
-          role="listbox"
-          className={`absolute top-full left-0 mt-1 z-[200] rounded-lg border shadow-xl overflow-hidden ${
-            compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'right-0 sm:left-0 sm:right-auto sm:min-w-[320px]'
+        <TradeAccountMenu
+          anchorRef={ref}
+          onClose={closeMenu}
+          className={`${
+            compact ? 'w-[min(280px,calc(100vw-1rem))]' : 'w-[min(320px,calc(100vw-1rem))]'
           } ${
             isDark ? 'border-[#3F3F46] bg-[#18181B]' : 'border-[#E4E4E7] bg-white'
           }`}
@@ -277,7 +270,7 @@ export function AccountSelector({
               {t('practice.hub.manageAccounts')}
             </button>
           </div>
-        </div>
+        </TradeAccountMenu>
       )}
     </div>
   )

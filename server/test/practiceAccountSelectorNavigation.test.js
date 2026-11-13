@@ -27,6 +27,7 @@ const bundled = await build({
       if (path === 'react/jsx-runtime') return { contents: 'export const jsx = (type, props) => ({ type, props }); export const jsxs = jsx;' }
       if (path === 'react-router-dom') return { contents: 'export const useLocation = () => ({ pathname: globalThis.__practiceSelector.pathname });' }
       if (path === 'lucide-react') return { contents: 'export const ChevronDown = "chevron"; export const RefreshCw = "refresh";' }
+      if (path === './TradeAccountMenu') return { contents: 'export default "trade-account-menu";' }
       if (path.endsWith('/constants/practice')) return { contents: `
         export const getPracticeAccounts = () => globalThis.__practiceSelector.accounts;
         export const PRACTICE_STORAGE_KEYS = { ACTIVE_TRADE_ID: 'practiceActiveTradeAccountId' };
@@ -117,7 +118,7 @@ test('passed and blown selections open account management and close the dropdown
   for (const id of ['passed', 'blown']) {
     clickOption(id)
     assert.equal(state.navigation.at(-1), '/accounts')
-    assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 0)
+    assert.equal(find(render(), (node) => node.type === 'trade-account-menu').length, 0)
   }
 })
 
@@ -125,7 +126,7 @@ test('manage accounts opens the manager while active and current account choices
   const tree = open()
   find(tree, (node) => node.type === 'button' && text(node).trim() === 'practice.hub.manageAccounts')[0].props.onClick()
   assert.deepEqual(state.navigation, ['/accounts'])
-  assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 0)
+  assert.equal(find(render(), (node) => node.type === 'trade-account-menu').length, 0)
   clickOption('other')
   assert.deepEqual(state.navigation, ['/accounts', '/practice/trade/other'])
   assert.deepEqual(state.selections, ['other'])
@@ -140,7 +141,7 @@ test('canonical Practice selection persists and announces the active account whi
   assert.equal(state.storage.get('practiceActiveTradeAccountId'), 'other')
   assert.deepEqual(state.selections, ['other'], 'the account must be persisted before the landing listener receives the event')
   assert.deepEqual(state.navigation, ['/practice'])
-  assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 0)
+  assert.equal(find(render(), (node) => node.type === 'trade-account-menu').length, 0)
   clickOption('current')
   assert.deepEqual(state.selections, ['other'])
   assert.deepEqual(state.navigation, ['/practice'])
@@ -154,6 +155,6 @@ test('refresh retains the open dropdown, refreshes its accounts, and invokes the
   await new Promise(setImmediate)
   assert.equal(state.reads, 1)
   assert.equal(state.refreshes, 1)
-  assert.equal(find(render(), (node) => node.props?.role === 'listbox').length, 1)
+  assert.equal(find(render(), (node) => node.type === 'trade-account-menu').length, 1)
   assert.deepEqual(state.navigation, [])
 })

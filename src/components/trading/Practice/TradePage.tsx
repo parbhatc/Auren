@@ -30,6 +30,7 @@ import ProductHeader from '../../layout/ProductHeader'
 export type PracticeTradePageProps = {
   practiceAccountId?: string
   accountCatalogReady?: boolean
+  viewActive?: boolean
 }
 
 class TradePage extends Component<PracticeTradePageProps> {
@@ -38,7 +39,7 @@ class TradePage extends Component<PracticeTradePageProps> {
   }
 }
 
-function TradePageInner({ practiceAccountId: selectedAccountId, accountCatalogReady = false }: PracticeTradePageProps) {
+function TradePageInner({ practiceAccountId: selectedAccountId, accountCatalogReady = false, viewActive = true }: PracticeTradePageProps) {
   const { practiceAccountId: routeAccountId } = useParams<{ practiceAccountId: string }>()
   const practiceAccountId = selectedAccountId ?? routeAccountId
   const navigate = useNavigate()
@@ -358,6 +359,7 @@ function TradePageInner({ practiceAccountId: selectedAccountId, accountCatalogRe
         practiceAccountId={practiceAccount.id}
         practiceRefreshing={refreshing}
         onRefreshPracticeAccount={handleRefresh}
+        viewActive={viewActive}
       />
       <BlownAccountModal
         isDark={isDark}

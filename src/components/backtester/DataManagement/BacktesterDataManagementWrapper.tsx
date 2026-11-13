@@ -21,7 +21,7 @@ import { chartResolutionToCsvFolder } from './csvDataTimeframes'
 import { getSymbolTicker } from './symbolTickers'
 
 const BacktesterDataManagementWrapper = () => {
-  const { isDark, toggleTheme } = useTheme()
+  const { isDark } = useTheme()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const colors = getThemeColors(isDark)
@@ -666,7 +666,6 @@ const BacktesterDataManagementWrapper = () => {
   return (
     <BacktesterDataManagementRenderer
       isDark={isDark}
-      toggleTheme={toggleTheme}
       user={user}
       colors={colors}
       navigate={navigate}

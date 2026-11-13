@@ -47,7 +47,6 @@ export interface DeleteConfirm {
 
 export interface BacktesterDataManagementRendererProps {
   isDark: boolean
-  toggleTheme: () => void
   user: any
   colors: ReturnType<typeof getThemeColors>
   navigate: (path: string) => void

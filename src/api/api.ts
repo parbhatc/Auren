@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios'
 import { publishAuthEvent } from '../services/auth/authEvents'
+import { clearPwaTerminalRoute } from '../navigation/pwaTerminalResume'
 
 /**
  * Get API base URL
@@ -79,6 +80,7 @@ export const getAuthToken = (): string | null => {
 
 /** Notify this tab immediately; native storage events cover other tabs. */
 export const setAuthToken = (token: string | null): void => {
+  if (!token || token !== getAuthToken()) clearPwaTerminalRoute()
   if (token) localStorage.setItem('token', token)
   else localStorage.removeItem('token')
   publishAuthEvent({ kind: 'token-change' })

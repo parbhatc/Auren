@@ -1,25 +1,19 @@
-import type { ReactNode } from 'react'
-import BacktesterNav, { type BacktesterTab } from './BacktesterNav'
+import { Suspense, useContext } from 'react'
+import { Outlet, useMatch, useNavigate } from 'react-router-dom'
+import { ROUTES } from '../../../constants/routes'
+import { ValidatedAuthContext } from '../../../contexts/ValidatedAuthContext'
+import { useTheme } from '../../../hooks/useTheme'
+import BacktesterNav from './BacktesterNav'
+import Loading from '../../common/Loading'
 import ProductHeader from '../../layout/ProductHeader'
 import { workspaceThemeStyle } from '../../layout/WorkspacePrimitives'
 
-export default function BacktesterPageShell({
-  isDark,
-  toggleTheme,
-  navigate,
-  activeTab,
-  showAdmin = false,
-  onLogout,
-  children,
-}: {
-  isDark: boolean
-  toggleTheme: () => void
-  navigate: (path: string) => void
-  activeTab: BacktesterTab
-  showAdmin?: boolean
-  onLogout?: () => void
-  children: ReactNode
-}) {
+export default function BacktesterPageShell() {
+  const { isDark, toggleTheme } = useTheme()
+  const navigate = useNavigate()
+  const auth = useContext(ValidatedAuthContext)
+  const dataRoute = useMatch(ROUTES.BACKTESTER_DATA_MANAGEMENT)
+
   return (
     <div
       style={workspaceThemeStyle(isDark)}
@@ -31,11 +25,12 @@ export default function BacktesterPageShell({
           isDark={isDark}
           toggleTheme={toggleTheme}
           navigate={navigate}
-          activeTab={activeTab}
-          showAdmin={showAdmin}
-          onLogout={onLogout}
+          activeTab={dataRoute ? 'data' : 'sessions'}
+          showAdmin={auth?.isAdmin}
         />
-        {children}
+        <Suspense fallback={<Loading fullScreen={false} isDark={isDark} />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

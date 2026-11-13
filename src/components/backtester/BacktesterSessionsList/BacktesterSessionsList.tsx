@@ -3,7 +3,6 @@ import { Plus, Search } from 'lucide-react'
 import CreateSessionModal from '../CreateSessionModal'
 import ErrorMessage from '../../common/ErrorMessage'
 import { PageHeading } from '../../layout/WorkspacePrimitives'
-import BacktesterPageShell from '../shared/BacktesterPageShell'
 import BacktesterSessionCard from '../shared/BacktesterSessionCard'
 import { BacktesterSessionsListProps } from '../../../types/backtester'
 import { t } from '../../../utils/translator'
@@ -253,27 +252,21 @@ class BacktesterSessionsList extends Component<
   }
 
   render() {
-    const { isDark, toggleTheme, navigate, embedded = false } = this.props
+    const { embedded = false } = this.props
 
     if (embedded) {
       return this.renderSessionsBody()
     }
 
     return (
-      <BacktesterPageShell
-        isDark={isDark}
-        toggleTheme={toggleTheme}
-        navigate={navigate}
-        activeTab="sessions"
-        showAdmin={this.props.showAdmin}
-      >
+      <>
         <PageHeading
           eyebrow="Learn from the market"
           title="Replay sessions"
           description="Step through historical futures, refine your entries, and review each decision at your own pace."
         />
         {this.renderSessionsBody()}
-      </BacktesterPageShell>
+      </>
     )
   }
 }
