@@ -144,7 +144,9 @@ export default function TradePanel(props: TradePanelProps) {
     tickSize = 0.25,
     tickValue = 0,
     getMarketBook,
+    marketBookSource,
     subscribeMarketBook,
+    retainMarketBook,
     ensureMarketBook,
     releaseMarketBook,
     chartSymbol = 'CME:NQ',
@@ -299,15 +301,16 @@ export default function TradePanel(props: TradePanelProps) {
       pendingBookTickRef.current = false
       pendingLtpTickRef.current = false
     }
-  }, [chartSymbol, accountId])
+  }, [chartSymbol, accountId, marketBookSource])
 
+  const marketBookSubscriptionRef = useRef({ retainMarketBook, ensureMarketBook, releaseMarketBook })
+  marketBookSubscriptionRef.current = { retainMarketBook, ensureMarketBook, releaseMarketBook }
   useEffect(() => {
-    ensureMarketBook?.()
-    return () => releaseMarketBook?.()
-    // The callbacks are rebuilt with the pad props; chartSymbol/accountId are
-    // the semantic subscription identity and avoid release/re-add churn.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartSymbol, accountId])
+    const { retainMarketBook: retain, ensureMarketBook: ensure, releaseMarketBook: release } = marketBookSubscriptionRef.current
+    if (retain) return retain()
+    ensure?.()
+    return () => release?.()
+  }, [chartSymbol, accountId, marketBookSource])
 
   useEffect(() => {
     if (tab === 'dom' || tab === 'ticket') {
@@ -369,6 +372,7 @@ export default function TradePanel(props: TradePanelProps) {
         )}
         {tab === 'dom' && (
           <DomTab
+            key={chartSymbol}
             props={props}
             book={book}
             ltpTick={ltpTick}

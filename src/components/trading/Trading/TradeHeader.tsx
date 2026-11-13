@@ -23,6 +23,7 @@ export function TradeHeader({
   toggleTheme,
   accountId: accountIdProp,
   practiceAccountId,
+  tradeAccountId,
   onRefreshPracticeAccount,
   practiceRefreshing,
   showNav,
@@ -37,6 +38,8 @@ export function TradeHeader({
   showAccountSelector = true,
   showTradingSettings = true,
   showReplaySettings = false,
+  showJournalButton,
+  onShowJournalButtonChange,
   showLogoAlways = false,
   hideDesktopLogo = false,
   hideNavToggle = false,
@@ -58,6 +61,7 @@ export function TradeHeader({
   accountId?: string
   /** @deprecated use accountId */
   practiceAccountId?: string
+  tradeAccountId?: string
   onRefreshPracticeAccount?: () => void
   practiceRefreshing?: boolean
   showNav: boolean
@@ -76,6 +80,8 @@ export function TradeHeader({
   showTradingSettings?: boolean
   /** Adds replay-specific preferences to the shared settings dialog. */
   showReplaySettings?: boolean
+  showJournalButton?: boolean
+  onShowJournalButtonChange?: (show: boolean) => void
   /** Show Auren logo on mobile as well as desktop */
   showLogoAlways?: boolean
   /** The shared product sidebar already carries the desktop brand. */
@@ -222,11 +228,14 @@ export function TradeHeader({
 
         <div className="flex items-center gap-0.5 shrink-0 self-center">
           {!practiceAccountStatus && showTradingSettings ? (
-            <div className="hidden lg:block">
+            <div className={liveMode && (tradeAccountId || onShowJournalButtonChange) ? '' : 'hidden lg:block'}>
               <HeaderTradingSettings
                 practiceAccountId={accountId}
+                tradeAccountId={tradeAccountId}
                 isDark={isDark}
                 showReplaySettings={showReplaySettings}
+                showJournalButton={showJournalButton}
+                onShowJournalButtonChange={onShowJournalButtonChange}
               />
             </div>
           ) : null}

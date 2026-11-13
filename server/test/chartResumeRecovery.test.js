@@ -81,6 +81,23 @@ test('ten-minute Safari suspension refills history even when fresh ticks keep th
   assert.equal(f.calls.recoveries.length, 1, 'the recovery resubscribe must not cause a recovery loop')
 })
 
+test('rechecks the original outage window once after a successful reconnect repair', async (t) => {
+  const f = fixture(t)
+  f.connection.change('disconnected')
+  f.connection.change('connected')
+  await f.advance(200)
+  assert.equal(f.calls.recoveries.length, 1)
+
+  f.event('focus')
+  await f.advance(300)
+  await f.advance(59_700)
+  assert.equal(f.calls.recoveries.length, 2)
+  assert.equal(f.calls.recoveries[1].since, f.calls.recoveries[0].since)
+  assert.equal(f.calls.resend, 1)
+  await f.advance(60_000)
+  assert.equal(f.calls.recoveries.length, 2)
+})
+
 test('a retained Dashboard visit repairs only on return and preserves its original widget checkpoint', async (t) => {
   const f = fixture(t)
   f.recovery.setViewActive(false)

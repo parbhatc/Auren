@@ -32,6 +32,7 @@ export interface TradingRendererState {
   layout: any
   showNews: boolean
   showNav: boolean
+  showJournalButton: boolean
   /** Practice trade: mobile slide-up order panel */
   practiceMobileOrderOpen?: boolean
   /** Practice trade: mobile trading limits settings sheet */

@@ -335,6 +335,7 @@ export default function AurenChart(props: AurenChartProps) {
           datafeed,
           orderLineTheme: CHART_ORDER_LINE_THEME,
           onSymbolChange: notifySymbolChange,
+          onActivePaneSymbolChange: notifySymbolChange,
         })) as BwcWidget
         traceStartup('chart-candles-ready')
 

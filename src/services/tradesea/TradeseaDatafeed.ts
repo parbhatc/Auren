@@ -116,6 +116,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
   private marketBookWired = false
   private offMarketBook: Array<() => void> = []
   private bookSubIdsByStream = new Map<string, number[]>()
+  private tradePadBookRefs = new Map<string, number>()
+  private positionBookStreams = new Set<string>()
   private historyFetchChains = new Map<string, Promise<unknown>>()
   private historyInflight = new Map<string, HistoryInflight>()
   private historyCache = new Map<string, HistoryWindow & { expires: number; data: UdfHistoryResponse }>()
@@ -403,20 +405,16 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
 
     candleDebug.mdsOpen([...streamTickers], candleResolution)
 
-    const chartSymbols = [...this.resKeyToChartSymbol.values()]
-      .map((s) => String(s || '').trim())
-      .filter(Boolean)
-
     if (this.mdsOpenTimer) clearTimeout(this.mdsOpenTimer)
     this.mdsOpenTimer = setTimeout(() => {
       this.mdsOpenTimer = null
-      for (const label of chartSymbols) {
-        const streamId = this.streamSymbol(label)
-        if (streamId && this.mds.hasBookSubscriptionsFor(streamId)) {
-          this.bookSubIdsByStream.set(streamId, [])
-          continue
-        }
-        this.ensureMarketBookSubscription(label)
+      const bookStreams = new Set([
+        ...[...this.subIdByKey.keys()].map((key) => this.parseResKey(key)?.streamId),
+        ...this.tradePadBookRefs.keys(),
+        ...this.positionBookStreams,
+      ])
+      for (const streamId of bookStreams) {
+        if (streamId) this.ensureMarketBookSubscription(streamId)
       }
     }, MDS_OPEN_BOOK_VERIFY_MS)
   }
@@ -478,10 +476,43 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.bookSubIdsByStream.set(streamId, subs)
   }
 
-  /** Release a trade-panel-only book once no chart pane uses its stream. */
+  /** Keep the book active while a trade panel displays this contract. */
+  retainTradePadMarketBook(chartSymbol: string): () => void {
+    const streamId = this.streamSymbol(chartSymbol)
+    if (!streamId) return () => undefined
+    this.tradePadBookRefs.set(streamId, (this.tradePadBookRefs.get(streamId) ?? 0) + 1)
+    this.ensureMarketBookSubscription(streamId)
+    let retained = true
+    return () => {
+      if (!retained) return
+      retained = false
+      const remaining = (this.tradePadBookRefs.get(streamId) ?? 1) - 1
+      if (remaining > 0) this.tradePadBookRefs.set(streamId, remaining)
+      else this.tradePadBookRefs.delete(streamId)
+      this.releaseUnusedMarketBook(streamId)
+    }
+  }
+
+  /** Keep marks for broker positions whose contracts are outside the active DOM. */
+  setPositionMarketBookSymbols(symbols: string[]): void {
+    const previous = this.positionBookStreams
+    const next = new Set(symbols.map((symbol) => this.streamSymbol(symbol)).filter(Boolean))
+    this.positionBookStreams = next
+    for (const streamId of next) {
+      if (!previous.has(streamId)) this.ensureMarketBookSubscription(streamId)
+    }
+    for (const streamId of previous) {
+      if (!next.has(streamId)) this.releaseUnusedMarketBook(streamId)
+    }
+  }
+
   releaseMarketBookSubscription(chartSymbol: string): void {
     const streamId = this.streamSymbol(chartSymbol)
-    if (!streamId) return
+    if (streamId) this.releaseUnusedMarketBook(streamId)
+  }
+
+  private releaseUnusedMarketBook(streamId: string): void {
+    if (this.tradePadBookRefs.has(streamId) || this.positionBookStreams.has(streamId)) return
     const streamStillUsed = [...this.subIdByKey.keys()].some(
       (activeKey) => this.parseResKey(activeKey)?.streamId === streamId
     )
@@ -528,6 +559,8 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
     this.quoteSubs.clear()
     this.lastDispatchedQuote.clear()
     this.bookSubIdsByStream.clear()
+    this.tradePadBookRefs.clear()
+    this.positionBookStreams.clear()
     this.tradeHandler = null
     this.clearHistoryCache()
     this.resolvedSymbols.clear()
@@ -1652,18 +1685,7 @@ export class TradeseaDatafeed implements IDatafeedChartApi {
           this.subIdByKey.delete(key)
         }
         const streamId = this.parseResKey(key)?.streamId
-        const streamStillUsed =
-          streamId != null &&
-          [...this.subIdByKey.keys()].some(
-            (activeKey) => this.parseResKey(activeKey)?.streamId === streamId
-          )
-        if (streamId && !streamStillUsed) {
-          const bookSubIds = this.bookSubIdsByStream.get(streamId)
-          if (bookSubIds?.length) {
-            for (const bookSubId of bookSubIds) this.mds.unsubscribe(bookSubId)
-          }
-          this.bookSubIdsByStream.delete(streamId)
-        }
+        if (streamId) this.releaseUnusedMarketBook(streamId)
         this.logSymbol(
           'unsubscribeBars:lastListener',
           { listenerGuid, key, chartSymbol, streamKey: key.split('__')[0] },

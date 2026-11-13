@@ -59,6 +59,46 @@ function liveFeed() {
 
 const lastLiveBar = (feed) => feed.getLastBarForChart({ symbol: () => 'NQ', resolution: () => '1' })
 
+test('a TradeSea position keeps its market book after the DOM switches contracts', (t) => {
+  const subscriptions = new Map()
+  let nextId = 0
+  const subscribe = ([symbol]) => {
+    const id = ++nextId
+    subscriptions.set(id, symbol)
+    return id
+  }
+  const feed = new TradeseaDatafeed({
+    mds: {
+      on: () => () => undefined,
+      hasBookSubscriptionsFor: () => false,
+      isMarketDepthEntitled: () => false,
+      subscribeLtp: subscribe,
+      subscribeBestBidAsk: subscribe,
+      subscribeQuotes: subscribe,
+      subscribeTtv: subscribe,
+      subscribeMarketMode: subscribe,
+      unsubscribe: (id) => subscriptions.delete(id),
+    },
+    accountId: 'account', userId: 'user', connectionGroupId: 'group', delayed: true,
+  })
+  t.after(() => feed.dispose())
+  const subscribedSymbols = () => [...new Set(subscriptions.values())].sort()
+  const releaseMicroPad = feed.retainTradePadMarketBook('CME-Delayed:MNQ')
+  feed.setPositionMarketBookSymbols(['CME:MNQ'])
+  assert.equal(nextId, 5, 'the DOM and the position share one subscription set')
+
+  releaseMicroPad()
+  const releaseEsPad = feed.retainTradePadMarketBook('CME:ES')
+  assert.deepEqual(subscribedSymbols(), ['CME-Delayed:ES', 'CME-Delayed:MNQ'])
+
+  feed.setPositionMarketBookSymbols(['CME:ES'])
+  assert.deepEqual(subscribedSymbols(), ['CME-Delayed:ES'])
+  feed.setPositionMarketBookSymbols([])
+  assert.deepEqual(subscribedSymbols(), ['CME-Delayed:ES'], 'the DOM retains ES after the position closes')
+  releaseEsPad()
+  assert.deepEqual(subscribedSymbols(), [])
+})
+
 test('live tail refresh bypasses completed history and replaces stale candle values', async (t) => {
   let requests = 0
   t.mock.method(globalThis, 'fetch', async () => {

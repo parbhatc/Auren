@@ -33,15 +33,20 @@ function widget() {
     async setStopLoss(price) { calls.push('stop'); if (position) position.stopLoss = price },
     async setTakeProfit(price) { calls.push('take'); if (position) position.takeProfit = price },
     clearStopLoss() {}, clearTakeProfit() {},
-    setMarkPrice() { calls.push('mark') },
+    setMarkPrice(price) { calls.push('mark'); marks.push(price) },
     setPresentation() { calls.push('presentation') },
     refreshLayout() { calls.push('layout') },
     onClose: (callback) => listen('close', callback),
     onStopLossChanged: (callback) => listen('stop', callback),
     onTakeProfitChanged: (callback) => listen('take', callback),
   }
-  const chart = { symbol: () => 'NQ', resolution: () => '1' }
-  return { chart: () => chart, positionOverlay: overlay, onLiveBar: (callback) => listen('bar', callback), calls, events }
+  let symbol = 'NQ'
+  const marks = []
+  const chart = { symbol: () => symbol, resolution: () => '1' }
+  return {
+    chart: () => chart, positionOverlay: overlay, onLiveBar: (callback) => listen('bar', callback),
+    focusSymbol(next) { symbol = next }, calls, events, marks,
+  }
 }
 
 async function fixture(t) {
@@ -123,6 +128,44 @@ test('authoritative closes reconcile the detached cache without rendering or bro
   await flush()
   assert.equal(f.cache.getPosition('NQ'), undefined)
   assert.equal(f.first.calls.length, detachedCalls)
+  assert.deepEqual(f.state.orders, [])
+})
+
+test('the MNQ label on NQ keeps receiving MNQ marks while ES has focus', async (t) => {
+  const f = await fixture(t)
+  f.firm.positions[0].instrument = 'CME:MNQ'
+  f.cache.getPosition('NQ').tradeInstrument = 'CME:MNQ'
+  f.first.focusSymbol('ES')
+  f.handler.syncFromStream()
+  await flush()
+
+  const previousMarks = f.first.marks.length
+  for (const streamId of ['CME:ES', 'CME:NQ', 'CME:MNQ']) {
+    f.datafeed.getMarketBookForStream = () => ({ last: streamId === 'CME:MNQ' ? 102 : 101 })
+    for (const callback of f.listeners) callback(streamId, 'ltp')
+  }
+  assert.deepEqual(f.first.marks.slice(previousMarks), [102])
+  assert.deepEqual(f.state.orders, [])
+})
+
+test('a broker exit clears the position and both brackets while another pane has focus', async (t) => {
+  const f = await fixture(t)
+  f.firm.orders = [
+    { id: 'target', parentId: 'position-A', parentType: 'position', type: 'limit', status: 'working', limitPrice: 110 },
+  ]
+  f.handler.syncFromStream()
+  await flush()
+  assert.equal(f.first.positionOverlay.getPosition().stopLoss, 99)
+  assert.equal(f.first.positionOverlay.getPosition().takeProfit, 110)
+
+  f.first.focusSymbol('ES')
+  f.firm.positions = [
+    { id: 'other-position', instrument: 'CME:CL', qty: 1, side: 'buy', avgPrice: 80 },
+  ]
+  f.handler.syncFromStream()
+  await flush()
+  assert.equal(f.first.positionOverlay.getPosition(), null)
+  assert.equal(f.cache.getPosition('NQ'), undefined)
   assert.deepEqual(f.state.orders, [])
 })
 

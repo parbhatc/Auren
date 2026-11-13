@@ -139,9 +139,12 @@ export type TradePanelProps = {
   /** Open mini/micro positions related to the chart product. */
   getPositionFamilySummary?: () => PracticePositionFamilySummary | null
   getMarketBook?: () => TradeseaMarketBook | null
+  /** Stable identity of the market book source for the current stream session. */
+  marketBookSource?: object
   subscribeMarketBook?: (
     onUpdate: (streamId: string, kind: MarketBookUpdateKind) => void
   ) => () => void
+  retainMarketBook?: () => () => void
   ensureMarketBook?: () => void
   releaseMarketBook?: () => void
   getChartPositionUpl?: () => number | null

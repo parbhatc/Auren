@@ -37,6 +37,7 @@ import { getPracticeDailyRealizedPl } from './practiceSessionReset'
 import { isBwcChartPanning, whenBwcPanEnds } from '../../utils/bwcPan'
 import { t } from '../../utils/translator'
 import { MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
+import { canEnterTradePadContract, MICRO_ONLY_ORDER_MESSAGE } from '../../utils/tradePadEntryPolicy'
 import { connectPracticeAccountWs, type PracticeAccountWsClient } from './practiceAccountWs'
 import { chartSymbolToProductRoot } from '../tradesea/tradeseaSymbolInfo'
 import { snapPracticePriceToTick } from './practiceInstrumentTicks'
@@ -595,6 +596,10 @@ export class PracticeTradeHandler {
     if (!account) return
 
     const tradeSymbol = this.resolveTradeSymbol(tradeSymbolOverride)
+    if (!canEnterTradePadContract(this.practiceAccountId, tradeSymbol)) {
+      aurenToast.error(MICRO_ONLY_ORDER_MESSAGE)
+      return
+    }
     const closedMsg = this.getMarketClosedMessage(tradeSymbol)
     if (closedMsg) {
       aurenToast.error(closedMsg)
@@ -1051,6 +1056,10 @@ export class PracticeTradeHandler {
 
     const isEntry = buttonName === 'Buy' || buttonName === 'Sell'
     const isReverse = buttonName === 'Reverse Position'
+    if ((isEntry || isReverse) && !canEnterTradePadContract(this.practiceAccountId, tradeSymbol)) {
+      aurenToast.error(MICRO_ONLY_ORDER_MESSAGE)
+      return
+    }
     const qty = Number(data?.quantity)
 
     if (isEntry || isReverse) {

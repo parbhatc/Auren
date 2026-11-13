@@ -115,12 +115,11 @@ export class TradeseaTradeCache extends ChartTradeCache {
     const instrument = this.handler.resolveInstrumentPublic(symbol)
     if (!instrument) return
 
-    const active = this.getPositionForActiveChart()
-    const activePosition = active?.position as TradeseaCachedPosition | undefined
-    const activeTradeInstrument =
-      activePosition?.tradeInstrument ||
-      (active?.key ? this.handler.resolveInstrumentPublic(active.key) : '')
-    if (activePosition?.contracts && instrumentsMatch(instrument, activeTradeInstrument)) {
+    const rendered = this.getRenderedPosition()
+    const tradeInstrument = rendered &&
+      ((rendered.position as TradeseaCachedPosition).tradeInstrument ||
+        this.handler.resolveInstrumentPublic(rendered.key))
+    if (tradeInstrument && instrumentsMatch(instrument, tradeInstrument)) {
       // Keep the chart pill on the same broker-contract mark used by account
       // UP&L. This matters when MNQ is rendered over an NQ chart: NQ candles
       // are only the visual backdrop and must not price the MNQ position.
@@ -388,7 +387,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
         position.stopLoss = price
         const cached = position as TradeseaCachedPosition
         cached.bracketPendingUntil = Date.now() + BRACKET_PENDING_MS
-        aurenToast.success(`Stop loss updated to ${price}`)
+        aurenToast.success(`Stop loss updated to ${price.toFixed(2)}`)
         const cacheKey = String(position.symbol || this.activeChartSymbol())
         this.ensurePositionLines(
           cacheKey,
@@ -453,7 +452,7 @@ export class TradeseaTradeCache extends ChartTradeCache {
         position.takeProfit = price
         const cached = position as TradeseaCachedPosition
         cached.bracketPendingUntil = Date.now() + BRACKET_PENDING_MS
-        aurenToast.success(`Take profit updated to ${price}`)
+        aurenToast.success(`Take profit updated to ${price.toFixed(2)}`)
         const cacheKey = String(position.symbol || this.activeChartSymbol())
         this.ensurePositionLines(
           cacheKey,
@@ -487,8 +486,17 @@ export class TradeseaTradeCache extends ChartTradeCache {
     return { entry: Number(position.entry), contracts: Number(position.contracts) }
   }
 
-  /** Sync active chart position from unified WS snapshot (all positions live in propFirm.positions). */
+  /** Reconcile cached positions against the broker, then sync the focused chart. */
   syncAllOpenPositions(chartSymbol: string): void {
+    const openIds = new Set(
+      this.propFirm.positions.filter(position => position.qty).map(position => position.id)
+    )
+    for (const position of this.cache.values() as Iterable<TradeseaCachedPosition>) {
+      if (position.positionId && !openIds.has(position.positionId)) {
+        if (position.tradeInstrument) this.clearSoftStop(position.tradeInstrument)
+        this.clearPositionLocal(position)
+      }
+    }
     this.syncPositionForChartSymbol(chartSymbol)
   }
 
@@ -612,19 +620,6 @@ export class TradeseaTradeCache extends ChartTradeCache {
   ): void {
     const position = this.getPosition(cacheKey)
     if (!position || !contracts) return
-
-    // The cache key is the visible chart (for example NQ), while the broker
-    // position may be its micro contract (MNQ). Reapply presentation after the
-    // broker instrument is attached so an already-created pill cannot retain
-    // the chart's default label or tick economics.
-    const widget = this.getWidget() as {
-      positionOverlay?: {
-        setPresentation?: (presentation: ReturnType<TradeseaTradeCache['getPositionPresentation']>) => unknown
-      }
-    } | null
-    widget?.positionOverlay?.setPresentation?.(
-      this.getPositionPresentation(cacheKey, contracts)
-    )
 
     const datafeed = this.getDatafeed()
     const lastBar = datafeed?.getLastBarForChart?.(this.chart)

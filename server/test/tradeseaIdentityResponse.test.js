@@ -161,8 +161,14 @@ test('parses the identity accountsWithDetails response shape', () => {
 
 test('coalesces account discovery during a burst of history proxy requests', async () => {
   const originalProxyIdentityRequest = TradeseaIdentityService.proxyIdentityRequest
+  const originalProxyDiscoveryRequest = TradeseaIdentityService.proxyDiscoveryRequest
   TradeseaIdentityService.rawAccountsCache.clear()
   let calls = 0
+  let discoveryCalls = 0
+  TradeseaIdentityService.proxyDiscoveryRequest = async () => {
+    discoveryCalls += 1
+    return { statusCode: 503 }
+  }
   TradeseaIdentityService.proxyIdentityRequest = async () => {
     calls += 1
     return {
@@ -189,10 +195,54 @@ test('coalesces account discovery during a burst of history proxy requests', asy
       TradeseaIdentityService.fetchRawAccounts(tokens),
     ])
     assert.equal(calls, 1)
+    assert.equal(discoveryCalls, 1)
     assert.equal(first[0]?.id, 'account-id')
     assert.deepEqual(second, first)
   } finally {
     TradeseaIdentityService.proxyIdentityRequest = originalProxyIdentityRequest
+    TradeseaIdentityService.proxyDiscoveryRequest = originalProxyDiscoveryRequest
     TradeseaIdentityService.rawAccountsCache.clear()
   }
+})
+
+test('includes discovery-only Sandbox accounts in selection and delayed stream lookup', async (t) => {
+  const service = TradeseaIdentityService
+  const lucid = { id: 'lucid', broker: 'LucidTrading', userId: 'lucid-user' }
+  const sandbox = {
+    id: 'demo',
+    broker: 'demo-broker',
+    brokerDisplayName: 'Sandbox 2',
+    userId: 'demo-user',
+    type: 'live',
+  }
+  t.mock.method(service, 'proxyIdentityRequest', async () => ({
+    statusCode: 200,
+    body: { status: 'success', data: [lucid] },
+  }))
+  t.mock.method(service, 'proxyDiscoveryRequest', async (_tokens, method, path) => {
+    assert.equal(method, 'GET')
+    assert.equal(path, '/tradelens/v1/accounts/all')
+    return {
+      statusCode: 200,
+      body: { s: 'success', d: { accounts: [
+        sandbox,
+        { ...sandbox, userId: 'duplicate-user' },
+        { ...sandbox, id: 'lucid' },
+        { ...sandbox, id: 'missing-stream-user', userId: undefined },
+        { id: 'other', broker: 'OtherBroker', userId: 'other-user' },
+      ] } },
+    }
+  })
+  t.after(() => service.rawAccountsCache.clear())
+
+  const tokens = { accessToken: 'sandbox-discovery-test' }
+  const accounts = await service.fetchAccounts(tokens)
+  assert.deepEqual(accounts.map((account) => account.id), ['lucid', 'demo'])
+  assert.equal(service.pickDefaultAccountId(accounts), 'demo')
+  const selected = await service.findAccountById(tokens, 'demo')
+  const stream = service.getStreamConfig(selected)
+  assert.equal(stream.userId, 'demo-user')
+  assert.equal(stream.mode, 'sandbox')
+  assert.equal(stream.delayed, true)
+  assert.match(stream.tradesWriteOrigin, /delprod/)
 })

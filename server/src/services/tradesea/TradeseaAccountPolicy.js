@@ -40,8 +40,10 @@ export const TRADESEA_LUCID_TRADES = TRADESEA_TRADES_LIVE
 
 export function isSandboxAccount(account) {
   if (!account) return false
-  const firm = String(account.propFirm || '').toLowerCase()
-  return config.accountAliases.sandbox.includes(firm)
+  return [account.propFirm, account.propFirmDisplayName].some((value) => {
+    const firm = String(value || '').trim().toLowerCase().replace(/\s+/g, '-')
+    return config.accountAliases.sandbox.includes(firm)
+  })
 }
 
 export function isLucidAccount(account) {

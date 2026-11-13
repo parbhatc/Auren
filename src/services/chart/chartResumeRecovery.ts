@@ -7,6 +7,7 @@ const RELOAD_SETTLE_MS = 200
 const RETRY_MS = 250
 const MAX_RETRIES = 24
 const MAX_RECOVERY_FAILURES = 6
+const HISTORY_FOLLOW_UP_MS = 60_000
 
 type RecoveryOptions = {
   connection: Pick<TradeseaMdsClient, 'on' | 'getConnectionState' | 'resendAllSubscriptions'>
@@ -43,6 +44,8 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
   let checkpoint: { widget: BwcWidget; state: unknown } | null = null
   let reloadTimer: ReturnType<typeof setTimeout> | null = null
   let resumeTimer: ReturnType<typeof setTimeout> | null = null
+  let historyFollowUpTimer: ReturnType<typeof setTimeout> | null = null
+  let historyFollowUpRevision: number | null = null
 
   const isVisible = () => viewActive && pageDocument?.visibilityState !== 'hidden'
   const needsReload = () => revision > completedRevision
@@ -72,6 +75,9 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
   }
 
   const markGap = () => {
+    if (historyFollowUpTimer) clearTimeout(historyFollowUpTimer)
+    historyFollowUpTimer = null
+    historyFollowUpRevision = null
     captureCheckpoint()
     revision += 1
     retries = 0
@@ -96,11 +102,12 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
     if (reloadTimer) clearTimeout(reloadTimer)
     reloadTimer = null
     const loadingRevision = revision
+    const isHistoryFollowUp = historyFollowUpRevision === loadingRevision
     const since = checkpoint?.widget === widget ? checkpoint.state : undefined
     inFlight = true
     let failed = false
     try {
-      datafeed.refreshMdsSubscriptions?.()
+      if (!isHistoryFollowUp) datafeed.refreshMdsSubscriptions?.()
       options.onReloadStart?.()
       trace('start', { snapshot: since })
       // Retain loaded candles and indicator stores. The pre-suspension checkpoint
@@ -110,12 +117,27 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
       completedRevision = loadingRevision
       retries = 0
       recoveryFailures = 0
-      if (!needsReload()) checkpoint = null
+      if (!needsReload()) {
+        if (isHistoryFollowUp) {
+          checkpoint = null
+          historyFollowUpRevision = null
+        } else {
+          // A successful history response can still omit recently closed
+          // candles. Recheck the outage window once history has caught up.
+          historyFollowUpTimer = setTimeout(() => {
+            historyFollowUpTimer = null
+            if (disposed || revision !== loadingRevision || getWidget() !== widget) return
+            revision += 1
+            historyFollowUpRevision = revision
+            scheduleReload(0)
+          }, HISTORY_FOLLOW_UP_MS)
+        }
+      }
       options.onReloadDone?.()
       trace('complete', { report })
       // Mark success first: this emits resubscribed synchronously and must not
       // schedule another repair for the recovery we have just completed.
-      connection.resendAllSubscriptions()
+      if (!isHistoryFollowUp) connection.resendAllSubscriptions()
     } catch (error) {
       failed = true
       trace('error')
@@ -178,7 +200,7 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
         lastPageGapAt = Date.now()
       }
       pendingPageGap = false
-      if (!needsReload() && !inFlight) checkpoint = null
+      if (!needsReload() && !inFlight && !historyFollowUpTimer) checkpoint = null
       void reloadPending()
     }, RESUME_SETTLE_MS)
   }
@@ -207,6 +229,7 @@ export function createChartResumeRecovery(options: RecoveryOptions) {
       offResubscribed()
       if (reloadTimer) clearTimeout(reloadTimer)
       if (resumeTimer) clearTimeout(resumeTimer)
+      if (historyFollowUpTimer) clearTimeout(historyFollowUpTimer)
       pageDocument?.removeEventListener('visibilitychange', onVisibility)
       pageWindow?.removeEventListener('pagehide', onHidden)
       pageWindow?.removeEventListener('pageshow', onVisible)

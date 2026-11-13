@@ -18,6 +18,7 @@ import { normalizeTradeseaTradeInstrument } from './tradeseaInstrument'
 import { debugTradeseaUpl } from './tradeseaDebug'
 import { toTradeseaDelayedTicker } from './tradeseaStreamSymbol'
 import { isMarketClosedApiError, MARKET_CLOSED_MESSAGE } from '../../utils/marketSession'
+import { canEnterTradePadContract, MICRO_ONLY_ORDER_MESSAGE } from '../../utils/tradePadEntryPolicy'
 import { findPositionsForInstrument, instrumentsMatch, parseTradeseaPosition } from './tradeseaPositions'
 import { createBwcAutoRiskPreview } from '../../chart/bwcAutoRiskPreview'
 import { getBwcActiveResolution, pickBwcChartPriceOnce } from '../../chart/bwcPanePricePicker'
@@ -99,6 +100,7 @@ export class TradeseaTradeHandler {
     this.executionsPaintGeneration += 1
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
+    this.attachedDatafeed?.setPositionMarketBookSymbols?.([])
     this.attachedDatafeed?.setTradeHandler(null)
     this.attachedDatafeed = null
     this.tradeCache?.detachChartView()
@@ -114,6 +116,10 @@ export class TradeseaTradeHandler {
       null
     this.marketBookUnsub?.()
     this.marketBookUnsub = null
+    if (this.attachedDatafeed && this.attachedDatafeed !== df) {
+      this.attachedDatafeed.setPositionMarketBookSymbols?.([])
+      this.attachedDatafeed.setTradeHandler(null)
+    }
     this.attachedDatafeed = df
     df?.setTradeHandler(this)
     if (df?.subscribeMarketBook) {
@@ -133,11 +139,18 @@ export class TradeseaTradeHandler {
         }
       })
     }
+    this.syncPositionMarketBooks()
     debugTradeseaUpl('handler:attach', {
       force: true,
       tradeHandlerSet: Boolean(df),
       sameAsPropFirm: df === this.propFirm.chartServices?.datafeed,
     })
+  }
+
+  private syncPositionMarketBooks(): void {
+    this.attachedDatafeed?.setPositionMarketBookSymbols?.(
+      this.propFirm.positions.flatMap(({ instrument, qty }) => qty && instrument ? [instrument] : [])
+    )
   }
 
   onRealTimeBar(symbol: string, _resolution: string, bar: { close?: number }): void {
@@ -267,6 +280,7 @@ export class TradeseaTradeHandler {
 
   /** Called when the chart cache has no open positions left. */
   onAllPositionsClosed(): void {
+    if (this.propFirm.positions.some(position => position.qty)) return
     const prevUpl = this.propFirm.upl
     this.propFirm.setUnrealizedPl(0, { fromStream: false })
     if (prevUpl !== this.propFirm.upl) {
@@ -353,6 +367,7 @@ export class TradeseaTradeHandler {
 
   syncFromStream(): void {
     if (!this.tradeCache || this.cacheSessionKey !== this.sessionKey()) return
+    this.syncPositionMarketBooks()
     const widget = this.widget
     const cache = this.tradeCache
     const chart = widget?.chart?.() ?? cache.getChart()
@@ -630,6 +645,10 @@ export class TradeseaTradeHandler {
     switch (buttonName) {
       case 'Buy':
       case 'Sell': {
+        if (!canEnterTradePadContract(accountId, instrument)) {
+          aurenToast.error(MICRO_ONLY_ORDER_MESSAGE)
+          return
+        }
         const qty = Number(data?.quantity)
         if (!Number.isFinite(qty) || qty <= 0) {
           aurenToast.error('Enter a valid quantity')
@@ -707,6 +726,10 @@ export class TradeseaTradeHandler {
         const position = this.findPositionForChart(instrument)
         if (!position) {
           aurenToast.error(`No open position for ${instrument}`)
+          return
+        }
+        if (!canEnterTradePadContract(accountId, position.instrument || instrument)) {
+          aurenToast.error(MICRO_ONLY_ORDER_MESSAGE)
           return
         }
         try {

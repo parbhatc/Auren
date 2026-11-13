@@ -153,11 +153,8 @@ export class BwcPositionLineHandle {
 
   remove(type: LineType): void {
     if (!this.active()) return
-    const overlay = this.bridge.getOverlay()
-    if (!overlay) return
     if (type === 'position') this.bridge.clear()
-    else if (type === 'stop_loss') overlay.clearStopLoss()
-    else if (type === 'take_profit') overlay.clearTakeProfit()
+    else this.bridge.clearBracket(type === 'stop_loss' ? 'stopLoss' : 'takeProfit')
   }
 
   removeAll(): void {
@@ -180,12 +177,17 @@ export class BwcPositionBridge {
   private syncRevision = 0
   private syncQueue: Promise<void> = Promise.resolve()
   private suppressedCloseEvents = 0
+  private readonly bracketWrites = {
+    stopLoss: new Set<{ price: number | null }>(),
+    takeProfit: new Set<{ price: number | null }>(),
+  }
   private presentation: BwcPositionPresentation = {}
 
   constructor(
     private readonly widget: BwcWidgetWithOverlay,
     readonly tradeCache: ChartTradeCache,
-    private readonly onUplChange: (pnl: number) => void
+    private readonly onUplChange: (pnl: number) => void,
+    private readonly getPresentation: (symbol: string, contracts: number) => BwcPositionPresentation | null
   ) {}
 
   getOverlay(): BwcPositionOverlayApi | null {
@@ -194,6 +196,10 @@ export class BwcPositionBridge {
 
   isActiveSymbol(symbol: string): boolean {
     return this.activeSymbol === symbol
+  }
+
+  getPositionSymbol(): string | null {
+    return this.activeSymbol
   }
 
   updateMarkPrice(mark: number): void {
@@ -236,6 +242,8 @@ export class BwcPositionBridge {
     }))
 
     this.offOverlayEvents.push(overlay.onStopLossChanged((_old, newPrice) => {
+      if (_old === newPrice) return
+      if ([...this.bracketWrites.stopLoss].some(write => write.price === newPrice)) return
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateStopLoss(symbol, null, 'onCancel')
@@ -243,6 +251,8 @@ export class BwcPositionBridge {
     }))
 
     this.offOverlayEvents.push(overlay.onTakeProfitChanged((_old, newPrice) => {
+      if (_old === newPrice) return
+      if ([...this.bracketWrites.takeProfit].some(write => write.price === newPrice)) return
       const symbol = this.activeSymbol
       if (!symbol) return
       if (newPrice == null) this.tradeCache.updateTakeProfit(symbol, null, 'onCancel')
@@ -268,6 +278,32 @@ export class BwcPositionBridge {
     }
 
     this.wired = true
+  }
+
+  private async writeBracket(
+    overlay: BwcPositionOverlayApi,
+    kind: 'stopLoss' | 'takeProfit',
+    price: number | null
+  ): Promise<void> {
+    const writes = this.bracketWrites[kind]
+    const write = { price }
+    writes.add(write)
+    try {
+      if (kind === 'stopLoss') {
+        if (price == null) overlay.clearStopLoss()
+        else await overlay.setStopLoss(price)
+      } else {
+        if (price == null) overlay.clearTakeProfit()
+        else await overlay.setTakeProfit(price)
+      }
+    } finally {
+      writes.delete(write)
+    }
+  }
+
+  clearBracket(kind: 'stopLoss' | 'takeProfit'): void {
+    const overlay = this.getOverlay()
+    if (overlay) void this.writeBracket(overlay, kind, null)
   }
 
   clear(): void {
@@ -309,7 +345,7 @@ export class BwcPositionBridge {
     contracts: number,
     stopLoss: number | null,
     takeProfit: number | null,
-    opts: { createBrackets?: boolean; presentation?: BwcPositionPresentation | null } = {}
+    opts: { createBrackets?: boolean } = {}
   ): Promise<void> {
     const overlay = this.getOverlay()
     if (!overlay) return
@@ -339,7 +375,7 @@ export class BwcPositionBridge {
     contracts: number,
     stopLoss: number | null,
     takeProfit: number | null,
-    opts: { createBrackets?: boolean; presentation?: BwcPositionPresentation | null }
+    opts: { createBrackets?: boolean }
   ): Promise<void> {
     const overlay = this.getOverlay()
     if (!overlay || revision !== this.syncRevision || this.activeSymbol !== symbol) return
@@ -350,8 +386,17 @@ export class BwcPositionBridge {
       takeProfit?: number | null
       stopLossMode?: 'hard' | 'soft'
     } | null
-    const presentation = { ...this.presentation, ...opts.presentation, softStopLoss: cachedPosition?.stopLossMode === 'soft' }
-    if (Object.keys(presentation).some(key => presentation[key] !== this.presentation[key])) {
+    // A line refresh can supersede its initial creation before the queue runs.
+    // Read the current contract details even when that initial task was skipped.
+    const presentation = {
+      ...this.getPresentation(symbol, contracts),
+      softStopLoss: cachedPosition?.stopLossMode === 'soft',
+    }
+    const presentationKeys = new Set([
+      ...Object.keys(presentation),
+      ...Object.keys(this.presentation),
+    ]) as Set<keyof BwcPositionPresentation>
+    if ([...presentationKeys].some(key => presentation[key] !== this.presentation[key])) {
       this.presentation = presentation
       overlay.setPresentation?.(presentation)
     }
@@ -414,19 +459,19 @@ export class BwcPositionBridge {
     const snap = overlay.getPosition()
     if (desiredStopLoss != null) {
       if (snap?.stopLoss !== desiredStopLoss) {
-        await overlay.setStopLoss(desiredStopLoss)
+        await this.writeBracket(overlay, 'stopLoss', desiredStopLoss)
         if (this.disposed) return
       }
     } else if (snap?.stopLoss != null) {
-      overlay.clearStopLoss()
+      await this.writeBracket(overlay, 'stopLoss', null)
     }
 
     if (desiredTakeProfit != null) {
       if (snap?.takeProfit !== desiredTakeProfit) {
-        await overlay.setTakeProfit(desiredTakeProfit)
+        await this.writeBracket(overlay, 'takeProfit', desiredTakeProfit)
       }
     } else if (snap?.takeProfit != null) {
-      overlay.clearTakeProfit()
+      await this.writeBracket(overlay, 'takeProfit', null)
     }
 
     if (revision !== this.syncRevision || this.activeSymbol !== symbol) {
@@ -453,17 +498,8 @@ export class BwcPositionBridge {
     const overlay = this.getOverlay()
     if (!overlay || !this.isActiveSymbol(symbol)) return false
 
-    if (price == null) {
-      overlay.clearStopLoss()
-      if (context !== 'sync') this.tradeCache.updateStopLoss(symbol, null, context)
-      return true
-    }
-    if (context === 'sync') {
-      void overlay.setStopLoss(price)
-      return true
-    }
-    this.tradeCache.updateStopLoss(symbol, price, context)
-    void overlay.setStopLoss(price)
+    if (context !== 'sync') this.tradeCache.updateStopLoss(symbol, price, context)
+    void this.writeBracket(overlay, 'stopLoss', price)
     return true
   }
 
@@ -483,17 +519,8 @@ export class BwcPositionBridge {
     const overlay = this.getOverlay()
     if (!overlay || !this.isActiveSymbol(symbol)) return false
 
-    if (price == null) {
-      overlay.clearTakeProfit()
-      if (context !== 'sync') this.tradeCache.updateTakeProfit(symbol, null, context)
-      return true
-    }
-    if (context === 'sync') {
-      void overlay.setTakeProfit(price)
-      return true
-    }
-    this.tradeCache.updateTakeProfit(symbol, price, context)
-    void overlay.setTakeProfit(price)
+    if (context !== 'sync') this.tradeCache.updateTakeProfit(symbol, price, context)
+    void this.writeBracket(overlay, 'takeProfit', price)
     return true
   }
 }

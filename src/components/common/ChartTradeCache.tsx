@@ -88,8 +88,11 @@ class ChartTradeCache {
     const widget = this.getWidget() as BwcWidgetWithOverlay | null
     if (!widget?.positionOverlay) return null
     if (!this.bwcPositionBridge) {
-      this.bwcPositionBridge = new BwcPositionBridge(widget, this, (pnl) =>
-        this.onPositionUplChange(pnl)
+      this.bwcPositionBridge = new BwcPositionBridge(
+        widget,
+        this,
+        (pnl) => this.onPositionUplChange(pnl),
+        (symbol, contracts) => this.getPositionPresentation(symbol, contracts)
       )
     }
     return this.bwcPositionBridge
@@ -246,6 +249,13 @@ class ChartTradeCache {
   updateActivePositionMark(mark: number): void {
     if (!Number.isFinite(mark)) return
     this.getPositionBridge()?.updateMarkPrice(mark)
+  }
+
+  /** The displayed position keeps its own symbol when another pane gets focus. */
+  protected getRenderedPosition(): { key: string; position: Record<string, unknown> } | null {
+    const key = this.bwcPositionBridge?.getPositionSymbol()
+    const position = key ? this.cache.get(key) : null
+    return key && position?.contracts ? { key, position } : null
   }
 
   /** Live bar hook for bracket fills (BWC onLiveBar path). */
@@ -570,7 +580,6 @@ class ChartTradeCache {
     if (!bridge) return null
     void bridge.sync(symbol, entryPrice, contracts, stopLoss ?? null, takeProfit ?? null, {
       createBrackets: this.create_stop_loss_and_take_profit_lines,
-      presentation: this.getPositionPresentation(symbol, contracts),
     })
     return bridge.createCompatHandle(symbol)
   }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Loader2, Search, X } from 'lucide-react'
 import Toggle from '../../../common/Toggle'
@@ -133,8 +133,10 @@ export function TradeContractPicker({
 }: TradeContractPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<TradeseaSearchSymbolResult[]>([])
-  const [loading, setLoading] = useState(false)
+  const [searchResult, setSearchResult] = useState<{
+    query: string
+    rows: TradeseaSearchSymbolResult[]
+  } | null>(null)
   const [autoChange, setAutoChange] = useState(autoChangeTradeContract)
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({})
   const rootRef = useRef<HTMLDivElement>(null)
@@ -151,6 +153,10 @@ export function TradeContractPicker({
   const mobileModal = isMobilePickerViewport()
   const compact = !mobileModal
   const tradeMatchesChart = chartRoot === tradeRoot
+  const searchQuery = query.trim() || tradeRoot || 'NQ'
+  const currentResult = searchResult?.query === searchQuery ? searchResult : null
+  const results = currentResult?.rows ?? []
+  const loading = Boolean(searchSymbols && !currentResult)
 
   useEffect(() => {
     setAutoChange(autoChangeTradeContract)
@@ -166,7 +172,7 @@ export function TradeContractPicker({
     setOpen(false)
     setQuery('')
     searchRequestRef.current += 1
-    setLoading(false)
+    setSearchResult(null)
   }, [])
 
   const positionMenu = useCallback(() => {
@@ -220,7 +226,7 @@ export function TradeContractPicker({
     setOpen(true)
   }, [tradeRoot])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     positionMenu()
     const onLayout = () => positionMenu()
@@ -258,7 +264,7 @@ export function TradeContractPicker({
     const id = window.requestAnimationFrame(() => {
       const input = searchRef.current
       if (!input) return
-      input.focus()
+      input.focus({ preventScroll: true })
       input.select()
     })
     return () => window.cancelAnimationFrame(id)
@@ -269,28 +275,22 @@ export function TradeContractPicker({
     const search = searchSymbolsRef.current
     if (!search) return
 
-    const q = query.trim() || tradeRoot || 'NQ'
     const requestId = ++searchRequestRef.current
 
     const handle = window.setTimeout(() => {
-      setLoading(true)
-      void search(q)
+      void search(searchQuery)
         .then((rows) => {
           if (requestId !== searchRequestRef.current) return
-          setResults(rows)
+          setSearchResult({ query: searchQuery, rows })
         })
         .catch(() => {
           if (requestId !== searchRequestRef.current) return
-          setResults([])
-        })
-        .finally(() => {
-          if (requestId !== searchRequestRef.current) return
-          setLoading(false)
+          setSearchResult({ query: searchQuery, rows: [] })
         })
     }, query.trim() ? SEARCH_DEBOUNCE_MS : 0)
 
     return () => window.clearTimeout(handle)
-  }, [open, query, tradeRoot])
+  }, [open, query, searchQuery])
 
   const pick = (result: TradeseaSearchSymbolResult) => {
     onPickTrade(pickStreamSymbol(result))
@@ -416,7 +416,11 @@ export function TradeContractPicker({
                 ref={searchRef}
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  searchRequestRef.current += 1
+                  setSearchResult(null)
+                  setQuery(e.target.value)
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     e.preventDefault()
@@ -433,11 +437,12 @@ export function TradeContractPicker({
             </div>
 
             <div
-              className={`min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-hide ${
-                compact ? 'max-h-48' : ''
+              className={`min-h-0 overflow-y-auto overscroll-contain scrollbar-hide ${
+                compact ? 'h-48 shrink-0' : 'flex-1'
               }`}
               role="listbox"
               aria-label="Symbol search results"
+              aria-busy={loading}
             >
               {results.length === 0 && !loading ? (
                 <p className={`text-center text-[#64748b] ${compact ? 'py-4 text-xs' : 'py-6 text-sm'}`}>

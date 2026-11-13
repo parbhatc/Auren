@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { t } from '../../../../utils/translator'
 import { TradingLimitsSettingsPanel } from '../header/TradingLimitsSettingsPanel'
+import MicroOnlySetting from '../header/MicroOnlySetting'
 import { MobileTradeOverlayShell } from './MobileTradeOverlayShell'
 import { MobileEntryModeSelector } from './MobileEntryModeSelector'
 import type { MobileEntryMode } from '../../../../types/mobileTrade'
@@ -61,6 +62,7 @@ export function MobileTradingSettingsSheet({
               </p>
             </div>
           )}
+          <MicroOnlySetting accountId={practiceAccountId} isDark={isDark} />
           <TradingLimitsSettingsPanel
             practiceAccountId={practiceAccountId}
             isDark={isDark}

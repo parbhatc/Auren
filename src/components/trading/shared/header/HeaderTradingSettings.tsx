@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
 import { usePracticeLockout } from '../../../../hooks/usePracticeLockout'
@@ -7,6 +7,8 @@ import { TradingLimitsSettingsPanel } from './TradingLimitsSettingsPanel'
 import PositionPnlDisplaySetting from './PositionPnlDisplaySetting'
 import RiskPositionSizeSetting from './RiskPositionSizeSetting'
 import ReplaySettingsPanel from './ReplaySettingsPanel'
+import MicroOnlySetting from './MicroOnlySetting'
+import Switch from '../../Practice/Switch'
 import { LiveTradeViewActive } from '../../../../contexts/LiveTradeViewContext'
 
 /**
@@ -16,12 +18,18 @@ import { LiveTradeViewActive } from '../../../../contexts/LiveTradeViewContext'
  */
 export default function HeaderTradingSettings({
   practiceAccountId,
+  tradeAccountId,
   isDark,
   showReplaySettings = false,
+  showJournalButton = true,
+  onShowJournalButtonChange,
 }: {
   practiceAccountId?: string
+  tradeAccountId?: string
   isDark: boolean
   showReplaySettings?: boolean
+  showJournalButton?: boolean
+  onShowJournalButtonChange?: (show: boolean) => void
 }) {
   const viewActive = useContext(LiveTradeViewActive)
   const [open, setOpen] = useState(false)
@@ -29,6 +37,7 @@ export default function HeaderTradingSettings({
   const [activeTab, setActiveTab] = useState<'display' | 'risk' | 'replay' | 'limits'>('display')
   const rootRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const journalSwitchId = useId()
   const { status, isActiveAccount } = usePracticeLockout(practiceAccountId)
 
   useEffect(() => {
@@ -139,8 +148,28 @@ export default function HeaderTradingSettings({
                   ))}
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                  {activeTab === 'display' ? <PositionPnlDisplaySetting isDark={isDark} /> : null}
-                  {activeTab === 'risk' ? <RiskPositionSizeSetting isDark={isDark} /> : null}
+                  {activeTab === 'display' ? (
+                    <>
+                      <PositionPnlDisplaySetting isDark={isDark} />
+                      {onShowJournalButtonChange && (
+                        <div className={`border-t px-3 py-2.5 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <Switch
+                            id={journalSwitchId}
+                            checked={showJournalButton}
+                            onChange={onShowJournalButtonChange}
+                            isDark={isDark}
+                            label="Show journal button"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                  {activeTab === 'risk' ? (
+                    <>
+                      {tradeAccountId && <MicroOnlySetting accountId={tradeAccountId} isDark={isDark} />}
+                      <RiskPositionSizeSetting isDark={isDark} />
+                    </>
+                  ) : null}
                   {activeTab === 'replay' && showReplaySettings ? (
                     <ReplaySettingsPanel isDark={isDark} />
                   ) : null}

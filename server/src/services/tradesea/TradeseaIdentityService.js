@@ -4,6 +4,8 @@ import tls from 'node:tls'
 import zlib from 'zlib'
 import {
   getStreamEndpoints,
+  isSandboxAccount,
+  isLucidAccount,
   isSupportedTradeseaAccount,
   pickDefaultAccountId,
   usesDelayedMarketData,
@@ -488,7 +490,7 @@ class TradeseaIdentityService {
       this.rawAccountsCache.delete(this.rawAccountsCache.keys().next().value)
     }
 
-    const promise = this.proxyIdentityRequest(
+    const identityAccounts = this.proxyIdentityRequest(
       tokens,
       'GET',
       '/eum/v1/accountsWithDetails'
@@ -499,6 +501,28 @@ class TradeseaIdentityService {
       return this.parseAccountsBody(response.body, { strict: true })
         .map((account) => this.normalizeAccount(account))
         .filter((account) => !this.isNexusDevAccount(account))
+    })
+    // The Identity list provides the trading account details, but Sandbox
+    // accounts can appear only in the account list used by the TradeSea app.
+    const sandboxAccounts = this.proxyDiscoveryRequest(tokens, 'GET', '/tradelens/v1/accounts/all')
+      .then((response) => {
+        if (response.statusCode < 200 || response.statusCode >= 300) return []
+        return this.parseAccountsBody(response.body)
+          .map((account) => this.normalizeAccount(account))
+          .filter((account) =>
+            account?.id && account.userId && !this.isNexusDevAccount(account) &&
+            isSandboxAccount(account) && !isLucidAccount(account)
+          )
+      })
+      .catch(() => [])
+
+    const promise = Promise.all([identityAccounts, sandboxAccounts]).then(([identity, sandbox]) => {
+      const existingIds = new Set(identity.map((account) => account.id))
+      return identity.concat(sandbox.filter((account) => {
+        if (existingIds.has(account.id)) return false
+        existingIds.add(account.id)
+        return true
+      }))
     })
     const entry = { expires: now + ACCOUNTS_CACHE_TTL_MS, promise }
     this.rawAccountsCache.set(cacheKey, entry)

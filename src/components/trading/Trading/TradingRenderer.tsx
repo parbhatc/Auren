@@ -25,8 +25,10 @@ import { schedulePageScrollReset } from '../../../utils/resetPageScroll'
 import {
   getTradePadSymbol,
   getTradePadAutoChange,
+  resolveTradePadFollowSymbol,
   saveTradePadAutoChange,
   saveTradePadSymbol,
+  TRADE_PAD_MICRO_ONLY_EVENT,
 } from '../../../utils/tradePadSymbol'
 import {
   PRACTICE_MOBILE_TRADE_PREFS_EVENT,
@@ -56,6 +58,16 @@ import { formatPracticePositionFamily } from '../../../services/practice/practic
  * Trading renderer component
  * Practice trading terminal layout
  */
+const LIVE_JOURNAL_BUTTON_KEY = 'auren_live_show_journal_button'
+
+function getShowJournalButton(): boolean {
+  try {
+    return localStorage.getItem(LIVE_JOURNAL_BUTTON_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
 class TradingRenderer extends Component<TradingProps, TradingRendererState> {
   private accountDropdownRef = createRef<HTMLDivElement>()
   private mdsClientRef: MdsStatusClient | null = null
@@ -70,6 +82,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     layout: getSavedLayout('trading'),
     showNews: true,
     showNav: true,
+    showJournalButton: getShowJournalButton(),
     practiceMobileOrderOpen: false,
     practiceMobileSettingsOpen: false,
     marketDataLive: true,
@@ -250,8 +263,9 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
         activeFirm.setOnChartSymbolChange((chartSym: string) => {
           const root = chartSymbolToProductRoot(chartSym)
           const padId = this.getPadSessionId()
+          const padRoot = padId ? resolveTradePadFollowSymbol(padId, root) : root
           const shouldSyncPad = Boolean(
-            root && padId && getTradePadAutoChange(padId) && root !== this.state.tradePadSymbol
+            padRoot && padId && getTradePadAutoChange(padId) && padRoot !== this.state.tradePadSymbol
           )
           const shouldSyncChart = Boolean(root && root !== this.state.selectedSymbol)
           debugPracticeChartSymbol(
@@ -273,8 +287,8 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             tradePadSymbol: this.state.tradePadSymbol,
           }
           if (shouldSyncPad && padId) {
-            next.tradePadSymbol = root
-            saveTradePadSymbol(padId, root)
+            next.tradePadSymbol = padRoot
+            saveTradePadSymbol(padId, padRoot)
           }
           this.setState(next)
         })
@@ -339,6 +353,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     }
 
     window.addEventListener('storage', this.handleStorageChange)
+    window.addEventListener(TRADE_PAD_MICRO_ONLY_EVENT, this.handleMicroOnlyChange)
     window.addEventListener(PRACTICE_MOBILE_TRADE_PREFS_EVENT, this.handleMobileTradePrefsChange)
 
     this.layoutCheckInterval = setInterval(() => {
@@ -367,6 +382,7 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     dismissMdsConnectionToast()
     document.removeEventListener('mousedown', this.handleClickOutside)
     window.removeEventListener('storage', this.handleStorageChange)
+    window.removeEventListener(TRADE_PAD_MICRO_ONLY_EVENT, this.handleMicroOnlyChange)
     window.removeEventListener(PRACTICE_MOBILE_TRADE_PREFS_EVENT, this.handleMobileTradePrefsChange)
     const activeFirm = this.getActiveFirm()
     if (typeof activeFirm?.setOnChartSymbolChange === 'function') {
@@ -446,9 +462,22 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
     }
   }
 
-  handleStorageChange = () => {
+  handleStorageChange = (event: StorageEvent) => {
+    if (event.key === LIVE_JOURNAL_BUTTON_KEY || event.key === null) {
+      this.setState({ showJournalButton: getShowJournalButton() })
+      if (event.key !== null) return
+    }
     const newLayout = getSavedLayout(this.layoutStorageKey())
     this.setState({ layout: newLayout })
+  }
+
+  private setShowJournalButton = (show: boolean): void => {
+    this.setState({ showJournalButton: show })
+    try {
+      localStorage.setItem(LIVE_JOURNAL_BUTTON_KEY, String(show))
+    } catch {
+      // The current view can still use the preference if storage is unavailable.
+    }
   }
 
   handleClickOutside = (event: MouseEvent) => {
@@ -470,6 +499,16 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
 
   private getTradePadRoot(): string {
     return this.state.tradePadSymbol || this.state.selectedSymbol || 'NQ'
+  }
+
+  private handleMicroOnlyChange = (): void => {
+    const id = this.getPadSessionId()
+    if (!id || !getTradePadAutoChange(id)) return
+    const chartRoot = this.state.selectedSymbol || 'NQ'
+    const root = resolveTradePadFollowSymbol(id, chartRoot)
+    if (root === this.state.tradePadSymbol) return
+    saveTradePadSymbol(id, root)
+    this.setState({ tradePadSymbol: root })
   }
 
   private resolveTradePadStreamLabel(datafeed?: TradeseaDatafeed | null): string {
@@ -815,16 +854,19 @@ class TradingRenderer extends Component<TradingProps, TradingRendererState> {
             <TradeHeader
               isDark={isDark}
               headerConnectionAccessory={
-                this.props.viewActive !== false ? <InSessionJournalCapture
+                this.props.viewActive !== false && (!liveMode || this.state.showJournalButton) ? <InSessionJournalCapture
                   key={`${this.props.liveMode ? 'live' : 'practice'}:${padSessionId}`}
                   isDark={isDark}
                   getSnapshot={this.captureJournalSnapshot}
                 /> : undefined
               }
+              showJournalButton={liveMode ? this.state.showJournalButton : undefined}
+              onShowJournalButtonChange={liveMode ? this.setShowJournalButton : undefined}
               navigate={navigate}
               toggleTheme={toggleTheme}
               hideDesktopLogo
               practiceAccountId={practiceMode ? practiceAccountId : undefined}
+              tradeAccountId={padSessionId === 'live' ? undefined : padSessionId ?? undefined}
               practiceAccountStatus={practiceAccountStatus}
               onRefreshPracticeAccount={onRefreshPracticeAccount}
               practiceRefreshing={practiceRefreshing}

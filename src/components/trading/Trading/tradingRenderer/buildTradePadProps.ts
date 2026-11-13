@@ -5,7 +5,7 @@ import { chartSymbolToProductRoot } from '../../../../services/tradesea/tradesea
 import type { TradeseaSearchSymbolResult } from '../../../../services/tradesea/tradeseaSymbolInfo'
 import { candleDebug } from '../../../../services/tradesea/candleDebug'
 import { aurenToast } from '../../../../utils/aurenToast'
-import { saveTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange } from '../../../../utils/tradePadSymbol'
+import { saveTradePadSymbol, getTradePadAutoChange, saveTradePadAutoChange, resolveTradePadFollowSymbol } from '../../../../utils/tradePadSymbol'
 import {
   isPracticePadDetached,
   togglePracticePadDetached,
@@ -127,9 +127,11 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
     onAutoChangeTradeContract: (enabled: boolean) => {
       saveTradePadAutoChange(padSessionId, enabled)
       if (enabled && chartProductRoot) {
-        saveTradePadSymbol(padSessionId, chartProductRoot)
-        onTradePadSymbolChange(chartProductRoot)
+        const root = resolveTradePadFollowSymbol(padSessionId, chartProductRoot)
+        saveTradePadSymbol(padSessionId, root)
+        onTradePadSymbolChange(root)
       }
+      onForceUpdate()
     },
     searchSymbols: tsDatafeed ? searchPadSymbols : undefined,
     onChartProductChange: (sym: string) => {
@@ -183,8 +185,12 @@ export function buildTradePadProps(ctx: BuildTradePadPropsContext): TradePanelPr
       }
       return tsDatafeed?.getMarketBookForChart?.(chartSymbolLabel) ?? null
     },
+    marketBookSource: tsDatafeed,
     subscribeMarketBook: tsDatafeed?.subscribeMarketBook
       ? (onUpdate) => tsDatafeed.subscribeMarketBook!(onUpdate)
+      : undefined,
+    retainMarketBook: liveMode && tsDatafeed?.retainTradePadMarketBook
+      ? () => tsDatafeed.retainTradePadMarketBook(chartSymbolLabel)
       : undefined,
     ensureMarketBook: tsDatafeed?.ensureMarketBookSubscription
       ? () => tsDatafeed.ensureMarketBookSubscription!(chartSymbolLabel)
